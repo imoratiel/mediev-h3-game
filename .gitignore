@@ -1,0 +1,40 @@
+# Configuración y Credenciales
+config.php
+config.pro.php
+.env
+php_errors.log
+logs/*.log
+
+# Carpetas de Dependencias
+vendor/
+node_modules/
+
+# Archivos de Sistema y Editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Archivos temporales de XAMPP
+/tmp/
+
+# Archivos de Claude Code
+.md
+
+notes.txt
+
+# Large Geospatial Data
+data/
+*.tif
+*.vrt
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.pytest_cache/
+
+# Node/Vue
+node_modules/
+dist/
+.DS_Store

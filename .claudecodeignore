@@ -1,0 +1,30 @@
+# Claude Code Ignore File
+# Files and patterns listed here will be ignored by Claude Code
+
+# Configuration files with sensitive data
+config/config.php
+config/config_pro.php
+.env
+.env.local
+
+# Log files may contain sensitive information
+logs/
+*.log
+
+# Database backups
+*.sql.backup
+backups/
+
+# Temporary files
+*.tmp
+*.temp
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

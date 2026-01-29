@@ -1,0 +1,30 @@
+# Configuration file with credentials
+config.py
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Log files
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Raster files (can be large)
+*.tif
+*.tiff
+*.geotiff
