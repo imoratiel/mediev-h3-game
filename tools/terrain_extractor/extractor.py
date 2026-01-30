@@ -24,6 +24,9 @@ import geopandas as gpd
 from shapely.geometry import Point
 from shapely.strtree import STRtree
 
+# Base data directory - CRUCIAL para rutas correctas
+BASE_DATA_DIR = Path(__file__).parent.parent.parent.resolve() / 'data'
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -253,48 +256,60 @@ def sample_pixel_value(dataset, lat: float, lng: float) -> int:
         return -1
 
 
-def load_land_mask(data_dir: str) -> Optional[STRtree]:
+def load_land_mask(data_dir: str = None) -> Optional[tuple]:
     """
     Carga el shapefile de Natural Earth Land y crea un spatial index (STRtree).
-    Retorna el STRtree para búsquedas espaciales rápidas, o None si falla.
+    Retorna tupla (land_polygons, spatial_index) para búsquedas espaciales rápidas.
 
     Args:
-        data_dir: Directorio base de datos (debe contener vectors/ne_10m_land/)
+        data_dir: Directorio base de datos (opcional, usa BASE_DATA_DIR por defecto)
 
     Returns:
-        STRtree con las geometrías de tierra, o None si no se puede cargar
+        Tupla (lista de geometrías, STRtree) o None si falla
     """
     try:
-        shapefile_path = Path(data_dir) / 'vectors' / 'ne_10m_land' / 'ne_10m_land.shp'
+        # Usar BASE_DATA_DIR si no se proporciona data_dir
+        if data_dir is None:
+            data_dir = BASE_DATA_DIR
+        else:
+            data_dir = Path(data_dir)
+
+        # Ruta EXPLÍCITA al shapefile
+        shapefile_path = data_dir / 'vectors' / 'ne_10m_land' / 'ne_10m_land.shp'
+
+        logger.info(f"Buscando máscara en: {shapefile_path.absolute()}")
 
         if not shapefile_path.exists():
-            logger.warning(f"Land mask shapefile not found at {shapefile_path}")
+            logger.warning(f"❌ Land mask shapefile NOT FOUND at {shapefile_path.absolute()}")
             logger.warning("Run 'python setup_assets.py' to download it")
-            logger.warning("Proceeding without land mask optimization")
+            logger.warning("Proceeding WITHOUT land mask optimization - ALL ocean cells will be processed")
             return None
 
-        logger.info(f"Loading land mask from {shapefile_path}...")
+        logger.info(f"✓ Shapefile encontrado: {shapefile_path.absolute()}")
+        logger.info(f"Cargando geometrías de tierra firme...")
         start_time = time.time()
 
         # Cargar shapefile con geopandas
-        gdf = gpd.read_file(shapefile_path)
+        gdf = gpd.read_file(str(shapefile_path))
+
+        # Extraer lista de geometrías (objetos Shapely)
+        land_polygons = [geom for geom in gdf.geometry]
 
         # Crear spatial index (STRtree) para búsquedas rápidas
-        geometries = gdf.geometry.tolist()
-        spatial_index = STRtree(geometries)
+        land_index = STRtree(land_polygons)
 
         load_time = time.time() - start_time
-        logger.info(f"✓ Land mask loaded: {len(geometries)} polygons in {load_time:.2f}s")
+        logger.info(f"✓ Land mask loaded: {len(land_polygons)} polygons in {load_time:.2f}s")
 
-        return spatial_index
+        return (land_polygons, land_index)
 
     except Exception as e:
-        logger.error(f"Failed to load land mask: {e}")
-        logger.warning("Proceeding without land mask optimization")
+        logger.error(f"❌ Failed to load land mask: {e}")
+        logger.warning("Proceeding WITHOUT land mask optimization")
         return None
 
 
-def is_point_on_land(lat: float, lng: float, land_index: Optional[STRtree]) -> bool:
+def is_point_on_land(lat: float, lng: float, land_mask: Optional[tuple], debug: bool = False, fallback_to_land: bool = True) -> bool:
     """
     Verifica si un punto (lat, lng) está sobre tierra firme.
     Usa el spatial index para búsqueda rápida.
@@ -302,33 +317,40 @@ def is_point_on_land(lat: float, lng: float, land_index: Optional[STRtree]) -> b
     Args:
         lat: Latitud del punto
         lng: Longitud del punto
-        land_index: STRtree con las geometrías de tierra (de load_land_mask)
+        land_mask: Tupla (land_polygons, land_index) de load_land_mask()
+        debug: Si True, imprime información de debug
+        fallback_to_land: Si land_mask es None, retornar True (tierra) o False (mar)
 
     Returns:
         True si el punto está en tierra, False si está en mar
-        Si land_index es None, retorna True (modo fallback sin optimización)
+        Si land_mask es None, retorna fallback_to_land (default: True)
     """
-    # Si no hay land mask, asumimos que está en tierra (procesamos todo)
-    if land_index is None:
-        return True
+    # Si no hay land mask, usar fallback
+    if land_mask is None:
+        if debug:
+            logger.info(f"DEBUG: Land mask NO DISPONIBLE - usando fallback={fallback_to_land}")
+        return fallback_to_land
+
+    land_polygons, land_index = land_mask
 
     try:
-        # Crear punto shapely
+        # CRÍTICO: Shapely usa (x, y) = (longitud, latitud)
         point = Point(lng, lat)
 
-        # Buscar geometrías que intersectan con el punto
-        possible_matches = land_index.query(point)
+        # Buscar índices de geometrías que podrían intersectar
+        possible_match_indices = land_index.query(point)
 
-        # Verificar si alguna geometría contiene el punto
-        for geom in possible_matches:
-            if geom.contains(point):
-                return True
+        # Verificar si alguna geometría contiene el punto (acceso por índice)
+        is_on_land = any(land_polygons[i].contains(point) for i in possible_match_indices)
 
-        return False
+        if debug:
+            logger.info(f"DEBUG: Punto (lat={lat:.6f}, lng={lng:.6f}) - ¿Es Tierra?: {is_on_land} (matches: {len(possible_match_indices)})")
+
+        return is_on_land
 
     except Exception as e:
         logger.debug(f"Error checking point ({lat}, {lng}): {e}")
-        return True  # Fallback: asumir tierra en caso de error
+        return fallback_to_land  # Fallback configurable en caso de error
 
 
 def extract_terrain_from_raster(
@@ -346,9 +368,11 @@ def extract_terrain_from_raster(
 
     Returns list of tuples (h3_index_as_int, terrain_type_id).
     """
-    # Load land mask for spatial optimization
-    logger.info("Loading land mask (Natural Earth 10m Land)...")
-    land_index = load_land_mask(os.path.dirname(os.path.dirname(raster_dir)))
+    # Load land mask for spatial optimization (usa BASE_DATA_DIR automáticamente)
+    logger.info("=" * 80)
+    logger.info("CARGANDO LAND MASK (Natural Earth 10m Land)")
+    logger.info("=" * 80)
+    land_mask = load_land_mask()  # Usa BASE_DATA_DIR por defecto
 
     # Scan all available raster files and their coverage
     coverage_map = scan_raster_coverage(raster_dir)
@@ -410,8 +434,15 @@ def extract_terrain_from_raster(
             h3_int = int(h3_index, 16)
             terrain_type_id = None
 
+            # ====== DEBUG: Primeros 5 hexágonos ======
+            if idx < 5:
+                is_land_debug = is_point_on_land(lat, lng, land_mask, debug=False)
+                logger.info(f"H3: {h3_index} | Lat: {lat:.6f} | Lng: {lng:.6f} | ¿En Tierra?: {is_land_debug}")
+
             # ====== LAND MASK CHECK: Descartar mar abierto ANTES de procesar TIF ======
-            if not is_point_on_land(lat, lng, land_index):
+            # Debug para los primeros 10 puntos
+            debug_mode = (idx < 10)
+            if not is_point_on_land(lat, lng, land_mask, debug=debug_mode):
                 # Punto en mar abierto - asignar Mar (ID 1) inmediatamente
                 terrain_type_id = 1  # Mar
                 terrain_data.append((h3_int, terrain_type_id))
@@ -489,9 +520,19 @@ def extract_terrain_from_raster(
                     continue
 
                 # ====== FASE 3: RÍOS Y PANTANOS ======
-                if center_value == 80:
-                    terrain_type_id = 4  # Río
-                    phase_3_agua += 1
+                if center_value in [0, 80]:
+                    # Special check for value 80: distinguish Mar vs Río based on land mask
+                    if center_value == 80:
+                        is_on_land_check = is_point_on_land(lat, lng, land_mask, debug=False)
+                        if not is_on_land_check:
+                            terrain_type_id = 1  # Mar (value 80 but in open sea)
+                            phase_1_mar += 1
+                        else:
+                            terrain_type_id = 4  # Río (value 80 and on land)
+                            phase_3_agua += 1
+                    else:  # center_value == 0
+                        terrain_type_id = 4  # Río
+                        phase_3_agua += 1
                 elif center_value in [90, 95]:
                     terrain_type_id = 5  # Pantanos
                     phase_3_agua += 1
