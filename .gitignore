@@ -28,6 +28,7 @@ notes.txt
 data/
 *.tif
 *.vrt
+vector/
 
 # Python
 __pycache__/

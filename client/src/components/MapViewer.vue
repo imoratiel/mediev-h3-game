@@ -48,6 +48,14 @@
           ⚠️ Zoom mínimo: {{ MIN_ZOOM }}
         </p>
       </div>
+
+      <!-- Share Link Button -->
+      <div class="share-link">
+        <button @click="copyLinkToClipboard" class="copy-link-btn">
+          <span v-if="!copyLinkSuccess">📋 Copiar enlace</span>
+          <span v-else class="success">✓ ¡Copiado!</span>
+        </button>
+      </div>
     </div>
 
     <!-- Map Container -->
@@ -78,6 +86,7 @@ const hexagonCount = ref(0);
 const hexagonOpacity = ref(60);
 const currentZoom = ref(13);
 const terrainTypes = ref([]);
+const copyLinkSuccess = ref(false);
 
 let map = null;
 let hexagonLayer = null;
@@ -90,17 +99,66 @@ const LEON_CENTER = [42.599, -5.573];
 const INITIAL_ZOOM = 13;
 const DEBOUNCE_DELAY = 500; // ms
 
+/**
+ * Leer parámetros de la URL (lat, lng, zoom)
+ * Retorna objeto con las coordenadas y zoom, o null si no existen
+ */
+const getURLParams = () => {
+  const params = new URLSearchParams(window.location.search);
+  const lat = params.get('lat');
+  const lng = params.get('lng');
+  const zoom = params.get('zoom');
+
+  if (lat && lng && zoom) {
+    return {
+      lat: parseFloat(lat),
+      lng: parseFloat(lng),
+      zoom: parseInt(zoom, 10)
+    };
+  }
+  return null;
+};
+
+/**
+ * Actualizar la URL del navegador con las coordenadas y zoom actuales
+ * Usa history.replaceState para no crear entradas en el historial
+ */
+const updateURLParams = () => {
+  if (!map) return;
+
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+
+  // Redondear coordenadas a 5 decimales
+  const lat = center.lat.toFixed(5);
+  const lng = center.lng.toFixed(5);
+
+  // Construir nueva URL
+  const newURL = `${window.location.pathname}?lat=${lat}&lng=${lng}&zoom=${zoom}`;
+
+  // Actualizar URL sin recargar la página
+  window.history.replaceState({}, '', newURL);
+};
+
 // Base map layers
 let osmLayer = null;
 let satelliteLayer = null;
 
 /**
- * Initialize Leaflet map centered on León
+ * Initialize Leaflet map
+ * Usa parámetros de URL si existen, caso contrario usa valores por defecto (León)
  */
 const initMap = () => {
+  // Leer parámetros de la URL
+  const urlParams = getURLParams();
+  const center = urlParams ? [urlParams.lat, urlParams.lng] : LEON_CENTER;
+  const zoom = urlParams ? urlParams.zoom : INITIAL_ZOOM;
+
+  console.log(`Initializing map at [${center[0]}, ${center[1]}], zoom ${zoom}`);
+
   map = L.map('map', {
-    center: LEON_CENTER,
-    zoom: INITIAL_ZOOM,
+    center: center,
+    zoom: zoom,
     zoomControl: true,
   });
 
@@ -145,6 +203,7 @@ const initMap = () => {
 
 /**
  * Handle map movement (with debouncing)
+ * Actualiza hexágonos y URL del navegador
  */
 const handleMapMove = () => {
   // Clear previous timer
@@ -155,6 +214,7 @@ const handleMapMove = () => {
   // Set new timer
   debounceTimer = setTimeout(() => {
     loadHexagonsIfZoomValid();
+    updateURLParams(); // Actualizar URL con nueva posición
   }, DEBOUNCE_DELAY);
 };
 
@@ -304,6 +364,32 @@ const updateHexagonOpacity = () => {
       });
     }
   });
+};
+
+/**
+ * Copiar enlace actual al portapapeles
+ */
+const copyLinkToClipboard = async () => {
+  try {
+    // Asegurarse de que la URL esté actualizada
+    updateURLParams();
+
+    // Copiar URL completa al portapapeles
+    const url = window.location.href;
+    await navigator.clipboard.writeText(url);
+
+    // Mostrar feedback visual
+    copyLinkSuccess.value = true;
+    console.log('✓ Link copied to clipboard:', url);
+
+    // Reset feedback después de 2 segundos
+    setTimeout(() => {
+      copyLinkSuccess.value = false;
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy link:', err);
+    error.value = 'No se pudo copiar el enlace';
+  }
 };
 
 // Lifecycle hooks
@@ -538,6 +624,54 @@ onBeforeUnmount(() => {
   border-radius: 5px;
   z-index: 1001;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Share Link Button */
+.share-link {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.copy-link-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.1s;
+  box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+}
+
+.copy-link-btn:hover {
+  background: #2980b9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
+}
+
+.copy-link-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(52, 152, 219, 0.3);
+}
+
+.copy-link-btn .success {
+  color: #2ecc71;
+  font-weight: bold;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Responsive Design */

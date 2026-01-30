@@ -20,6 +20,9 @@ from rasterio.warp import calculate_default_transform, reproject, Resampling
 import psycopg2
 from psycopg2.extras import execute_values
 import numpy as np
+import geopandas as gpd
+from shapely.geometry import Point
+from shapely.strtree import STRtree
 
 # Configure logging
 logging.basicConfig(
@@ -202,17 +205,151 @@ def find_raster_for_coord(lat: float, lng: float, coverage_map: Dict[str, dict])
     return None
 
 
+def sample_circular_points(lat: float, lng: float, radius_km: float = 0.3) -> List[Tuple[float, float]]:
+    """
+    Genera 7 puntos de muestreo en círculo alrededor del centro (lat, lng).
+    Retorna lista de tuplas [(lat, lng), ...] con el centro + 6 puntos cardinales.
+
+    Args:
+        lat: Latitud del centro
+        lng: Longitud del centro
+        radius_km: Radio del círculo en km (default 0.3 km para H3 res 8)
+    """
+    # Centro
+    points = [(lat, lng)]
+
+    # 6 puntos en círculo (cada 60 grados)
+    # Conversión aproximada: 1 grado ≈ 111 km
+    lat_offset = radius_km / 111.0
+    lng_offset = radius_km / (111.0 * np.cos(np.radians(lat)))
+
+    for angle_deg in [0, 60, 120, 180, 240, 300]:
+        angle_rad = np.radians(angle_deg)
+        point_lat = lat + lat_offset * np.sin(angle_rad)
+        point_lng = lng + lng_offset * np.cos(angle_rad)
+        points.append((point_lat, point_lng))
+
+    return points
+
+
+def sample_pixel_value(dataset, lat: float, lng: float) -> int:
+    """
+    Muestrea el valor del pixel en las coordenadas dadas.
+    Retorna el valor del pixel o -1 si está fuera de bounds o es nodata.
+    """
+    try:
+        row, col = rowcol(dataset.transform, lng, lat)
+
+        if 0 <= row < dataset.height and 0 <= col < dataset.width:
+            pixel_value = dataset.read(1, window=((row, row+1), (col, col+1)))[0, 0]
+            nodata_value = dataset.nodata
+
+            if nodata_value is not None and pixel_value == nodata_value:
+                return -1
+            return int(pixel_value)
+        else:
+            return -1
+    except Exception:
+        return -1
+
+
+def load_land_mask(data_dir: str) -> Optional[STRtree]:
+    """
+    Carga el shapefile de Natural Earth Land y crea un spatial index (STRtree).
+    Retorna el STRtree para búsquedas espaciales rápidas, o None si falla.
+
+    Args:
+        data_dir: Directorio base de datos (debe contener vectors/ne_10m_land/)
+
+    Returns:
+        STRtree con las geometrías de tierra, o None si no se puede cargar
+    """
+    try:
+        shapefile_path = Path(data_dir) / 'vectors' / 'ne_10m_land' / 'ne_10m_land.shp'
+
+        if not shapefile_path.exists():
+            logger.warning(f"Land mask shapefile not found at {shapefile_path}")
+            logger.warning("Run 'python setup_assets.py' to download it")
+            logger.warning("Proceeding without land mask optimization")
+            return None
+
+        logger.info(f"Loading land mask from {shapefile_path}...")
+        start_time = time.time()
+
+        # Cargar shapefile con geopandas
+        gdf = gpd.read_file(shapefile_path)
+
+        # Crear spatial index (STRtree) para búsquedas rápidas
+        geometries = gdf.geometry.tolist()
+        spatial_index = STRtree(geometries)
+
+        load_time = time.time() - start_time
+        logger.info(f"✓ Land mask loaded: {len(geometries)} polygons in {load_time:.2f}s")
+
+        return spatial_index
+
+    except Exception as e:
+        logger.error(f"Failed to load land mask: {e}")
+        logger.warning("Proceeding without land mask optimization")
+        return None
+
+
+def is_point_on_land(lat: float, lng: float, land_index: Optional[STRtree]) -> bool:
+    """
+    Verifica si un punto (lat, lng) está sobre tierra firme.
+    Usa el spatial index para búsqueda rápida.
+
+    Args:
+        lat: Latitud del punto
+        lng: Longitud del punto
+        land_index: STRtree con las geometrías de tierra (de load_land_mask)
+
+    Returns:
+        True si el punto está en tierra, False si está en mar
+        Si land_index es None, retorna True (modo fallback sin optimización)
+    """
+    # Si no hay land mask, asumimos que está en tierra (procesamos todo)
+    if land_index is None:
+        return True
+
+    try:
+        # Crear punto shapely
+        point = Point(lng, lat)
+
+        # Buscar geometrías que intersectan con el punto
+        possible_matches = land_index.query(point)
+
+        # Verificar si alguna geometría contiene el punto
+        for geom in possible_matches:
+            if geom.contains(point):
+                return True
+
+        return False
+
+    except Exception as e:
+        logger.debug(f"Error checking point ({lat}, {lng}): {e}")
+        return True  # Fallback: asumir tierra en caso de error
+
+
 def extract_terrain_from_raster(
     raster_dir: str,
     h3_cells: List[str]
 ) -> List[Tuple[int, int]]:
     """
-    Extracts terrain values from GeoTIFF files for each H3 cell center.
-    Dynamically selects the correct tile based on cell coordinates.
-    Returns list of tuples (h3_index_as_int, terrain_type_id).
+    Extracts terrain values from GeoTIFF files using 5-PHASE ALGORITHM:
 
-    If a coordinate falls outside the downloaded tiles, it assigns DEFAULT_TERRAIN_TYPE_ID.
+    FASE 1 (MAR): Si fuera de cobertura o todos los puntos son NoData → ID 1 (Mar)
+    FASE 2 (COSTA): Si centro NoData pero vecinos tienen tierra → ID 2 (Costa)
+    FASE 3 (RÍOS/PANTANOS): Si ESA=80 → ID 4 (Río), ESA=90/95 → ID 5 (Pantanos)
+    FASE 4 (ALTA MONTAÑA): Si ESA=70 o (ESA=60 con vecinos 70) → ID 13 (Alta Montaña)
+    FASE 5 (RESTO): Mapear según TERRAIN_MAPPING estándar
+
+    Returns list of tuples (h3_index_as_int, terrain_type_id).
     """
+    # Load land mask for spatial optimization
+    logger.info("Loading land mask (Natural Earth 10m Land)...")
+    land_index = load_land_mask(os.path.dirname(os.path.dirname(raster_dir)))
+
     # Scan all available raster files and their coverage
     coverage_map = scan_raster_coverage(raster_dir)
 
@@ -232,13 +369,25 @@ def extract_terrain_from_raster(
             logger.warning(f"  - {filename}")
         logger.info("Continuing with available tiles - cells outside coverage will use default terrain type")
 
-    logger.info(f"✓ Found coverage tile: {os.path.basename(test_tile)}")
+    if test_tile:
+        logger.info(f"✓ Found coverage tile: {os.path.basename(test_tile)}")
 
     # Process cells with dynamic tile selection
     terrain_data = []
     processed = 0
     skipped = 0
     out_of_bounds = 0
+
+    # CONTADOR DE TIPOS DE TERRENO (IDs 1-14)
+    terrain_counter = {i: 0 for i in range(1, 15)}
+
+    # Contadores por fase
+    phase_1_mar = 0
+    phase_2_costa = 0
+    phase_3_agua = 0
+    phase_4_montana = 0
+    phase_5_resto = 0
+    open_sea_discarded = 0  # Celdas descartadas por estar en mar abierto
 
     # Cache for open datasets to avoid reopening the same file
     dataset_cache = {}
@@ -258,25 +407,40 @@ def extract_terrain_from_raster(
         for idx, h3_index in enumerate(h3_cells):
             # Get center coordinates of H3 cell (returns lat, lng) - h3 v4 API
             lat, lng = h3.cell_to_latlng(h3_index)
+            h3_int = int(h3_index, 16)
+            terrain_type_id = None
+
+            # ====== LAND MASK CHECK: Descartar mar abierto ANTES de procesar TIF ======
+            if not is_point_on_land(lat, lng, land_index):
+                # Punto en mar abierto - asignar Mar (ID 1) inmediatamente
+                terrain_type_id = 1  # Mar
+                terrain_data.append((h3_int, terrain_type_id))
+                terrain_counter[terrain_type_id] += 1
+                phase_1_mar += 1
+                open_sea_discarded += 1
+                continue
 
             try:
                 # Find which raster file contains this coordinate
                 raster_path = find_raster_for_coord(lat, lng, coverage_map)
 
+                # ====== FASE 1: MAR (fuera de cobertura) ======
                 if not raster_path:
-                    # Coordinate outside all available tiles
-                    h3_int = int(h3_index, 16)
-                    terrain_data.append((h3_int, DEFAULT_TERRAIN_TYPE_ID))
+                    terrain_type_id = 1  # Mar
+                    terrain_data.append((h3_int, terrain_type_id))
+                    terrain_counter[terrain_type_id] += 1
+                    phase_1_mar += 1
                     out_of_bounds += 1
-
                     if out_of_bounds <= 5:
-                        logger.warning(f"Cell outside all tiles: lat={lat:.6f}, lng={lng:.6f}")
+                        logger.info(f"FASE 1 (MAR): Cell outside tiles at lat={lat:.6f}, lng={lng:.6f}")
                     continue
 
                 # Skip tiles that previously failed to open
                 if raster_path in failed_tiles:
-                    h3_int = int(h3_index, 16)
-                    terrain_data.append((h3_int, DEFAULT_TERRAIN_TYPE_ID))
+                    terrain_type_id = 1  # Mar
+                    terrain_data.append((h3_int, terrain_type_id))
+                    terrain_counter[terrain_type_id] += 1
+                    phase_1_mar += 1
                     skipped += 1
                     continue
 
@@ -286,64 +450,88 @@ def extract_terrain_from_raster(
                         open_start = time.time()
                         dataset_cache[raster_path] = rasterio.open(raster_path)
                         open_duration = time.time() - open_start
-
                         logger.info(f"Opened raster: {os.path.basename(raster_path)} ({open_duration:.2f}s)")
-
                         if open_duration > 5.0:
                             logger.warning(f"⚠️ Slow file open: {os.path.basename(raster_path)} took {open_duration:.1f}s")
-
                     except Exception as e:
                         logger.error(f"Failed to open {os.path.basename(raster_path)}: {e}")
                         failed_tiles.add(raster_path)
-                        h3_int = int(h3_index, 16)
-                        terrain_data.append((h3_int, DEFAULT_TERRAIN_TYPE_ID))
+                        terrain_type_id = 1  # Mar
+                        terrain_data.append((h3_int, terrain_type_id))
+                        terrain_counter[terrain_type_id] += 1
+                        phase_1_mar += 1
                         skipped += 1
                         continue
 
                 dataset = dataset_cache[raster_path]
 
-                # Get pixel row and column for this coordinate
-                # rowcol expects (x, y) where x=longitude, y=latitude
-                row, col = rowcol(dataset.transform, lng, lat)
+                # Muestreo del centro
+                center_value = sample_pixel_value(dataset, lat, lng)
 
-                # Check if coordinates are within raster bounds
-                if 0 <= row < dataset.height and 0 <= col < dataset.width:
-                    # Read single pixel value (windowed reading for efficiency)
-                    # Read a 1x1 window at the specific pixel location
-                    pixel_value = dataset.read(1, window=((row, row+1), (col, col+1)))[0, 0]
+                # ====== FASE 1: MAR (todos los puntos NoData) ======
+                if center_value == -1:
+                    # Muestrear los 6 puntos circundantes
+                    circular_points = sample_circular_points(lat, lng)
+                    neighbor_values = [sample_pixel_value(dataset, p[0], p[1]) for p in circular_points[1:]]
 
-                    # Handle nodata values
-                    nodata_value = dataset.nodata
-                    if nodata_value is not None and pixel_value == nodata_value:
-                        terrain_type_id = DEFAULT_TERRAIN_TYPE_ID
-                        skipped += 1
+                    # Si todos son NoData → Mar
+                    if all(v == -1 for v in neighbor_values):
+                        terrain_type_id = 1  # Mar
+                        phase_1_mar += 1
                     else:
-                        # Map raster value to terrain_type_id
-                        terrain_type_id = TERRAIN_MAPPING.get(
-                            int(pixel_value),
-                            DEFAULT_TERRAIN_TYPE_ID
-                        )
-                        processed += 1
+                        # ====== FASE 2: COSTA (centro NoData pero vecinos tierra) ======
+                        terrain_type_id = 2  # Costa
+                        phase_2_costa += 1
 
-                    # Convert H3 index to integer for database storage
-                    h3_int = int(h3_index, 16)
                     terrain_data.append((h3_int, terrain_type_id))
+                    terrain_counter[terrain_type_id] += 1
+                    processed += 1
+                    continue
+
+                # ====== FASE 3: RÍOS Y PANTANOS ======
+                if center_value == 80:
+                    terrain_type_id = 4  # Río
+                    phase_3_agua += 1
+                elif center_value in [90, 95]:
+                    terrain_type_id = 5  # Pantanos
+                    phase_3_agua += 1
+
+                # ====== FASE 4: ALTA MONTAÑA ======
+                elif center_value == 70:
+                    terrain_type_id = 13  # Alta montaña
+                    phase_4_montana += 1
+                elif center_value == 60:
+                    # Verificar vecinos para detectar alta montaña
+                    circular_points = sample_circular_points(lat, lng)
+                    neighbor_values = [sample_pixel_value(dataset, p[0], p[1]) for p in circular_points[1:]]
+                    if 70 in neighbor_values:
+                        terrain_type_id = 13  # Alta montaña (transición)
+                        phase_4_montana += 1
+                    else:
+                        terrain_type_id = TERRAIN_MAPPING.get(center_value, DEFAULT_TERRAIN_TYPE_ID)
+                        phase_5_resto += 1
+
+                # ====== FASE 5: RESTO (mapeo estándar) ======
                 else:
-                    # Coordinate within tile bounds but outside raster
-                    h3_int = int(h3_index, 16)
-                    terrain_data.append((h3_int, DEFAULT_TERRAIN_TYPE_ID))
-                    out_of_bounds += 1
+                    terrain_type_id = TERRAIN_MAPPING.get(center_value, DEFAULT_TERRAIN_TYPE_ID)
+                    phase_5_resto += 1
+
+                terrain_data.append((h3_int, terrain_type_id))
+                terrain_counter[terrain_type_id] += 1
+                processed += 1
 
             except Exception as e:
                 # Any error in reading: assign default terrain type
                 if idx < 5:  # Log first few errors
                     logger.warning(f"Error processing cell {h3_index} at lat={lat:.6f}, lng={lng:.6f}: {e}")
-                h3_int = int(h3_index, 16)
-                terrain_data.append((h3_int, DEFAULT_TERRAIN_TYPE_ID))
+                terrain_type_id = 1  # Mar
+                terrain_data.append((h3_int, terrain_type_id))
+                terrain_counter[terrain_type_id] += 1
+                phase_1_mar += 1
                 skipped += 1
 
             # Log progress every 1000 cells with performance stats
-            total_cells = processed + skipped + out_of_bounds
+            total_cells = idx + 1
             if total_cells % 1000 == 0 and total_cells > 0:
                 current_time = time.time()
                 elapsed = current_time - start_time
@@ -351,27 +539,65 @@ def extract_terrain_from_raster(
                 cells_per_sec = 1000 / interval if interval > 0 else 0
 
                 logger.info(f"Processed {total_cells}/{len(h3_cells)} cells "
-                           f"({cells_per_sec:.1f} cells/s, "
-                           f"{len(dataset_cache)} files open, "
-                           f"elapsed: {elapsed:.1f}s)")
+                           f"({cells_per_sec:.1f} cells/s) | "
+                           f"Mar: {phase_1_mar} | Costa: {phase_2_costa} | "
+                           f"Agua: {phase_3_agua} | Montaña: {phase_4_montana} | Resto: {phase_5_resto}")
                 last_log_time = current_time
 
         total_time = time.time() - start_time
-        logger.info(f"Extraction complete in {total_time:.1f}s:")
-        logger.info(f"  - {processed} cells with valid terrain data")
-        logger.info(f"  - {skipped} cells with nodata values (assigned default)")
-        logger.info(f"  - {out_of_bounds} cells outside tile bounds (assigned default)")
-        logger.info(f"  - {len(dataset_cache)} raster files used")
-        logger.info(f"  - {len(failed_tiles)} raster files failed to open")
+        logger.info("=" * 80)
+        logger.info(f"✓ EXTRACTION COMPLETE in {total_time:.1f}s")
+        logger.info("=" * 80)
+
+        logger.info(f"Total cells processed: {len(h3_cells)}")
+        logger.info(f"  - Valid terrain data: {processed}")
+        logger.info(f"  - Skipped (errors): {skipped}")
+        logger.info(f"  - Out of bounds: {out_of_bounds}")
+        logger.info(f"  - Open sea discarded (land mask): {open_sea_discarded}")
+        logger.info(f"  - Raster files used: {len(dataset_cache)}")
+        logger.info(f"  - Failed files: {len(failed_tiles)}")
+
+        logger.info("")
+        logger.info("RESUMEN POR FASES:")
+        logger.info(f"  FASE 1 (Mar): {phase_1_mar} celdas")
+        logger.info(f"  FASE 2 (Costa): {phase_2_costa} celdas")
+        logger.info(f"  FASE 3 (Ríos/Pantanos): {phase_3_agua} celdas")
+        logger.info(f"  FASE 4 (Alta Montaña): {phase_4_montana} celdas")
+        logger.info(f"  FASE 5 (Resto): {phase_5_resto} celdas")
+
+        logger.info("")
+        logger.info("DISTRIBUCIÓN DE TERRENOS (IDs 1-14):")
+
+        # Nombres de terrenos según 003_update_terrain_types.sql
+        terrain_names = {
+            1: "Mar", 2: "Costa", 3: "Agua", 4: "Río", 5: "Pantanos",
+            6: "Tierras de Cultivo", 7: "Tierras de Secano", 8: "Estepas",
+            9: "Bosque", 10: "Bosque Denso", 11: "Páramo", 12: "Colinas",
+            13: "Alta montaña", 14: "Asentamientos"
+        }
+
+        total_counted = sum(terrain_counter.values())
+        for terrain_id in range(1, 15):
+            count = terrain_counter[terrain_id]
+            if count > 0:
+                percentage = (count / total_counted * 100) if total_counted > 0 else 0
+                name = terrain_names.get(terrain_id, f"Unknown ID {terrain_id}")
+                logger.info(f"  {terrain_id:2d}. {name:20s}: {count:6d} celdas ({percentage:5.2f}%)")
+
+        logger.info("")
+        if total_counted != len(h3_cells):
+            logger.warning(f"⚠️ Discrepancia: contador={total_counted}, total={len(h3_cells)}")
 
         # Calculate coverage percentage
         if h3_cells:
             coverage_pct = (processed / len(h3_cells)) * 100
-            logger.info(f"  - Coverage: {coverage_pct:.2f}% of cells have valid terrain data")
+            logger.info(f"Cobertura de datos válidos: {coverage_pct:.2f}%")
 
             if coverage_pct == 0:
                 logger.error("❌ ERROR: 0% coverage - no valid terrain data extracted!")
                 logger.error("This likely means the required tile is missing.")
+
+        logger.info("=" * 80)
 
     finally:
         # Close all cached datasets

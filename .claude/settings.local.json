@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(python setup_assets.py:*)",
+      "Bash(python extractor.py:*)",
+      "Bash(pip install:*)"
     ]
   }
 }
