@@ -18,7 +18,7 @@ from rasterio.windows import from_bounds
 from rasterio.vrt import WarpedVRT
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import psycopg2
-from psycopg2.extras import execute_batch
+from psycopg2.extras import execute_values
 import numpy as np
 
 # Configure logging
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # Import configuration from config.py
 try:
     from config import (
-        MALLORCA_BBOX,
+        BOUNDING_BOX,
         H3_RESOLUTION,
         BATCH_SIZE,
         TERRAIN_MAPPING,
@@ -50,33 +50,33 @@ except ImportError as e:
     sys.exit(1)
 
 
-def create_mallorca_polygon() -> List[Tuple[float, float]]:
+def create_region_polygon() -> List[Tuple[float, float]]:
     """
-    Creates a polygon boundary for Mallorca based on bounding box.
+    Creates a polygon boundary for the target region based on bounding box.
     Returns list of (lat, lng) tuples in GeoJSON format.
     """
     return [
-        (MALLORCA_BBOX['min_lat'], MALLORCA_BBOX['min_lng']),
-        (MALLORCA_BBOX['max_lat'], MALLORCA_BBOX['min_lng']),
-        (MALLORCA_BBOX['max_lat'], MALLORCA_BBOX['max_lng']),
-        (MALLORCA_BBOX['min_lat'], MALLORCA_BBOX['max_lng']),
-        (MALLORCA_BBOX['min_lat'], MALLORCA_BBOX['min_lng'])  # Close the polygon
+        (BOUNDING_BOX['min_lat'], BOUNDING_BOX['min_lng']),
+        (BOUNDING_BOX['max_lat'], BOUNDING_BOX['min_lng']),
+        (BOUNDING_BOX['max_lat'], BOUNDING_BOX['max_lng']),
+        (BOUNDING_BOX['min_lat'], BOUNDING_BOX['max_lng']),
+        (BOUNDING_BOX['min_lat'], BOUNDING_BOX['min_lng'])  # Close the polygon
     ]
 
 
-def get_h3_cells_for_mallorca() -> List[str]:
+def generate_h3_cells() -> List[str]:
     """
-    Generates H3 cells covering Mallorca using polygon_to_cells (h3 v4 API).
+    Generates H3 cells covering the target region using polygon_to_cells (h3 v4 API).
     Returns list of H3 cell indices as strings.
     """
-    logger.info(f"Generating H3 cells at resolution {H3_RESOLUTION} for Mallorca...")
+    logger.info(f"Generating H3 cells at resolution {H3_RESOLUTION} for target region...")
 
     # Create polygon coordinates in (lat, lng) format for h3 v4
     polygon_coords = [
-        (MALLORCA_BBOX['min_lat'], MALLORCA_BBOX['min_lng']),
-        (MALLORCA_BBOX['min_lat'], MALLORCA_BBOX['max_lng']),
-        (MALLORCA_BBOX['max_lat'], MALLORCA_BBOX['max_lng']),
-        (MALLORCA_BBOX['max_lat'], MALLORCA_BBOX['min_lng']),
+        (BOUNDING_BOX['min_lat'], BOUNDING_BOX['min_lng']),
+        (BOUNDING_BOX['min_lat'], BOUNDING_BOX['max_lng']),
+        (BOUNDING_BOX['max_lat'], BOUNDING_BOX['max_lng']),
+        (BOUNDING_BOX['max_lat'], BOUNDING_BOX['min_lng']),
     ]
 
     # Use h3.polygon_to_cells with LatLngPoly (h3 v4 API)
@@ -219,22 +219,18 @@ def extract_terrain_from_raster(
     if not coverage_map:
         raise FileNotFoundError(f"No valid .tif files found in {raster_dir}")
 
-    # Validate coverage for Mallorca bounding box
-    logger.info("Validating coverage for Mallorca region...")
-    center_lat = (MALLORCA_BBOX['min_lat'] + MALLORCA_BBOX['max_lat']) / 2
-    center_lng = (MALLORCA_BBOX['min_lng'] + MALLORCA_BBOX['max_lng']) / 2
+    # Validate coverage for target region bounding box
+    logger.info("Validating coverage for target region...")
+    center_lat = (BOUNDING_BOX['min_lat'] + BOUNDING_BOX['max_lat']) / 2
+    center_lng = (BOUNDING_BOX['min_lng'] + BOUNDING_BOX['max_lng']) / 2
 
     test_tile = find_raster_for_coord(center_lat, center_lng, coverage_map)
     if not test_tile:
-        logger.error(f"❌ ERROR: No tile found covering Mallorca center ({center_lat:.2f}, {center_lng:.2f})")
-        logger.error(f"Required tile: approximately N39E003 or N39E002")
-        logger.error(f"Available tiles:")
+        logger.warning(f"⚠️ No tile found covering region center ({center_lat:.2f}, {center_lng:.2f})")
+        logger.warning(f"Available tiles:")
         for filename in coverage_map.keys():
-            logger.error(f"  - {filename}")
-        raise FileNotFoundError(
-            f"Missing required tile for Mallorca region. "
-            f"Please download tile covering lat={center_lat:.2f}, lng={center_lng:.2f}"
-        )
+            logger.warning(f"  - {filename}")
+        logger.info("Continuing with available tiles - cells outside coverage will use default terrain type")
 
     logger.info(f"✓ Found coverage tile: {os.path.basename(test_tile)}")
 
@@ -395,8 +391,9 @@ def insert_terrain_data_batch(
     terrain_data: List[Tuple[int, int]]
 ) -> None:
     """
-    Inserts terrain data into h3_map table using batch inserts.
+    Inserts terrain data into h3_map table using optimized batch inserts with execute_values.
     Clears existing data before inserting to avoid duplicates.
+    Uses batches of 1000 records and logs progress.
     """
     logger.info(f"Connecting to database at {db_config['host']}...")
 
@@ -418,19 +415,33 @@ def insert_terrain_data_batch(
 
             logger.info(f"Inserting {len(terrain_data)} records in batches of {BATCH_SIZE}...")
 
-            # Prepare insert query
+            # Prepare insert query (execute_values doesn't need %s placeholders in VALUES)
             insert_query = """
                 INSERT INTO h3_map (h3_index, terrain_type_id)
-                VALUES (%s, %s)
+                VALUES %s
                 ON CONFLICT (h3_index)
                 DO UPDATE SET terrain_type_id = EXCLUDED.terrain_type_id
             """
 
-            # Execute batch insert
-            execute_batch(cursor, insert_query, terrain_data, page_size=BATCH_SIZE)
+            # Insert in batches with progress logging
+            total_inserted = 0
+            start_time = time.time()
 
-            conn.commit()
-            logger.info(f"Successfully inserted {len(terrain_data)} records")
+            for i in range(0, len(terrain_data), BATCH_SIZE):
+                batch = terrain_data[i:i + BATCH_SIZE]
+                execute_values(cursor, insert_query, batch, page_size=BATCH_SIZE)
+                conn.commit()
+
+                total_inserted += len(batch)
+
+                # Log progress every 1000 records
+                if total_inserted % 1000 == 0 or total_inserted == len(terrain_data):
+                    elapsed = time.time() - start_time
+                    rate = total_inserted / elapsed if elapsed > 0 else 0
+                    logger.info(f"Inserted {total_inserted}/{len(terrain_data)} records "
+                               f"({rate:.1f} records/s)")
+
+            logger.info(f"Successfully inserted {len(terrain_data)} records in {elapsed:.1f}s")
 
     except Exception as e:
         logger.error(f"Database error: {e}")
@@ -448,17 +459,25 @@ def main():
     logger.info("=" * 60)
     logger.info("Starting Terrain Extraction Process")
     logger.info("=" * 60)
-    logger.info(f"Raster directory: {RASTER_DIR}")
+
+    # Convert RASTER_DIR to absolute path using pathlib
+    script_dir = Path(__file__).parent.resolve()
+    raster_dir = (script_dir / RASTER_DIR).resolve()
+
+    logger.info(f"Script directory: {script_dir}")
+    logger.info(f"Raster directory: {raster_dir}")
     logger.info(f"Database: {DB_CONFIG['database']} at {DB_CONFIG['host']}")
     logger.info(f"H3 Resolution: {H3_RESOLUTION}")
     logger.info(f"Batch size: {BATCH_SIZE}")
+    logger.info(f"Bounding box: lat=[{BOUNDING_BOX['min_lat']}, {BOUNDING_BOX['max_lat']}], "
+                f"lng=[{BOUNDING_BOX['min_lng']}, {BOUNDING_BOX['max_lng']}]")
 
     try:
-        # Step 1: Generate H3 cells for Mallorca
-        h3_cells = get_h3_cells_for_mallorca()
+        # Step 1: Generate H3 cells for target region
+        h3_cells = generate_h3_cells()
 
         # Step 2: Extract terrain data from raster (creates VRT automatically)
-        terrain_data = extract_terrain_from_raster(RASTER_DIR, h3_cells)
+        terrain_data = extract_terrain_from_raster(str(raster_dir), h3_cells)
 
         # Step 3: Insert data into database
         insert_terrain_data_batch(DB_CONFIG, terrain_data)

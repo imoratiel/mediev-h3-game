@@ -1,0 +1,25 @@
+{
+  "MAP": {
+    "DEFAULT_CENTER": [42.599, -5.573],
+    "DEFAULT_ZOOM": 13,
+    "H3_MIN_RENDER_ZOOM": 11,
+    "OPACITY_DEFAULT": 0.6
+  },
+  "API": {
+    "MAX_RESULTS_LIMIT": 20000,
+    "DEBOUNCE_MS": 300
+  },
+  "REGION": {
+    "NAME": "Iberian Peninsula & Balearic Islands",
+    "BOUNDING_BOX": {
+      "min_lat": 35.0,
+      "max_lat": 44.5,
+      "min_lng": -10.0,
+      "max_lng": 5.0
+    }
+  },
+  "H3": {
+    "RESOLUTION": 8,
+    "DESCRIPTION": "Resolution 8 = ~0.461 km² per hexagon"
+  }
+}

@@ -26,12 +26,69 @@ const TERRAIN_COLORS = {
 
 /**
  * GET /api/map/region
- * Returns all H3 hexagons for the Mallorca region with terrain data
+ * Returns H3 hexagons within a bounding box with terrain data
+ * Query params: minLat, maxLat, minLng, maxLng
  * Response: Array of { h3_index: string, name: string, color: string }
+ * Limit: Maximum 5000 hexagons per request
  */
 app.get('/api/map/region', async (req, res) => {
   try {
-    // Query to get H3 cells with terrain information
+    const { minLat, maxLat, minLng, maxLng } = req.query;
+
+    // Validate bounding box parameters
+    if (!minLat || !maxLat || !minLng || !maxLng) {
+      return res.status(400).json({
+        error: 'Missing bounding box parameters',
+        message: 'Required: minLat, maxLat, minLng, maxLng'
+      });
+    }
+
+    const bounds = {
+      minLat: parseFloat(minLat),
+      maxLat: parseFloat(maxLat),
+      minLng: parseFloat(minLng),
+      maxLng: parseFloat(maxLng)
+    };
+
+    // Validate numeric values
+    if (Object.values(bounds).some(isNaN)) {
+      return res.status(400).json({
+        error: 'Invalid bounding box parameters',
+        message: 'All parameters must be valid numbers'
+      });
+    }
+
+    // Import h3-js for H3 operations
+    const h3 = require('h3-js');
+
+    // Generate ALL H3 cells for the bounding box at resolution 8
+    const H3_RESOLUTION = 8;
+    const polygon = [
+      [bounds.minLat, bounds.minLng],
+      [bounds.minLat, bounds.maxLng],
+      [bounds.maxLat, bounds.maxLng],
+      [bounds.maxLat, bounds.minLng],
+    ];
+
+    // h3-js v4 API: polygonToCells accepts array directly (no LatLngPoly wrapper)
+    const h3CellsSet = h3.polygonToCells(polygon, H3_RESOLUTION);
+    const h3CellsArray = Array.from(h3CellsSet);
+
+    console.log(`Generated ${h3CellsArray.length} H3 cells for bounding box`);
+
+    // If no cells in the bounding box, return empty array
+    if (h3CellsArray.length === 0) {
+      console.log('No H3 cells in bounding box');
+      return res.json([]);
+    }
+
+    // Limit to 5000 cells to avoid query size issues
+    const cellsToQuery = h3CellsArray.slice(0, 5000);
+
+    // Convert H3 hex strings to BIGINT for database query
+    const h3IndexValues = cellsToQuery.map(hexStr => BigInt('0x' + hexStr).toString());
+
+    // Query database for ONLY the cells in the bounding box
     const query = `
       SELECT
         h3_map.h3_index,
@@ -39,25 +96,61 @@ app.get('/api/map/region', async (req, res) => {
         terrain_types.color
       FROM h3_map
       INNER JOIN terrain_types ON h3_map.terrain_type_id = terrain_types.terrain_type_id
-      ORDER BY h3_map.h3_index
+      WHERE h3_map.h3_index = ANY($1::bigint[])
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [h3IndexValues]);
 
-    // Convert h3_index from BIGINT to hex string (without 0x prefix)
+    // Convert h3_index from BIGINT to hex string
     const hexagons = result.rows.map(row => ({
       h3_index: BigInt(row.h3_index).toString(16),
       name: row.name,
       color: row.color || TERRAIN_COLORS[row.name] || TERRAIN_COLORS['Desconocido']
     }));
 
-    console.log(`✓ Returned ${hexagons.length} hexagons`);
+    console.log(`✓ Returned ${hexagons.length} hexagons for bounds: [${bounds.minLat}, ${bounds.maxLat}], [${bounds.minLng}, ${bounds.maxLng}]`);
     res.json(hexagons);
 
   } catch (error) {
     console.error('Error fetching map data:', error);
     res.status(500).json({
       error: 'Failed to fetch map data',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/terrain-types
+ * Returns all terrain types with their colors for the legend
+ * Response: Array of { terrain_type_id: number, name: string, color: string }
+ */
+app.get('/api/terrain-types', async (req, res) => {
+  try {
+    const query = `
+      SELECT
+        terrain_type_id,
+        name,
+        color
+      FROM terrain_types
+      ORDER BY terrain_type_id
+    `;
+
+    const result = await pool.query(query);
+
+    const terrainTypes = result.rows.map(row => ({
+      terrain_type_id: row.terrain_type_id,
+      name: row.name,
+      color: row.color || TERRAIN_COLORS[row.name] || TERRAIN_COLORS['Desconocido']
+    }));
+
+    console.log(`✓ Returned ${terrainTypes.length} terrain types`);
+    res.json(terrainTypes);
+
+  } catch (error) {
+    console.error('Error fetching terrain types:', error);
+    res.status(500).json({
+      error: 'Failed to fetch terrain types',
       message: error.message
     });
   }

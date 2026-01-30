@@ -1,6 +1,7 @@
 # Configuración y Credenciales
 config.php
 config.pro.php
+config.json
 .env
 php_errors.log
 logs/*.log
