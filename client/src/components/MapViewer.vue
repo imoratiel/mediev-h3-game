@@ -39,6 +39,23 @@
         </div>
       </div>
 
+      <!-- H3 Layer Toggle -->
+      <div class="h3-toggle-control">
+        <h4>Visualización</h4>
+        <div class="toggle-container">
+          <label class="toggle-label">
+            <input
+              type="checkbox"
+              v-model="showH3Layer"
+              @change="toggleH3Layer"
+              class="toggle-checkbox"
+            />
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">Mostrar Malla H3</span>
+          </label>
+        </div>
+      </div>
+
       <!-- Map Info -->
       <div class="map-info">
         <h4>Información</h4>
@@ -49,13 +66,6 @@
         </p>
       </div>
 
-      <!-- Share Link Button -->
-      <div class="share-link">
-        <button @click="copyLinkToClipboard" class="copy-link-btn">
-          <span v-if="!copyLinkSuccess">📋 Copiar enlace</span>
-          <span v-else class="success">✓ ¡Copiado!</span>
-        </button>
-      </div>
     </div>
 
     <!-- Map Container -->
@@ -86,7 +96,7 @@ const hexagonCount = ref(0);
 const hexagonOpacity = ref(60);
 const currentZoom = ref(13);
 const terrainTypes = ref([]);
-const copyLinkSuccess = ref(false);
+const showH3Layer = ref(true);
 
 let map = null;
 let hexagonLayer = null;
@@ -94,7 +104,7 @@ let debounceTimer = null;
 
 // Configuration
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const MIN_ZOOM = 11;
+const MIN_ZOOM = 9;
 const LEON_CENTER = [42.599, -5.573];
 const INITIAL_ZOOM = 13;
 const DEBOUNCE_DELAY = 500; // ms
@@ -143,6 +153,7 @@ const updateURLParams = () => {
 // Base map layers
 let osmLayer = null;
 let satelliteLayer = null;
+let terrainLayer = null;
 
 /**
  * Initialize Leaflet map
@@ -177,18 +188,28 @@ const initMap = () => {
     }
   );
 
-  // Add OSM as default
-  osmLayer.addTo(map);
+  // Terrain layer (OpenTopoMap - muestra relieve topográfico)
+  terrainLayer = L.tileLayer(
+    'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    {
+      attribution: '© OpenTopoMap contributors',
+      maxZoom: 17,
+    }
+  );
+
+  // Add Terrain layer as default
+  terrainLayer.addTo(map);
 
   // Layer control
   const baseMaps = {
     'OpenStreetMap': osmLayer,
     'Satélite': satelliteLayer,
+    'Relieve': terrainLayer,
   };
   L.control.layers(baseMaps).addTo(map);
 
-  // Create a layer group for hexagons
-  hexagonLayer = L.layerGroup().addTo(map);
+  // Create a layer group for hexagons with canvas renderer for better performance
+  hexagonLayer = L.layerGroup({ renderer: L.canvas() }).addTo(map);
 
   // Track zoom level
   currentZoom.value = map.getZoom();
@@ -213,7 +234,10 @@ const handleMapMove = () => {
 
   // Set new timer
   debounceTimer = setTimeout(() => {
-    loadHexagonsIfZoomValid();
+    // Solo cargar hexágonos si la capa H3 está visible
+    if (showH3Layer.value) {
+      loadHexagonsIfZoomValid();
+    }
     updateURLParams(); // Actualizar URL con nueva posición
   }, DEBOUNCE_DELAY);
 };
@@ -367,28 +391,23 @@ const updateHexagonOpacity = () => {
 };
 
 /**
- * Copiar enlace actual al portapapeles
+ * Toggle H3 layer visibility
  */
-const copyLinkToClipboard = async () => {
-  try {
-    // Asegurarse de que la URL esté actualizada
-    updateURLParams();
+const toggleH3Layer = () => {
+  if (!map || !hexagonLayer) return;
 
-    // Copiar URL completa al portapapeles
-    const url = window.location.href;
-    await navigator.clipboard.writeText(url);
-
-    // Mostrar feedback visual
-    copyLinkSuccess.value = true;
-    console.log('✓ Link copied to clipboard:', url);
-
-    // Reset feedback después de 2 segundos
-    setTimeout(() => {
-      copyLinkSuccess.value = false;
-    }, 2000);
-  } catch (err) {
-    console.error('Failed to copy link:', err);
-    error.value = 'No se pudo copiar el enlace';
+  if (showH3Layer.value) {
+    // Mostrar capa H3
+    map.addLayer(hexagonLayer);
+    // Cargar hexágonos si el zoom es válido
+    loadHexagonsIfZoomValid();
+    console.log('✓ Malla H3 activada');
+  } else {
+    // Ocultar capa H3
+    map.removeLayer(hexagonLayer);
+    // Limpiar hexágonos de memoria
+    clearHexagons();
+    console.log('✓ Malla H3 desactivada');
   }
 };
 
@@ -541,6 +560,78 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
+/* H3 Layer Toggle Control */
+.h3-toggle-control {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.h3-toggle-control h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+}
+
+.toggle-container {
+  display: flex;
+  align-items: center;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+}
+
+.toggle-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 26px;
+  background-color: #ccc;
+  border-radius: 26px;
+  transition: background-color 0.3s;
+  margin-right: 12px;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  left: 3px;
+  top: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+
+.toggle-checkbox:checked + .toggle-slider {
+  background-color: #3498db;
+}
+
+.toggle-checkbox:checked + .toggle-slider::before {
+  transform: translateX(24px);
+}
+
+.toggle-text {
+  font-size: 14px;
+  color: #555;
+  font-weight: 500;
+}
+
 /* Map Info */
 .map-info {
   background: white;
@@ -624,54 +715,6 @@ onBeforeUnmount(() => {
   border-radius: 5px;
   z-index: 1001;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-}
-
-/* Share Link Button */
-.share-link {
-  background: white;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.copy-link-btn {
-  width: 100%;
-  padding: 12px 16px;
-  background: #3498db;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background 0.3s, transform 0.1s;
-  box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
-}
-
-.copy-link-btn:hover {
-  background: #2980b9;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
-}
-
-.copy-link-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(52, 152, 219, 0.3);
-}
-
-.copy-link-btn .success {
-  color: #2ecc71;
-  font-weight: bold;
-  animation: fadeIn 0.3s ease-in;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 /* Responsive Design */

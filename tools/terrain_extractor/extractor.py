@@ -26,6 +26,7 @@ from shapely.strtree import STRtree
 
 # Base data directory - CRUCIAL para rutas correctas
 BASE_DATA_DIR = Path(__file__).parent.parent.parent.resolve() / 'data'
+SRTM_CACHE_DIR = BASE_DATA_DIR / 'srtm_cache'
 
 # Configure logging
 logging.basicConfig(
@@ -47,7 +48,8 @@ try:
         TERRAIN_MAPPING,
         DEFAULT_TERRAIN_TYPE_ID,
         RASTER_DIR,
-        DB_CONFIG
+        DB_CONFIG,
+        SLOPE_THRESHOLD
     )
     logger.info("Using configuration from config.py")
 except ImportError as e:
@@ -353,6 +355,253 @@ def is_point_on_land(lat: float, lng: float, land_mask: Optional[tuple], debug: 
         return fallback_to_land  # Fallback configurable en caso de error
 
 
+def download_srtm_for_region(bounds: dict) -> str:
+    """
+    Loads SRTM elevation data from local .hgt files in data/elevation/.
+    Uses pre-downloaded SRTM tiles from viewfinderpanoramas.org (run setup_srtm_v2.py first).
+
+    Args:
+        bounds: Diccionario con min_lat, max_lat, min_lng, max_lng
+
+    Returns:
+        Path al archivo SRTM DEM merged, or None if not available
+    """
+    from rasterio.merge import merge
+
+    # Elevation directory (contains K30/, K31/ subdirectories with .hgt files)
+    elevation_dir = BASE_DATA_DIR / 'elevation'
+
+    # Crear directorio de caché si no existe
+    SRTM_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Archivo de salida merged
+    output_file = SRTM_CACHE_DIR / f"srtm_merged_{bounds['min_lat']}_{bounds['max_lat']}_{bounds['min_lng']}_{bounds['max_lng']}.tif"
+
+    # Si ya existe el merged, usarlo
+    if output_file.exists():
+        logger.info(f"SRTM DEM merged ya existe: {output_file}")
+        return str(output_file)
+
+    # Buscar archivos SRTM en el directorio de elevación
+    if not elevation_dir.exists():
+        logger.warning(f"Directorio de elevación no encontrado: {elevation_dir}")
+        logger.warning("Ejecuta 'python setup_srtm_v2.py' para descargar datos SRTM")
+        return None
+
+    # Buscar archivos .hgt en subdirectorios K30/, K31/, etc.
+    srtm_files = []
+    srtm_files.extend(list(elevation_dir.glob('K*/*.hgt')))  # K30/N42W006.hgt, etc.
+    srtm_files.extend(list(elevation_dir.glob('*.hgt')))      # También archivos en raíz
+
+    if not srtm_files:
+        logger.warning(f"No se encontraron archivos .hgt en: {elevation_dir}")
+        logger.warning("Ejecuta 'python setup_srtm_v2.py' para descargar datos SRTM")
+        return None
+
+    logger.info(f"Encontrados {len(srtm_files)} tiles SRTM (.hgt) locales")
+    logger.info(f"Target bounds: lat=[{bounds['min_lat']}, {bounds['max_lat']}], lng=[{bounds['min_lng']}, {bounds['max_lng']}]")
+
+    try:
+        # Filtrar tiles que intersectan con el bounding box
+        relevant_tiles = []
+        for hgt_file in srtm_files:
+            # Parsear nombre del archivo (e.g., N42W006.hgt)
+            filename = hgt_file.stem  # N42W006
+            try:
+                # Extraer latitud y longitud del nombre
+                if filename[0] == 'N':
+                    lat = int(filename[1:3])
+                elif filename[0] == 'S':
+                    lat = -int(filename[1:3])
+                else:
+                    logger.info(f"Skipping {filename}: invalid lat prefix")
+                    continue
+
+                if filename[3] == 'E':
+                    lng = int(filename[4:7])
+                elif filename[3] == 'W':
+                    lng = -int(filename[4:7])
+                else:
+                    logger.info(f"Skipping {filename}: invalid lng prefix")
+                    continue
+
+                # Verificar si el tile intersecta con el bounding box
+                # Cada tile .hgt cubre 1°x1° desde (lat, lng) hasta (lat+1, lng+1)
+                intersects = (lat <= bounds['max_lat'] and lat + 1 >= bounds['min_lat'] and
+                              lng <= bounds['max_lng'] and lng + 1 >= bounds['min_lng'])
+
+                if intersects:
+                    relevant_tiles.append(hgt_file)
+                    logger.info(f"  ✓ Tile relevante: {filename} (covers lat={lat}-{lat+1}, lng={lng}-{lng+1})")
+                else:
+                    logger.info(f"  ✗ Tile fuera del bbox: {filename} (covers lat={lat}-{lat+1}, lng={lng}-{lng+1})")
+
+            except (ValueError, IndexError) as e:
+                logger.warning(f"No se pudo parsear nombre de archivo: {filename} - {e}")
+                continue
+
+        if not relevant_tiles:
+            logger.warning(f"No se encontraron tiles relevantes para el bounding box")
+            logger.warning(f"Bounds: lat=[{bounds['min_lat']}, {bounds['max_lat']}], lng=[{bounds['min_lng']}, {bounds['max_lng']}]")
+            return None
+
+        logger.info(f"Usando {len(relevant_tiles)} tiles relevantes para el bounding box")
+
+        # Abrir todos los tiles SRTM relevantes
+        src_files_to_mosaic = []
+        for file_path in relevant_tiles:
+            src = rasterio.open(file_path)
+            src_files_to_mosaic.append(src)
+            logger.debug(f"  - {file_path.name}: bounds={src.bounds}")
+
+        # Merge todos los tiles
+        logger.info("Merging SRTM tiles...")
+        mosaic, out_trans = merge(src_files_to_mosaic)
+
+        # Guardar el mosaic merged
+        out_meta = src_files_to_mosaic[0].meta.copy()
+        out_meta.update({
+            "driver": "GTiff",
+            "height": mosaic.shape[1],
+            "width": mosaic.shape[2],
+            "transform": out_trans,
+            "compress": "lzw"
+        })
+
+        with rasterio.open(output_file, "w", **out_meta) as dest:
+            dest.write(mosaic)
+
+        # Cerrar todos los archivos fuente
+        for src in src_files_to_mosaic:
+            src.close()
+
+        logger.info(f"SRTM mosaic creado: {output_file}")
+        return str(output_file)
+
+    except Exception as e:
+        logger.error(f"Error creando SRTM mosaic: {e}", exc_info=True)
+        logger.warning("Continuando sin datos de elevación...")
+        return None
+
+
+def load_srtm_elevation_dataset(srtm_file: Optional[str]) -> Optional[object]:
+    """
+    Carga el dataset de elevación SRTM usando rasterio.
+
+    Args:
+        srtm_file: Path al archivo SRTM DEM
+
+    Returns:
+        Dataset de rasterio o None si falla
+    """
+    if not srtm_file or not Path(srtm_file).exists():
+        logger.warning("Archivo SRTM no disponible, elevación no se usará")
+        return None
+
+    try:
+        dataset = rasterio.open(srtm_file)
+        logger.info(f"✓ SRTM dataset cargado: {srtm_file}")
+        logger.info(f"  - Bounds: {dataset.bounds}")
+        logger.info(f"  - CRS: {dataset.crs}")
+        return dataset
+    except Exception as e:
+        logger.error(f"Error cargando SRTM dataset: {e}")
+        return None
+
+
+def get_elevation(lat: float, lng: float, srtm_dataset: Optional[object]) -> Optional[float]:
+    """
+    Obtiene la elevación (en metros) de un punto (lat, lng) desde el dataset SRTM.
+
+    Args:
+        lat: Latitud
+        lng: Longitud
+        srtm_dataset: Dataset SRTM cargado con rasterio
+
+    Returns:
+        Elevación en metros, o None si no disponible
+    """
+    if srtm_dataset is None:
+        return None
+
+    try:
+        # Convertir coordenadas geográficas a índices de píxel
+        row, col = srtm_dataset.index(lng, lat)
+
+        # Leer el valor del píxel
+        elevation_value = srtm_dataset.read(1)[row, col]
+
+        # SRTM usa valores negativos para depresiones, 0 para mar
+        # Valores muy negativos (< -500) suelen ser NoData
+        if elevation_value < -500 or elevation_value == srtm_dataset.nodata:
+            return None
+
+        return float(elevation_value)
+
+    except Exception as e:
+        # Punto fuera de bounds o error de lectura
+        return None
+
+
+def calculate_slope(lat: float, lng: float, srtm_dataset: Optional[object]) -> Optional[float]:
+    """
+    Calcula la pendiente aproximada en un punto usando elevaciones de puntos vecinos.
+
+    Metodología:
+    - Obtiene elevación del centro y 4 puntos cardinales (N, S, E, O) a ~100m
+    - Calcula gradientes en X e Y
+    - Retorna pendiente en grados usando: arctan(sqrt(dx² + dy²))
+
+    Args:
+        lat: Latitud del punto central
+        lng: Longitud del punto central
+        srtm_dataset: Dataset SRTM cargado con rasterio
+
+    Returns:
+        Pendiente en grados, o None si no se puede calcular
+    """
+    if srtm_dataset is None:
+        return None
+
+    try:
+        # Offset de ~100m en grados (~0.001° ≈ 111m a lat 42°)
+        offset = 0.001
+
+        # Elevaciones de 5 puntos (centro + 4 cardinales)
+        elev_center = get_elevation(lat, lng, srtm_dataset)
+        elev_north = get_elevation(lat + offset, lng, srtm_dataset)
+        elev_south = get_elevation(lat - offset, lng, srtm_dataset)
+        elev_east = get_elevation(lat, lng + offset, srtm_dataset)
+        elev_west = get_elevation(lat, lng - offset, srtm_dataset)
+
+        # Si algún punto no tiene datos válidos, no calcular pendiente
+        elevations = [elev_center, elev_north, elev_south, elev_east, elev_west]
+        if any(e is None for e in elevations):
+            return None
+
+        # Calcular gradientes (rise/run)
+        # Distancia horizontal: 2 * offset en grados * 111km/grado ≈ 222m
+        distance_m = 2 * offset * 111000  # metros (aprox. a lat 42°)
+
+        # Gradiente en Y (Norte-Sur)
+        gradient_y = (elev_north - elev_south) / distance_m
+
+        # Gradiente en X (Este-Oeste)
+        gradient_x = (elev_east - elev_west) / distance_m
+
+        # Magnitud del gradiente (pendiente como ratio rise/run)
+        gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+
+        # Convertir a grados: arctan(rise/run)
+        slope_degrees = np.degrees(np.arctan(gradient_magnitude))
+
+        return slope_degrees
+
+    except Exception as e:
+        # Error en cálculo de pendiente
+        return None
+
+
 def extract_terrain_from_raster(
     raster_dir: str,
     h3_cells: List[str]
@@ -373,6 +622,23 @@ def extract_terrain_from_raster(
     logger.info("CARGANDO LAND MASK (Natural Earth 10m Land)")
     logger.info("=" * 80)
     land_mask = load_land_mask()  # Usa BASE_DATA_DIR por defecto
+
+    # Load SRTM elevation data
+    logger.info("=" * 80)
+    logger.info("CARGANDO DATOS DE ELEVACIÓN SRTM")
+    logger.info("=" * 80)
+    srtm_file = download_srtm_for_region(BOUNDING_BOX)
+    srtm_dataset = load_srtm_elevation_dataset(srtm_file)
+
+    if srtm_dataset:
+        logger.info("✓ Datos de elevación SRTM disponibles")
+        logger.info("  Reglas de relieve:")
+        logger.info("    - Elevación > 1100m → Alta Montaña (ID 13)")
+        logger.info(f"    - Elevación 500-1100m + Pendiente > {SLOPE_THRESHOLD}° → Colinas (ID 12)")
+        logger.info(f"    - Elevación 500-1100m + Pendiente < {SLOPE_THRESHOLD}° → Meseta (usar TIF)")
+        logger.info(f"  Umbral de pendiente: {SLOPE_THRESHOLD}° (protege mesetas de León/Castilla)")
+    else:
+        logger.warning("⚠️ SRTM no disponible - usando solo clasificación ESA WorldCover")
 
     # Scan all available raster files and their coverage
     coverage_map = scan_raster_coverage(raster_dir)
@@ -412,6 +678,11 @@ def extract_terrain_from_raster(
     phase_4_montana = 0
     phase_5_resto = 0
     open_sea_discarded = 0  # Celdas descartadas por estar en mar abierto
+
+    # Contadores de elevación (PRIORIDAD MÁXIMA sobre TIF)
+    elevation_high_mountain = 0  # Montañas detectadas por elevación > 1100m
+    elevation_hills = 0  # Colinas detectadas por elevación 500-1100m + pendiente
+    plateau_protected = 0  # Mesetas protegidas (altitud alta pero sin pendiente)
 
     # Cache for open datasets to avoid reopening the same file
     dataset_cache = {}
@@ -499,63 +770,136 @@ def extract_terrain_from_raster(
                 # Muestreo del centro
                 center_value = sample_pixel_value(dataset, lat, lng)
 
-                # ====== FASE 1: MAR (todos los puntos NoData) ======
-                if center_value == -1:
-                    # Muestrear los 6 puntos circundantes
-                    circular_points = sample_circular_points(lat, lng)
-                    neighbor_values = [sample_pixel_value(dataset, p[0], p[1]) for p in circular_points[1:]]
+                # ====== FUNCIÓN INTERNA: DETERMINE_TERRAIN ======
+                # Jerarquía de decisión correcta: ALTITUD primero, luego TIF
+                def determine_terrain(cv, elev, slope, h3_idx, cell_idx):
+                    """
+                    Determina el tipo de terreno con jerarquía estricta.
 
-                    # Si todos son NoData → Mar
-                    if all(v == -1 for v in neighbor_values):
-                        terrain_type_id = 1  # Mar
-                        phase_1_mar += 1
-                    else:
-                        # ====== FASE 2: COSTA (centro NoData pero vecinos tierra) ======
-                        terrain_type_id = 2  # Costa
-                        phase_2_costa += 1
+                    Orden de prioridad:
+                    1. NoData (center_value == -1) -> Mar o Costa
+                    2. ALTITUD > 1100m -> Alta Montaña (ID 13) [PRIORIDAD ABSOLUTA]
+                    3. Agua TIF (0, 80, 90, 95) -> Río o Pantanos
+                    3.5. Asentamientos TIF (50) -> Asentamientos (ID 14) [ANTES de colinas]
+                    4. ALTITUD 500-1100m + PENDIENTE > umbral -> Colinas (ID 12)
+                    4.5. ALTITUD 500-1100m + PENDIENTE < umbral -> Meseta (usar TIF)
+                    5. Nieve TIF (70) -> Alta Montaña
+                    6. Resto -> Mapeo estándar
+                    """
+                    nonlocal phase_1_mar, phase_2_costa, phase_3_agua, phase_4_montana
+                    nonlocal phase_5_resto, elevation_high_mountain, elevation_hills, plateau_protected
 
-                    terrain_data.append((h3_int, terrain_type_id))
-                    terrain_counter[terrain_type_id] += 1
-                    processed += 1
-                    continue
+                    # CASO 1: NoData -> Mar o Costa
+                    if cv == -1:
+                        circular_points = sample_circular_points(lat, lng)
+                        neighbor_values = [sample_pixel_value(dataset, p[0], p[1]) for p in circular_points[1:]]
 
-                # ====== FASE 3: RÍOS Y PANTANOS ======
-                if center_value in [0, 80]:
-                    # Special check for value 80: distinguish Mar vs Río based on land mask
-                    if center_value == 80:
-                        is_on_land_check = is_point_on_land(lat, lng, land_mask, debug=False)
-                        if not is_on_land_check:
-                            terrain_type_id = 1  # Mar (value 80 but in open sea)
+                        if all(v == -1 for v in neighbor_values):
                             phase_1_mar += 1
+                            return 1  # Mar
                         else:
-                            terrain_type_id = 4  # Río (value 80 and on land)
-                            phase_3_agua += 1
-                    else:  # center_value == 0
-                        terrain_type_id = 4  # Río
+                            phase_2_costa += 1
+                            return 2  # Costa
+
+                    # CASO 2: ALTITUD > 1100m -> SIEMPRE Alta Montaña (PRIORIDAD MÁXIMA)
+                    # NO sobrescribir solo si es agua clara (0, 80, 90, 95)
+                    if elev is not None and elev > 1100:
+                        if cv not in [0, 80, 90, 95]:
+                            elevation_high_mountain += 1
+                            phase_4_montana += 1
+
+                            if cell_idx < 50:
+                                logger.info(f"⛰️  MONTAÑA DETECTADA: {h3_idx} | Alt: {elev:.1f}m | TIF: {cv} -> Alta Montaña (ID 13)")
+
+                            return 13  # Alta Montaña
+
+                    # CASO 3: Agua TIF -> Río o Pantanos (antes de colinas)
+                    if cv in [0, 80]:
+                        # Special check for value 80: distinguish Mar vs Río
+                        if cv == 80:
+                            is_on_land_check = is_point_on_land(lat, lng, land_mask, debug=False)
+                            if not is_on_land_check:
+                                phase_1_mar += 1
+                                return 1  # Mar (value 80 but in open sea)
                         phase_3_agua += 1
-                elif center_value in [90, 95]:
-                    terrain_type_id = 5  # Pantanos
-                    phase_3_agua += 1
+                        return 4  # Río
 
-                # ====== FASE 4: ALTA MONTAÑA ======
-                elif center_value == 70:
-                    terrain_type_id = 13  # Alta montaña
-                    phase_4_montana += 1
-                elif center_value == 60:
-                    # Verificar vecinos para detectar alta montaña
-                    circular_points = sample_circular_points(lat, lng)
-                    neighbor_values = [sample_pixel_value(dataset, p[0], p[1]) for p in circular_points[1:]]
-                    if 70 in neighbor_values:
-                        terrain_type_id = 13  # Alta montaña (transición)
-                        phase_4_montana += 1
-                    else:
-                        terrain_type_id = TERRAIN_MAPPING.get(center_value, DEFAULT_TERRAIN_TYPE_ID)
+                    if cv in [90, 95]:
+                        phase_3_agua += 1
+                        return 5  # Pantanos
+
+                    # CASO 3.5: Asentamientos TIF (50 = Built-up) -> PRIORIDAD sobre colinas
+                    # No sobrescribir Alta Montaña (ya procesada en CASO 2)
+                    if cv == 50:
                         phase_5_resto += 1
+                        if cell_idx < 50:
+                            logger.info(f"🏘️  ASENTAMIENTO: {h3_idx} | Alt: {elev if elev else 'N/A'}m | TIF: {cv} -> Asentamientos (ID 14)")
+                        return 14  # Asentamientos
 
-                # ====== FASE 5: RESTO (mapeo estándar) ======
-                else:
-                    terrain_type_id = TERRAIN_MAPPING.get(center_value, DEFAULT_TERRAIN_TYPE_ID)
+                    # CASO 4: ALTITUD 500-1100m -> Verificar PENDIENTE para distinguir Colinas vs Meseta
+                    # Solo si TIF no es nieve (70), agua, ni urbano (50)
+                    if elev is not None and elev >= 500:
+                        if cv not in [0, 50, 70, 80, 90, 95]:
+                            # Si tenemos pendiente, usarla para distinguir
+                            if slope is not None:
+                                if slope > SLOPE_THRESHOLD:
+                                    # PENDIENTE ALTA: Es una colina real
+                                    elevation_hills += 1
+                                    phase_5_resto += 1
+
+                                    if cell_idx < 50:
+                                        logger.info(f"🏔️  COLINA DETECTADA: {h3_idx} | Alt: {elev:.1f}m | Pendiente: {slope:.2f}° | TIF: {cv} -> Colinas (ID 12)")
+
+                                    return 12  # Colinas
+                                else:
+                                    # PENDIENTE BAJA: Es meseta (altitud alta pero llana)
+                                    # Dejar que el TIF decida (Secano/Cultivo/etc.)
+                                    plateau_protected += 1
+
+                                    if cell_idx < 50:
+                                        logger.info(f"🏞️  MESETA PROTEGIDA: {h3_idx} | Alt: {elev:.1f}m | Pendiente: {slope:.2f}° | TIF: {cv} -> Usar TIF")
+
+                                    # Continuar al CASO 7 (mapeo TIF)
+                            else:
+                                # Sin datos de pendiente: comportamiento conservador
+                                # Si altitud > 800m, asumir colina; si < 800m, asumir meseta
+                                if elev > 800:
+                                    elevation_hills += 1
+                                    phase_5_resto += 1
+                                    return 12  # Colinas (por altitud alta sin pendiente)
+                                else:
+                                    plateau_protected += 1
+                                    # Continuar al CASO 7 (mapeo TIF)
+
+                    # CASO 5: Nieve TIF -> Alta Montaña
+                    if cv == 70:
+                        phase_4_montana += 1
+                        return 13  # Alta montaña
+
+                    # CASO 6: TIF 60 con vecinos nieve
+                    if cv == 60:
+                        circular_points = sample_circular_points(lat, lng)
+                        neighbor_values = [sample_pixel_value(dataset, p[0], p[1]) for p in circular_points[1:]]
+                        if 70 in neighbor_values:
+                            phase_4_montana += 1
+                            return 13  # Alta montaña (transición)
+
+                    # CASO 7: Resto -> Mapeo estándar
                     phase_5_resto += 1
+                    return TERRAIN_MAPPING.get(cv, DEFAULT_TERRAIN_TYPE_ID)
+
+                # Consultar elevación y pendiente SRTM
+                elevation = get_elevation(lat, lng, srtm_dataset) if srtm_dataset else None
+                slope = calculate_slope(lat, lng, srtm_dataset) if srtm_dataset else None
+
+                # Log detallado para las primeras 50 celdas
+                if idx < 50:
+                    is_land_status = is_point_on_land(lat, lng, land_mask, debug=False) if land_mask else "N/A"
+                    slope_str = f"{slope:.2f}°" if slope is not None else "N/A"
+                    logger.info(f"DEBUG {idx:03d}: H3={h3_index} | Alt={elevation if elevation else 'N/A':>6}m | Pendiente={slope_str:>6} | TIF={center_value:>3} | IsLand={is_land_status}")
+
+                # EJECUTAR FUNCIÓN DE DECISIÓN
+                terrain_type_id = determine_terrain(center_value, elevation, slope, h3_index, idx)
 
                 terrain_data.append((h3_int, terrain_type_id))
                 terrain_counter[terrain_type_id] += 1
@@ -604,6 +948,10 @@ def extract_terrain_from_raster(
         logger.info(f"  FASE 2 (Costa): {phase_2_costa} celdas")
         logger.info(f"  FASE 3 (Ríos/Pantanos): {phase_3_agua} celdas")
         logger.info(f"  FASE 4 (Alta Montaña): {phase_4_montana} celdas")
+        logger.info(f"  FASE 4.5 (Relieve SRTM - Prioridad Máxima):")
+        logger.info(f"    - Montañas detectadas (>1100m): {elevation_high_mountain} celdas")
+        logger.info(f"    - Colinas detectadas (500-1100m + pendiente >{SLOPE_THRESHOLD}°): {elevation_hills} celdas")
+        logger.info(f"    - Mesetas protegidas (500-1100m + pendiente <{SLOPE_THRESHOLD}°): {plateau_protected} celdas")
         logger.info(f"  FASE 5 (Resto): {phase_5_resto} celdas")
 
         logger.info("")
@@ -649,6 +997,14 @@ def extract_terrain_from_raster(
                 logger.debug(f"Closed {os.path.basename(path)}")
             except Exception as e:
                 logger.warning(f"Error closing {os.path.basename(path)}: {e}")
+
+        # Close SRTM dataset
+        if srtm_dataset:
+            try:
+                srtm_dataset.close()
+                logger.debug("Closed SRTM elevation dataset")
+            except Exception as e:
+                logger.warning(f"Error closing SRTM dataset: {e}")
 
     return terrain_data
 
@@ -719,6 +1075,91 @@ def insert_terrain_data_batch(
         logger.info("Database connection closed")
 
 
+def postprocess_coastal_detection(terrain_data: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    """
+    Post-procesa los datos de terreno para detectar Costa Inteligente.
+
+    LÓGICA:
+    - Identifica celdas clasificadas como Río (ID 4) o Agua (ID 3).
+    - Para cada una, verifica si tiene al menos un vecino clasificado como Mar (ID 1).
+    - Si es así, reclasifica la celda como Costa (ID 2).
+
+    Args:
+        terrain_data: Lista de tuplas (h3_index_int, terrain_type_id)
+
+    Returns:
+        Lista actualizada de tuplas (h3_index_int, terrain_type_id) con costas detectadas
+    """
+    logger.info("=" * 80)
+    logger.info("FASE DE POST-PROCESAMIENTO: DETECCIÓN DE COSTA INTELIGENTE")
+    logger.info("=" * 80)
+
+    start_time = time.time()
+
+    # Crear diccionario para búsqueda rápida: {h3_index_hex_str: terrain_type_id}
+    terrain_dict = {}
+    for h3_int, terrain_id in terrain_data:
+        h3_hex = format(h3_int, 'x')  # Convertir int a hex string
+        terrain_dict[h3_hex] = terrain_id
+
+    logger.info(f"Total de celdas a procesar: {len(terrain_data)}")
+
+    # Identificar candidatos a costa: celdas Río (ID 4) o Agua (ID 3)
+    water_candidates = [
+        (h3_int, h3_hex)
+        for h3_int, terrain_id in terrain_data
+        if terrain_id in [3, 4]
+        for h3_hex in [format(h3_int, 'x')]
+    ]
+
+    logger.info(f"Candidatos a costa (Río/Agua): {len(water_candidates)} celdas")
+
+    # Reclasificar celdas que tocan el mar
+    reclassified_count = 0
+    updated_terrain = {}  # {h3_int: new_terrain_id}
+
+    for h3_int, h3_hex in water_candidates:
+        # Obtener vecinos usando h3.grid_disk (radio 1 = vecinos inmediatos)
+        try:
+            neighbors = h3.grid_disk(h3_hex, 1)
+
+            # Verificar si algún vecino es Mar (ID 1)
+            has_sea_neighbor = False
+            for neighbor_hex in neighbors:
+                if neighbor_hex == h3_hex:
+                    continue  # Saltar la celda misma
+
+                neighbor_terrain_id = terrain_dict.get(neighbor_hex, None)
+                if neighbor_terrain_id == 1:  # Mar
+                    has_sea_neighbor = True
+                    break
+
+            # Si toca el mar, reclasificar como Costa (ID 2)
+            if has_sea_neighbor:
+                updated_terrain[h3_int] = 2  # Costa
+                reclassified_count += 1
+
+        except Exception as e:
+            logger.warning(f"Error procesando vecinos de {h3_hex}: {e}")
+            continue
+
+    logger.info(f"Celdas reclasificadas como Costa (ID 2): {reclassified_count}")
+
+    # Aplicar las reclasificaciones a terrain_data
+    updated_terrain_data = []
+    for h3_int, terrain_id in terrain_data:
+        if h3_int in updated_terrain:
+            updated_terrain_data.append((h3_int, updated_terrain[h3_int]))
+        else:
+            updated_terrain_data.append((h3_int, terrain_id))
+
+    elapsed = time.time() - start_time
+    logger.info(f"Post-procesamiento completado en {elapsed:.2f}s")
+    logger.info("=" * 80)
+
+    return updated_terrain_data
+
+
 def main():
     """
     Main execution function.
@@ -745,6 +1186,9 @@ def main():
 
         # Step 2: Extract terrain data from raster (creates VRT automatically)
         terrain_data = extract_terrain_from_raster(str(raster_dir), h3_cells)
+
+        # Step 2.5: Post-procesamiento - Detección de Costa Inteligente
+        terrain_data = postprocess_coastal_detection(terrain_data)
 
         # Step 3: Insert data into database
         insert_terrain_data_batch(DB_CONFIG, terrain_data)

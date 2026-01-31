@@ -29,6 +29,7 @@ data/
 *.tif
 *.vrt
 vector/
+srtm_cache/
 
 # Python
 __pycache__/

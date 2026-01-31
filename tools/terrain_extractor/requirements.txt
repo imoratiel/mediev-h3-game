@@ -15,3 +15,6 @@ pyproj>=3.4.0
 
 # HTTP Requests (for downloading assets)
 requests>=2.28.0
+
+# Elevation data (SRTM)
+elevation>=1.1.0

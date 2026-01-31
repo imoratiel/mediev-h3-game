@@ -257,6 +257,10 @@ El sistema está diseñado para manejar **millones de hexágonos H3** cubriendo 
 - ✅ **Muestreo inteligente**: Identifica dinámicamente qué tile cubre cada coordenada
 - ✅ **Inserción en lotes**: `execute_values` con batches de 1000 registros
 - ✅ **Manejo robusto**: Asigna terreno por defecto (Yermos) si coordenada fuera de cobertura
+- ✅ **Máscara de tierra (Natural Earth)**: Detecta mar abierto antes de procesar TIF (optimización)
+- ✅ **Costa Inteligente**: Post-procesamiento que reclasifica ríos/agua adyacentes al mar como costa
+- ✅ **Detección de montaña**: Identifica alta montaña (ID 13) usando nieve (valor 70) y vecindad
+- ✅ **Elevación SRTM**: Descarga automática de datos de elevación NASA SRTM 90m para detección de montañas/colinas
 
 ### Performance Esperada
 
@@ -287,8 +291,14 @@ python extractor.py
 2. **Escanea archivos .tif** disponibles en `../../data/`
 3. **Mapea coordenadas → tiles**: Cada celda H3 busca qué archivo la cubre
 4. **Muestrea valores**: Lee el pixel del ráster en cada centro de celda
-5. **Mapea a tipos de terreno**: ESA WorldCover → Tipos medievales
-6. **Inserta en DB**: Batches de 1000 con `TRUNCATE` inicial
+5. **Mapea a tipos de terreno**: ESA WorldCover → Tipos medievales usando 5 fases:
+   - **FASE 1 (Mar)**: Celdas fuera de cobertura o en mar abierto (usando máscara Natural Earth)
+   - **FASE 2 (Costa)**: Centro NoData pero vecinos tierra
+   - **FASE 3 (Ríos/Pantanos)**: Valores 0, 80 (agua), 90, 95 (humedales)
+   - **FASE 4 (Alta Montaña)**: Valor 70 (nieve) o valor 60 con vecinos nieve
+   - **FASE 5 (Resto)**: Mapeo estándar según TERRAIN_MAPPING
+6. **Post-procesamiento - Costa Inteligente**: Reclasifica celdas de Río/Agua que tocan el mar como Costa (ID 2)
+7. **Inserta en DB**: Batches de 1000 con `TRUNCATE` inicial
 
 ### Mapeo de Terrenos ESA WorldCover
 
@@ -312,6 +322,69 @@ El extractor traduce los valores de ESA WorldCover a tipos de terreno medievales
 - El valor **80 (Permanent water bodies)** se mapea a **Albuferas (ID 8)**, representando lagos, ríos y embalses
 - Los **pantanos y humedales** (valores 90 y 95) se mapean a **Tremedales (ID 9)**
 - Asegúrate de que la tabla `terrain_types` en tu base de datos incluya estos IDs con sus colores correspondientes
+
+### Lógicas Espaciales Avanzadas
+
+#### 🏖️ **Costa Inteligente (Post-procesamiento)**
+
+El extractor implementa detección automática de costa usando análisis de vecindad H3:
+
+**Algoritmo:**
+1. Identifica todas las celdas clasificadas como **Río (ID 4)** o **Agua (ID 3)**
+2. Para cada celda, obtiene sus vecinos inmediatos usando `h3.grid_disk(h3_index, 1)`
+3. Si al menos **un vecino es Mar (ID 1)**, reclasifica la celda como **Costa (ID 2)**
+4. Esto detecta automáticamente estuarios, rías, bahías y desembocaduras de ríos
+
+**Ventajas:**
+- ✅ Detección precisa de zonas costeras sin necesidad de clasificación manual
+- ✅ Distingue entre ríos interiores y agua costera
+- ✅ Procesa ~1000 celdas/s usando diccionarios para búsqueda O(1)
+
+#### ⛰️ **Detección de Alta Montaña**
+
+Sistema multi-fase para identificar zonas de alta montaña:
+
+**Criterios:**
+- **Valor TIF 70 (Nieve/Hielo)** → Alta Montaña (ID 13) [Directo]
+- **Valor TIF 60 (Suelo desnudo) + vecino con valor 70** → Alta Montaña (ID 13) [Transición]
+- Muestrea 6 puntos circulares alrededor de cada celda para detectar vecinos con nieve
+
+**Aplicación:**
+- Detecta Pirineos, Sierra Nevada, Picos de Europa
+- Identifica zonas de transición montañosa (rocas y praderas alpinas)
+
+#### 🌊 **Refinamiento de Ríos**
+
+Lógica especial para distinguir agua marina vs. agua dulce:
+
+**Regla para TIF valor 80 (Permanent water bodies):**
+- Si `is_on_land(lat, lng)` = **False** (fuera del polígono de tierra Natural Earth) → **Mar (ID 1)**
+- Si `is_on_land(lat, lng)` = **True** (dentro de tierra firme) → **Río (ID 4)**
+- Permite detectar lagos interiores vs. mar abierto
+
+#### 🏔️ **Sistema de Elevación SRTM (NASA)**
+
+El extractor integra datos de elevación SRTM (Shuttle Radar Topography Mission) de la NASA para detección precisa de relieve:
+
+**Proceso automático:**
+1. **Descarga automática**: Usa la librería `elevation` para descargar tiles SRTM 90m de resolución
+2. **Caché local**: Almacena tiles en `data/srtm_cache/` para evitar redescargas
+3. **Muestreo por celda**: Consulta elevación del centro de cada hexágono H3
+
+**Reglas de relieve (FASE 4.5):**
+- **Elevación > 1000m** → **Alta Montaña (ID 13)** [Sobreescribe clasificación TIF]
+- **Elevación 400-1000m** → **Colinas (ID 12)** [Solo para terrenos "blandos": valores TIF 20, 30, 40, 60]
+- **Elevación < 400m** → Mantiene clasificación ESA WorldCover original
+
+**Ventajas:**
+- ✅ Detecta montañas que ESA WorldCover clasifica como "bare soil" (valor 60)
+- ✅ Identifica colinas en zonas de cultivo o matorral (valores 20, 30, 40)
+- ✅ No interfiere con clasificaciones acuáticas (Mar, Costa, Río, Pantanos)
+- ✅ Datos NASA SRTM de dominio público, sin restricciones
+
+**Cobertura:**
+- SRTM 90m: Latitudes entre 60°N y 56°S (cubre toda la Península Ibérica)
+- Resolución vertical: ±16 metros de precisión
 
 Ver [tools/terrain_extractor/README.md](tools/terrain_extractor/README.md) para más detalles.
 

@@ -4,7 +4,15 @@
       "Bash(npm install:*)",
       "Bash(python setup_assets.py:*)",
       "Bash(python extractor.py:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(dir:*)",
+      "WebFetch(domain:dwtkns.com)",
+      "WebFetch(domain:viewfinderpanoramas.org)",
+      "WebFetch(domain:www.imagico.de)",
+      "Bash(python setup_srtm_v2.py:*)",
+      "Bash(unzip:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)"
     ]
   }
 }

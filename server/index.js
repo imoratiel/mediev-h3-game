@@ -29,7 +29,7 @@ const TERRAIN_COLORS = {
  * Returns H3 hexagons within a bounding box with terrain data
  * Query params: minLat, maxLat, minLng, maxLng
  * Response: Array of { h3_index: string, name: string, color: string }
- * Limit: Maximum 5000 hexagons per request
+ * Limit: Maximum 50000 hexagons per request
  */
 app.get('/api/map/region', async (req, res) => {
   try {
@@ -82,8 +82,8 @@ app.get('/api/map/region', async (req, res) => {
       return res.json([]);
     }
 
-    // Limit to 5000 cells to avoid query size issues
-    const cellsToQuery = h3CellsArray.slice(0, 5000);
+    // Limit to 50000 cells to avoid query size issues
+    const cellsToQuery = h3CellsArray.slice(0, 50000);
 
     // Convert H3 hex strings to BIGINT for database query
     const h3IndexValues = cellsToQuery.map(hexStr => BigInt('0x' + hexStr).toString());
