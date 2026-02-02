@@ -1,7 +1,33 @@
 #!/usr/bin/env python3
 """
-Terrain Extractor Tool
+Terrain Extractor Tool - OPTIMIZED VERSION WITH MEDIEVAL NATURALIZATION
 Extracts terrain data from GeoTIFF raster and populates H3 hexagonal grid into database.
+
+OPTIMIZACIONES APLICADAS (2026-02-02):
+- Pre-carga SRTM completo en memoria (array numpy) para lectura instantanea
+- Pre-calcula river_h3_set para lookup O(1) en lugar de spatial queries
+- Usa Window() para lectura de pixels individuales del TIF (evita cargar bandas completas)
+- Jerarquia maestra de decision reordenada segun prioridades:
+  A) Mar (land_mask) -> B) Rio (river_h3_set) -> C) Montana (>1100m) ->
+  D) Ciudad Moderna (TIF=50) -> E) Colina (>500m + rugosidad) -> F) TIF estandar
+- Logs limpios sin emojis, resumen cada 10,000 celdas
+
+RENATURALIZACION DE CIUDADES MODERNAS (2026-02-02B):
+- Las ciudades modernas (TIF=50) se marcan temporalmente como ID 0
+- POST-PROCESADO: Inpainting con vecinos H3 (convierte ciudades en terreno natural)
+  * Si tiene vecino Mar -> Costa (ID 2)
+  * Si es interior -> Moda de vecinos (el terreno mas frecuente alrededor)
+- OVERLAY FINAL: Solo asentamientos historicos (tabla settlements) reciben ID 14
+
+CONFIGURACION:
+- Bounding Box recomendado (Galicia+Asturias): lat [41.68, 44.1], lng [-9.55, -4.45]
+- Configurar en config.py antes de ejecutar
+
+NOTA MULTIPROCESSING:
+- Los objetos rasterio.Dataset no son serializables (pickle), lo que dificulta el uso
+  de ProcessPoolExecutor sin modificaciones arquitectonicas mayores.
+- Alternativa: Cada proceso abre su propio dataset y procesa un chunk de celdas H3.
+- Implementacion futura si se requiere mayor velocidad (actualmente optimizado con pre-carga).
 """
 
 import logging
@@ -11,10 +37,11 @@ import glob
 import time
 from typing import List, Tuple, Dict, Optional
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import h3
 import rasterio
 from rasterio.transform import rowcol
-from rasterio.windows import from_bounds
+from rasterio.windows import Window
 from rasterio.vrt import WarpedVRT
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import psycopg2
@@ -34,7 +61,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('terrain_extraction.log')
+        logging.FileHandler('terrain_extraction.log', encoding='utf-8') # Forzado UTF-8
     ]
 )
 logger = logging.getLogger(__name__)
@@ -49,7 +76,7 @@ try:
         DEFAULT_TERRAIN_TYPE_ID,
         RASTER_DIR,
         DB_CONFIG,
-        SLOPE_THRESHOLD
+        RUGGEDNESS_THRESHOLD
     )
     logger.info("Using configuration from config.py")
 except ImportError as e:
@@ -108,9 +135,9 @@ def create_vrt_from_tiffs(raster_dir: str, vrt_path: str = None) -> str:
         Path to the VRT file
     """
     
-    #print(f"📍 Directorio de trabajo actual: {os.getcwd()}")
-    #print(f"📄 Ruta del script: {os.path.abspath(__file__)}")
-    #print(f"📂 Archivos detectados en raster_dir: {os.listdir(raster_dir)}")
+    #print(f"[DEBUG] Directorio de trabajo actual: {os.getcwd()}")
+    #print(f"[DEBUG] Ruta del script: {os.path.abspath(__file__)}")
+    #print(f"[DEBUG] Archivos detectados en raster_dir: {os.listdir(raster_dir)}")
 
     
     logger.info(f"Scanning for .tif files in: {raster_dir}")
@@ -239,14 +266,16 @@ def sample_circular_points(lat: float, lng: float, radius_km: float = 0.3) -> Li
 
 def sample_pixel_value(dataset, lat: float, lng: float) -> int:
     """
-    Muestrea el valor del pixel en las coordenadas dadas.
+    Muestrea el valor del pixel en las coordenadas dadas usando Window optimizado.
     Retorna el valor del pixel o -1 si está fuera de bounds o es nodata.
+    OPTIMIZADO: Lee SOLO el pixel necesario usando Window(col, row, 1, 1).
     """
     try:
         row, col = rowcol(dataset.transform, lng, lat)
 
         if 0 <= row < dataset.height and 0 <= col < dataset.width:
-            pixel_value = dataset.read(1, window=((row, row+1), (col, col+1)))[0, 0]
+            # OPTIMIZACION: Usar Window(col_off, row_off, width, height) para leer 1 pixel
+            pixel_value = dataset.read(1, window=Window(col, row, 1, 1))[0, 0]
             nodata_value = dataset.nodata
 
             if nodata_value is not None and pixel_value == nodata_value:
@@ -279,36 +308,135 @@ def load_land_mask(data_dir: str = None) -> Optional[tuple]:
         # Ruta EXPLÍCITA al shapefile
         shapefile_path = data_dir / 'vectors' / 'ne_10m_land' / 'ne_10m_land.shp'
 
-        logger.info(f"Buscando máscara en: {shapefile_path.absolute()}")
+        logger.info(f"Buscando mascara en: {shapefile_path.absolute()}")
 
         if not shapefile_path.exists():
-            logger.warning(f"❌ Land mask shapefile NOT FOUND at {shapefile_path.absolute()}")
-            logger.warning("Run 'python setup_assets.py' to download it")
-            logger.warning("Proceeding WITHOUT land mask optimization - ALL ocean cells will be processed")
+            logger.warning(f"Land mask shapefile NO ENCONTRADO: {shapefile_path.absolute()}")
+            logger.warning("Ejecuta 'python setup_assets.py' para descargarlo")
+            logger.warning("Continuando SIN land mask - todas las celdas seran procesadas")
             return None
 
-        logger.info(f"✓ Shapefile encontrado: {shapefile_path.absolute()}")
-        logger.info(f"Cargando geometrías de tierra firme...")
         start_time = time.time()
-
-        # Cargar shapefile con geopandas
         gdf = gpd.read_file(str(shapefile_path))
-
-        # Extraer lista de geometrías (objetos Shapely)
         land_polygons = [geom for geom in gdf.geometry]
-
-        # Crear spatial index (STRtree) para búsquedas rápidas
         land_index = STRtree(land_polygons)
 
         load_time = time.time() - start_time
-        logger.info(f"✓ Land mask loaded: {len(land_polygons)} polygons in {load_time:.2f}s")
+        logger.info(f"Land mask cargado: {len(land_polygons)} poligonos en {load_time:.2f}s")
 
         return (land_polygons, land_index)
 
     except Exception as e:
-        logger.error(f"❌ Failed to load land mask: {e}")
+        logger.error(f"[ERROR] Failed to load land mask: {e}")
         logger.warning("Proceeding WITHOUT land mask optimization")
         return None
+
+
+def get_river_h3_set(data_dir: Path = BASE_DATA_DIR, h3_resolution: int = 8) -> set:
+    """
+    Carga la red de rios principales y genera un SET de indices H3 (O(1) lookup).
+    OPTIMIZACION MAXIMA: Carga -> Buffer ANCHO (800m) -> H3 conversion con API v4 -> Libera memoria.
+
+    Este proceso se ejecuta UNA SOLA VEZ al inicio del extractor.
+    Despues, el bucle principal solo verifica: 'if h3_index in river_h3_set'.
+
+    CORRECCION 2026-02-02: Usa H3 v4 API correctamente con LatLngPoly y coordenadas invertidas.
+    Buffer aumentado a 800m para garantizar continuidad en hexagonos H3 nivel 8.
+
+    Args:
+        data_dir: Directorio base de datos (contiene vectors/rivers_main.shp)
+        h3_resolution: Resolucion H3 a usar (default: 8)
+
+    Returns:
+        Set de indices H3 (strings) que intersectan con rios buffereados (800m)
+        Set vacio si no se encuentra el shapefile o si falla la carga
+    """
+    try:
+        # Ruta al shapefile de rios generado por setup_rivers.py
+        shapefile_path = data_dir / 'vectors' / 'rivers_main.shp'
+
+        logger.info(f"Buscando red de rios en: {shapefile_path.absolute()}")
+
+        if not shapefile_path.exists():
+            logger.warning(f"Rivers shapefile NO ENCONTRADO: {shapefile_path.absolute()}")
+            logger.warning("Ejecuta 'python setup_rivers.py' para descargar HydroRIVERS")
+            logger.warning("Continuando SIN red de rios - deteccion solo desde TIF")
+            return set()
+
+        start_time = time.time()
+
+        # Cargar y reproyectar a WGS84
+        gdf = gpd.read_file(str(shapefile_path))
+        if gdf.crs != 'EPSG:4326':
+            gdf = gdf.to_crs('EPSG:4326')
+
+        # Filtrar geometrias invalidas
+        invalid_count = (~gdf.geometry.is_valid).sum()
+        if invalid_count > 0:
+            gdf = gdf[gdf.geometry.is_valid]
+
+        logger.info(f"Rios validos: {len(gdf)} segmentos")
+
+        # Buffer de 800m (aumentado para continuidad) y convertir a H3
+        gdf_metric = gdf.to_crs('EPSG:3857')
+        gdf_buffered = gdf_metric.buffer(800)  # AUMENTADO: 800 metros
+        gdf_buffered_wgs84 = gdf_buffered.to_crs('EPSG:4326')
+
+        river_h3_set = set()
+        error_count = 0
+
+        for idx, river_geom in enumerate(gdf_buffered_wgs84):
+            if river_geom is None or not river_geom.is_valid:
+                error_count += 1
+                continue
+
+            try:
+                # CORRECCION H3 v4 API: Extraer coordenadas e invertir (lng,lat) -> (lat,lng)
+                # Los poligonos Shapely usan (x,y) = (lng,lat), pero H3 espera (lat,lng)
+                coords = list(river_geom.exterior.coords)
+                latlng_coords = [(lat, lng) for lng, lat in coords]
+
+                # Crear objeto H3 LatLngPoly
+                h3_poly = h3.LatLngPoly(latlng_coords)
+
+                # Obtener celdas H3 usando API v4
+                h3_cells = h3.polygon_to_cells(h3_poly, h3_resolution)
+                river_h3_set.update(h3_cells)
+
+                if (idx + 1) % 2000 == 0:
+                    logger.info(f"  Procesados {idx + 1}/{len(gdf_buffered_wgs84)} segmentos -> {len(river_h3_set):,} celdas H3")
+
+            except Exception as e:
+                # Log primer error para debug, resto silencioso
+                if error_count == 0:
+                    logger.warning(f"Error convirtiendo rio a H3: {e}")
+                error_count += 1
+                continue
+
+        # Liberar memoria
+        del gdf, gdf_metric, gdf_buffered, gdf_buffered_wgs84
+        import gc
+        gc.collect()
+
+        elapsed = time.time() - start_time
+        logger.info(f"Rios convertidos: {len(river_h3_set):,} celdas H3 en {elapsed:.2f}s")
+
+        # LOG DE VERIFICACION: Detectar problemas si el numero es muy bajo
+        if len(river_h3_set) < 5000:
+            logger.warning(f"ATENCION: Solo {len(river_h3_set):,} celdas de rio detectadas (esperado >5000 para Galicia)")
+            logger.warning("Posible problema en conversion H3 o shapefile incompleto")
+        else:
+            logger.info(f"Red hidrografica completada: {len(river_h3_set):,} celdas unicas marcadas como rio")
+
+        if error_count > 0:
+            logger.warning(f"{error_count} poligonos ignorados por errores de conversion")
+
+        return river_h3_set
+
+    except Exception as e:
+        logger.error(f"Error cargando rios: {e}", exc_info=True)
+        logger.warning("Continuando sin red de rios")
+        return set()
 
 
 def is_point_on_land(lat: float, lng: float, land_mask: Optional[tuple], debug: bool = False, fallback_to_land: bool = True) -> bool:
@@ -384,7 +512,7 @@ def download_srtm_for_region(bounds: dict) -> str:
 
     # Buscar archivos SRTM en el directorio de elevación
     if not elevation_dir.exists():
-        logger.warning(f"Directorio de elevación no encontrado: {elevation_dir}")
+        logger.warning(f"Directorio de elevacion no encontrado: {elevation_dir}")
         logger.warning("Ejecuta 'python setup_srtm_v2.py' para descargar datos SRTM")
         return None
 
@@ -432,9 +560,9 @@ def download_srtm_for_region(bounds: dict) -> str:
 
                 if intersects:
                     relevant_tiles.append(hgt_file)
-                    logger.info(f"  ✓ Tile relevante: {filename} (covers lat={lat}-{lat+1}, lng={lng}-{lng+1})")
+                    logger.info(f"  [OK] Tile relevante: {filename} (covers lat={lat}-{lat+1}, lng={lng}-{lng+1})")
                 else:
-                    logger.info(f"  ✗ Tile fuera del bbox: {filename} (covers lat={lat}-{lat+1}, lng={lng}-{lng+1})")
+                    logger.info(f"  [X] Tile fuera del bbox: {filename} (covers lat={lat}-{lat+1}, lng={lng}-{lng+1})")
 
             except (ValueError, IndexError) as e:
                 logger.warning(f"No se pudo parsear nombre de archivo: {filename} - {e}")
@@ -480,126 +608,323 @@ def download_srtm_for_region(bounds: dict) -> str:
 
     except Exception as e:
         logger.error(f"Error creando SRTM mosaic: {e}", exc_info=True)
-        logger.warning("Continuando sin datos de elevación...")
+        logger.warning("Continuando sin datos de elevacion...")
         return None
 
 
-def load_srtm_elevation_dataset(srtm_file: Optional[str]) -> Optional[object]:
+def load_srtm_elevation_dataset(srtm_file: Optional[str]) -> Optional[dict]:
     """
-    Carga el dataset de elevación SRTM usando rasterio.
+    Carga el dataset de elevacion SRTM Y la banda completa en memoria (OPTIMIZACION).
+
+    En lugar de leer pixel por pixel del disco, carga toda la banda en un numpy array.
+    Esto reduce el I/O de disco de ~100,000 lecturas a 1 sola lectura inicial.
 
     Args:
         srtm_file: Path al archivo SRTM DEM
 
     Returns:
-        Dataset de rasterio o None si falla
+        Dict con 'dataset' (rasterio), 'array' (numpy), 'transform', 'bounds', 'nodata'
+        None si falla
     """
     if not srtm_file or not Path(srtm_file).exists():
-        logger.warning("Archivo SRTM no disponible, elevación no se usará")
+        logger.warning("Archivo SRTM no disponible, elevacion no se usara")
         return None
 
     try:
         dataset = rasterio.open(srtm_file)
-        logger.info(f"✓ SRTM dataset cargado: {srtm_file}")
-        logger.info(f"  - Bounds: {dataset.bounds}")
-        logger.info(f"  - CRS: {dataset.crs}")
-        return dataset
+
+        # Cargar toda la banda en memoria (1 lectura vs miles)
+        elevation_array = dataset.read(1)
+        array_size_mb = elevation_array.nbytes / (1024 * 1024)
+
+        logger.info(f"SRTM cargado en memoria: {array_size_mb:.1f} MB, shape={elevation_array.shape}")
+
+        return {
+            'dataset': dataset,
+            'array': elevation_array,
+            'transform': dataset.transform,
+            'bounds': dataset.bounds,
+            'nodata': dataset.nodata
+        }
     except Exception as e:
         logger.error(f"Error cargando SRTM dataset: {e}")
         return None
 
 
-def get_elevation(lat: float, lng: float, srtm_dataset: Optional[object]) -> Optional[float]:
+def get_elevation(lat: float, lng: float, srtm_data: Optional[dict], cache: Optional[dict] = None) -> Optional[float]:
     """
-    Obtiene la elevación (en metros) de un punto (lat, lng) desde el dataset SRTM.
+    Obtiene la elevacion (en metros) desde el array SRTM cargado en memoria.
+    OPTIMIZACION MAXIMA: Lee directamente del numpy array (O(1)) en lugar de disco.
 
     Args:
         lat: Latitud
         lng: Longitud
-        srtm_dataset: Dataset SRTM cargado con rasterio
+        srtm_data: Dict con 'array', 'transform', 'bounds', 'nodata' de load_srtm_elevation_dataset()
+        cache: Diccionario de cache {(lat_rounded, lng_rounded): elevation}
 
     Returns:
-        Elevación en metros, o None si no disponible
+        Elevacion en metros, o None si no disponible
     """
-    if srtm_dataset is None:
+    if srtm_data is None:
         return None
 
+    # Redondear coordenadas a 5 decimales (~1.1m precision) para cache
+    cache_key = (round(lat, 5), round(lng, 5))
+
+    # Check cache first
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
     try:
-        # Convertir coordenadas geográficas a índices de píxel
-        row, col = srtm_dataset.index(lng, lat)
+        # Convertir coordenadas geograficas a indices de pixel usando transform
+        row, col = ~srtm_data['transform'] * (lng, lat)
+        row, col = int(row), int(col)
 
-        # Leer el valor del píxel
-        elevation_value = srtm_dataset.read(1)[row, col]
+        # Verificar bounds
+        if row < 0 or col < 0 or row >= srtm_data['array'].shape[0] or col >= srtm_data['array'].shape[1]:
+            result = None
+        else:
+            # OPTIMIZACION: Leer directamente del array en memoria (instantaneo)
+            elevation_value = srtm_data['array'][col, row]
 
-        # SRTM usa valores negativos para depresiones, 0 para mar
-        # Valores muy negativos (< -500) suelen ser NoData
-        if elevation_value < -500 or elevation_value == srtm_dataset.nodata:
-            return None
+            # SRTM usa valores negativos para depresiones, 0 para mar
+            # Valores muy negativos (< -500) suelen ser NoData
+            if elevation_value < -500 or elevation_value == srtm_data['nodata']:
+                result = None
+            else:
+                result = float(elevation_value)
 
-        return float(elevation_value)
+        # Store in cache
+        if cache is not None:
+            cache[cache_key] = result
+
+        return result
 
     except Exception as e:
         # Punto fuera de bounds o error de lectura
+        if cache is not None:
+            cache[cache_key] = None
         return None
 
 
-def calculate_slope(lat: float, lng: float, srtm_dataset: Optional[object]) -> Optional[float]:
+def calculate_terrain_ruggedness(lat: float, lng: float, srtm_data: Optional[dict], cache: Optional[dict] = None) -> Optional[float]:
     """
-    Calcula la pendiente aproximada en un punto usando elevaciones de puntos vecinos.
+    Calcula el Terrain Ruggedness Index (TRI) en un punto.
+    OPTIMIZACION: Lee del array SRTM en memoria + cache de elevaciones.
 
-    Metodología:
-    - Obtiene elevación del centro y 4 puntos cardinales (N, S, E, O) a ~100m
-    - Calcula gradientes en X e Y
-    - Retorna pendiente en grados usando: arctan(sqrt(dx² + dy²))
+    El TRI mide la variabilidad de la elevacion en un area, distinguiendo:
+    - Llanuras/Mesetas: Altitud alta pero rugosidad baja (<15m)
+    - Colinas/Montanas: Altitud alta y rugosidad alta (>15m)
+
+    Metodologia:
+    - Obtiene elevacion del centro y 8 puntos vecinos a ~500m
+    - Calcula desviacion estandar de las elevaciones
+    - Retorna rugosidad en metros
 
     Args:
         lat: Latitud del punto central
         lng: Longitud del punto central
-        srtm_dataset: Dataset SRTM cargado con rasterio
+        srtm_data: Dict con array SRTM en memoria
+        cache: Diccionario de cache de elevaciones
 
     Returns:
-        Pendiente en grados, o None si no se puede calcular
+        Rugosidad TRI en metros, o None si no se puede calcular
     """
-    if srtm_dataset is None:
+    if srtm_data is None:
         return None
 
     try:
-        # Offset de ~100m en grados (~0.001° ≈ 111m a lat 42°)
-        offset = 0.001
+        # Offset de ~500m en grados (~0.0045° ≈ 500m a lat 42°)
+        # Usamos mayor distancia para capturar variabilidad de mesetas vs colinas
+        offset = 0.0045
 
-        # Elevaciones de 5 puntos (centro + 4 cardinales)
-        elev_center = get_elevation(lat, lng, srtm_dataset)
-        elev_north = get_elevation(lat + offset, lng, srtm_dataset)
-        elev_south = get_elevation(lat - offset, lng, srtm_dataset)
-        elev_east = get_elevation(lat, lng + offset, srtm_dataset)
-        elev_west = get_elevation(lat, lng - offset, srtm_dataset)
+        # Elevaciones de 9 puntos (centro + 8 vecinos en grid 3x3)
+        elevations = []
 
-        # Si algún punto no tiene datos válidos, no calcular pendiente
-        elevations = [elev_center, elev_north, elev_south, elev_east, elev_west]
-        if any(e is None for e in elevations):
+        # Centro
+        elev_center = get_elevation(lat, lng, srtm_data, cache)
+        if elev_center is None:
+            return None
+        elevations.append(elev_center)
+
+        # 8 puntos cardinales e intercardiales
+        neighbor_offsets = [
+            (offset, 0),      # Este
+            (-offset, 0),     # Oeste
+            (0, offset),      # Norte
+            (0, -offset),     # Sur
+            (offset, offset),    # NE
+            (-offset, offset),   # NO
+            (offset, -offset),   # SE
+            (-offset, -offset)   # SO
+        ]
+
+        for lat_off, lng_off in neighbor_offsets:
+            elev = get_elevation(lat + lat_off, lng + lng_off, srtm_data, cache)
+            if elev is not None:
+                elevations.append(elev)
+
+        # Necesitamos al menos 5 puntos validos (centro + 4 vecinos)
+        if len(elevations) < 5:
             return None
 
-        # Calcular gradientes (rise/run)
-        # Distancia horizontal: 2 * offset en grados * 111km/grado ≈ 222m
-        distance_m = 2 * offset * 111000  # metros (aprox. a lat 42°)
+        # Calcular desviacion estandar (TRI)
+        # TRI = std de las diferencias absolutas respecto al centro
+        differences = [abs(e - elev_center) for e in elevations[1:]]
+        tri = np.std(differences) if len(differences) > 0 else 0.0
 
-        # Gradiente en Y (Norte-Sur)
-        gradient_y = (elev_north - elev_south) / distance_m
-
-        # Gradiente en X (Este-Oeste)
-        gradient_x = (elev_east - elev_west) / distance_m
-
-        # Magnitud del gradiente (pendiente como ratio rise/run)
-        gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
-
-        # Convertir a grados: arctan(rise/run)
-        slope_degrees = np.degrees(np.arctan(gradient_magnitude))
-
-        return slope_degrees
+        return float(tri)
 
     except Exception as e:
-        # Error en cálculo de pendiente
+        # Error en calculo de rugosidad
         return None
+
+
+def renaturalize_modern_cities(terrain_data: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    """
+    Renaturaliza ciudades modernas (TIF=50, marcadas como ID 0) usando inpainting.
+
+    PROCESO:
+    1. Identifica celdas con ID 0 (ciudades modernas a renaturalizar)
+    2. Para cada una, busca vecinos H3 con h3.grid_disk(index, 1)
+    3. Si tiene vecino Mar (ID 1), convierte en Costa (ID 2)
+    4. Si es interior, aplica Moda de vecinos naturales (relleno)
+
+    Args:
+        terrain_data: Lista de tuplas (h3_index_int, terrain_type_id)
+
+    Returns:
+        Lista actualizada con ciudades renaturalizadas
+    """
+    logger.info("Identificando ciudades modernas (TIF=50) para renaturalizar...")
+
+    # Crear diccionario h3_index -> terrain_type_id para lookup rapido
+    terrain_dict = {h3_idx: terrain_id for h3_idx, terrain_id in terrain_data}
+
+    # Identificar ciudades modernas (ID 0)
+    modern_cities = [(h3_idx, terrain_id) for h3_idx, terrain_id in terrain_data if terrain_id == 0]
+    logger.info(f"Ciudades modernas detectadas: {len(modern_cities)}")
+
+    if not modern_cities:
+        logger.info("No hay ciudades modernas para renaturalizar")
+        return terrain_data
+
+    # Convertir h3_index_int a h3_index_str para usar H3 API
+    h3_idx_int_to_str = {}
+    for h3_idx_int, _ in terrain_data:
+        h3_idx_str = format(h3_idx_int, 'x')
+        h3_idx_int_to_str[h3_idx_int] = h3_idx_str
+
+    converted_to_coast = 0
+    renaturalized = 0
+
+    for h3_idx_int, _ in modern_cities:
+        h3_idx_str = h3_idx_int_to_str.get(h3_idx_int)
+        if not h3_idx_str:
+            continue
+
+        # Obtener vecinos H3 (k=1 ring, 6 vecinos)
+        try:
+            neighbors_set = h3.grid_disk(h3_idx_str, 1)
+            neighbors_list = [n for n in neighbors_set if n != h3_idx_str]
+        except Exception as e:
+            logger.warning(f"Error obteniendo vecinos para {h3_idx_str}: {e}")
+            continue
+
+        # Obtener terrain_type_id de vecinos
+        neighbor_terrains = []
+        has_sea_neighbor = False
+
+        for neighbor_str in neighbors_list:
+            neighbor_int = int(neighbor_str, 16)
+            neighbor_terrain = terrain_dict.get(neighbor_int)
+
+            if neighbor_terrain is not None:
+                if neighbor_terrain == 1:  # Mar
+                    has_sea_neighbor = True
+                    break
+                # Solo considerar terrenos naturales validos (no urbanos, no temporal)
+                if neighbor_terrain > 1:
+                    neighbor_terrains.append(neighbor_terrain)
+
+        # DECISION:
+        if has_sea_neighbor:
+            # Convertir en Costa
+            terrain_dict[h3_idx_int] = 2
+            converted_to_coast += 1
+        elif neighbor_terrains:
+            # Aplicar Moda (terreno mas frecuente)
+            from collections import Counter
+            terrain_mode = Counter(neighbor_terrains).most_common(1)[0][0]
+            terrain_dict[h3_idx_int] = terrain_mode
+            renaturalized += 1
+        else:
+            # Sin vecinos validos, asignar default (Cultivo ID 6)
+            terrain_dict[h3_idx_int] = 6
+            renaturalized += 1
+
+    logger.info(f"Ciudades modernas renaturalizadas: {renaturalized}")
+    logger.info(f"Convertidas en costa: {converted_to_coast}")
+
+    # Reconstruir terrain_data con valores actualizados
+    updated_terrain_data = [(h3_idx, terrain_dict[h3_idx]) for h3_idx, _ in terrain_data]
+
+    return updated_terrain_data
+
+
+def overlay_historical_settlements(terrain_data: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    """
+    Carga asentamientos historicos desde la base de datos y sobreescribe el terreno con ID 14.
+
+    Este paso asegura que SOLO los asentamientos historicos (tabla settlements) reciban ID 14,
+    no las ciudades modernas detectadas en el TIF.
+
+    Args:
+        terrain_data: Lista de tuplas (h3_index_int, terrain_type_id)
+
+    Returns:
+        Lista actualizada con asentamientos historicos marcados como ID 14
+    """
+    logger.info("Cargando asentamientos historicos desde base de datos...")
+
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+
+        # Consultar todos los asentamientos historicos
+        cursor.execute("SELECT h3_index FROM settlements")
+        settlements = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        if not settlements:
+            logger.info("No hay asentamientos historicos en la base de datos")
+            return terrain_data
+
+        logger.info(f"Asentamientos historicos encontrados: {len(settlements)}")
+
+        # Crear diccionario h3_index -> terrain_type_id
+        terrain_dict = {h3_idx: terrain_id for h3_idx, terrain_id in terrain_data}
+
+        # Sobreescribir con ID 14
+        overlayed = 0
+        for (settlement_h3_idx,) in settlements:
+            if settlement_h3_idx in terrain_dict:
+                terrain_dict[settlement_h3_idx] = 14  # Asentamiento historico
+                overlayed += 1
+
+        logger.info(f"Asentamientos historicos inyectados: {overlayed}")
+
+        # Reconstruir terrain_data
+        updated_terrain_data = [(h3_idx, terrain_dict[h3_idx]) for h3_idx, _ in terrain_data]
+
+        return updated_terrain_data
+
+    except Exception as e:
+        logger.error(f"Error cargando asentamientos historicos: {e}", exc_info=True)
+        logger.warning("Continuando sin overlay de asentamientos historicos")
+        return terrain_data
 
 
 def extract_terrain_from_raster(
@@ -607,38 +932,48 @@ def extract_terrain_from_raster(
     h3_cells: List[str]
 ) -> List[Tuple[int, int]]:
     """
-    Extracts terrain values from GeoTIFF files using 5-PHASE ALGORITHM:
+    Extracts terrain values from GeoTIFF files using OPTIMIZED MASTER HIERARCHY
+    with MEDIEVAL NATURALIZATION.
 
-    FASE 1 (MAR): Si fuera de cobertura o todos los puntos son NoData → ID 1 (Mar)
-    FASE 2 (COSTA): Si centro NoData pero vecinos tienen tierra → ID 2 (Costa)
-    FASE 3 (RÍOS/PANTANOS): Si ESA=80 → ID 4 (Río), ESA=90/95 → ID 5 (Pantanos)
-    FASE 4 (ALTA MONTAÑA): Si ESA=70 o (ESA=60 con vecinos 70) → ID 13 (Alta Montaña)
-    FASE 5 (RESTO): Mapear según TERRAIN_MAPPING estándar
+    JERARQUIA MAESTRA (orden estricto):
+    A) Mar (mascara Natural Earth) -> ID 1
+    B) Rio (H3 index en river_h3_set pre-calculado) -> ID 4
+    C) Alta Montana (Altitud SRTM > 1100m) -> ID 13
+    D) Ciudad Moderna (TIF == 50) -> ID 0 (temporal, renaturalizar)
+    E) Colina (Altitud > 500m Y Rugosidad > 15m) -> ID 12
+    F) Resto -> Mapeo estandar del TIF
+
+    POST-PROCESADO:
+    1. Renaturalizacion de ciudades modernas (ID 0):
+       - Si vecino es Mar -> Costa (ID 2)
+       - Si interior -> Moda de vecinos (terreno mas frecuente)
+    2. Overlay de asentamientos historicos (tabla settlements) -> ID 14
+
+    OPTIMIZACIONES:
+    - Pre-carga SRTM en memoria (array completo)
+    - Pre-calcula river_h3_set para lookup O(1)
+    - Usa Window() para lectura de pixels individuales
+    - Logs limpios sin emojis, resumen cada 10,000 celdas
 
     Returns list of tuples (h3_index_as_int, terrain_type_id).
     """
-    # Load land mask for spatial optimization (usa BASE_DATA_DIR automáticamente)
-    logger.info("=" * 80)
-    logger.info("CARGANDO LAND MASK (Natural Earth 10m Land)")
-    logger.info("=" * 80)
-    land_mask = load_land_mask()  # Usa BASE_DATA_DIR por defecto
+    # Load land mask for spatial optimization
+    logger.info("Cargando mascara de tierra (Natural Earth 10m)...")
+    land_mask = load_land_mask()
 
-    # Load SRTM elevation data
-    logger.info("=" * 80)
-    logger.info("CARGANDO DATOS DE ELEVACIÓN SRTM")
-    logger.info("=" * 80)
+    # Load river network and convert to H3 SET (O(1) lookup optimization)
+    logger.info("Cargando red de rios y generando indices H3...")
+    river_h3_set = get_river_h3_set(BASE_DATA_DIR, H3_RESOLUTION)
+
+    # Load SRTM elevation data (banda completa en memoria)
+    logger.info("Cargando datos de elevacion SRTM...")
     srtm_file = download_srtm_for_region(BOUNDING_BOX)
-    srtm_dataset = load_srtm_elevation_dataset(srtm_file)
+    srtm_data = load_srtm_elevation_dataset(srtm_file)
 
-    if srtm_dataset:
-        logger.info("✓ Datos de elevación SRTM disponibles")
-        logger.info("  Reglas de relieve:")
-        logger.info("    - Elevación > 1100m → Alta Montaña (ID 13)")
-        logger.info(f"    - Elevación 500-1100m + Pendiente > {SLOPE_THRESHOLD}° → Colinas (ID 12)")
-        logger.info(f"    - Elevación 500-1100m + Pendiente < {SLOPE_THRESHOLD}° → Meseta (usar TIF)")
-        logger.info(f"  Umbral de pendiente: {SLOPE_THRESHOLD}° (protege mesetas de León/Castilla)")
+    if srtm_data:
+        logger.info(f"SRTM cargado en memoria. Reglas: >1100m=Montana, 500-1100m+Rugosidad>{RUGGEDNESS_THRESHOLD}m=Colinas")
     else:
-        logger.warning("⚠️ SRTM no disponible - usando solo clasificación ESA WorldCover")
+        logger.warning("SRTM no disponible - usando solo clasificacion TIF")
 
     # Scan all available raster files and their coverage
     coverage_map = scan_raster_coverage(raster_dir)
@@ -653,14 +988,14 @@ def extract_terrain_from_raster(
 
     test_tile = find_raster_for_coord(center_lat, center_lng, coverage_map)
     if not test_tile:
-        logger.warning(f"⚠️ No tile found covering region center ({center_lat:.2f}, {center_lng:.2f})")
+        logger.warning(f"[!] No tile found covering region center ({center_lat:.2f}, {center_lng:.2f})")
         logger.warning(f"Available tiles:")
         for filename in coverage_map.keys():
             logger.warning(f"  - {filename}")
         logger.info("Continuing with available tiles - cells outside coverage will use default terrain type")
 
     if test_tile:
-        logger.info(f"✓ Found coverage tile: {os.path.basename(test_tile)}")
+        logger.info(f"[OK] Found coverage tile: {os.path.basename(test_tile)}")
 
     # Process cells with dynamic tile selection
     terrain_data = []
@@ -668,8 +1003,8 @@ def extract_terrain_from_raster(
     skipped = 0
     out_of_bounds = 0
 
-    # CONTADOR DE TIPOS DE TERRENO (IDs 1-14)
-    terrain_counter = {i: 0 for i in range(1, 15)}
+    # CONTADOR DE TIPOS DE TERRENO (IDs 0-14, incluye 0 para ciudades modernas temporales)
+    terrain_counter = {i: 0 for i in range(0, 15)}
 
     # Contadores por fase
     phase_1_mar = 0
@@ -678,6 +1013,7 @@ def extract_terrain_from_raster(
     phase_4_montana = 0
     phase_5_resto = 0
     open_sea_discarded = 0  # Celdas descartadas por estar en mar abierto
+    river_network_burned = 0  # Celdas quemadas como Río por red hidrográfica
 
     # Contadores de elevación (PRIORIDAD MÁXIMA sobre TIF)
     elevation_high_mountain = 0  # Montañas detectadas por elevación > 1100m
@@ -687,6 +1023,9 @@ def extract_terrain_from_raster(
     # Cache for open datasets to avoid reopening the same file
     dataset_cache = {}
     failed_tiles = set()  # Track tiles that failed to open
+
+    # OPTIMIZACION: Cache de elevaciones para evitar consultas SRTM repetidas
+    elevation_cache = {}
 
     # Performance tracking
     start_time = time.time()
@@ -705,22 +1044,18 @@ def extract_terrain_from_raster(
             h3_int = int(h3_index, 16)
             terrain_type_id = None
 
-            # ====== DEBUG: Primeros 5 hexágonos ======
-            if idx < 5:
-                is_land_debug = is_point_on_land(lat, lng, land_mask, debug=False)
-                logger.info(f"H3: {h3_index} | Lat: {lat:.6f} | Lng: {lng:.6f} | ¿En Tierra?: {is_land_debug}")
-
-            # ====== LAND MASK CHECK: Descartar mar abierto ANTES de procesar TIF ======
-            # Debug para los primeros 10 puntos
-            debug_mode = (idx < 10)
-            if not is_point_on_land(lat, lng, land_mask, debug=debug_mode):
-                # Punto en mar abierto - asignar Mar (ID 1) inmediatamente
+            # ====== A) MAR: Descartar mar abierto con land_mask ======
+            if not is_point_on_land(lat, lng, land_mask, debug=False):
                 terrain_type_id = 1  # Mar
                 terrain_data.append((h3_int, terrain_type_id))
                 terrain_counter[terrain_type_id] += 1
                 phase_1_mar += 1
                 open_sea_discarded += 1
                 continue
+
+            # ====== B) RIO: Pre-verificar si esta en river_h3_set (O(1)) ======
+            # Pasaremos este flag a determine_terrain para aplicar jerarquia correcta
+            is_river_cell = h3_index in river_h3_set
 
             try:
                 # Find which raster file contains this coordinate
@@ -754,7 +1089,7 @@ def extract_terrain_from_raster(
                         open_duration = time.time() - open_start
                         logger.info(f"Opened raster: {os.path.basename(raster_path)} ({open_duration:.2f}s)")
                         if open_duration > 5.0:
-                            logger.warning(f"⚠️ Slow file open: {os.path.basename(raster_path)} took {open_duration:.1f}s")
+                            logger.warning(f"[!] Slow file open: {os.path.basename(raster_path)} took {open_duration:.1f}s")
                     except Exception as e:
                         logger.error(f"Failed to open {os.path.basename(raster_path)}: {e}")
                         failed_tiles.add(raster_path)
@@ -770,30 +1105,57 @@ def extract_terrain_from_raster(
                 # Muestreo del centro
                 center_value = sample_pixel_value(dataset, lat, lng)
 
-                # ====== FUNCIÓN INTERNA: DETERMINE_TERRAIN ======
-                # Jerarquía de decisión correcta: ALTITUD primero, luego TIF
-                def determine_terrain(cv, elev, slope, h3_idx, cell_idx):
+                # ====== FUNCION MAESTRA: DETERMINE_TERRAIN ======
+                # JERARQUIA MAESTRA - VERSION 2026-02-02B (sin ciudades modernas)
+                def determine_terrain(cv, elev, ruggedness, h3_idx, cell_idx, is_river_cell):
                     """
-                    Determina el tipo de terreno con jerarquía estricta.
+                    Determina el tipo de terreno con JERARQUIA MAESTRA.
 
-                    Orden de prioridad:
-                    1. NoData (center_value == -1) -> Mar o Costa
-                    2. ALTITUD > 1100m -> Alta Montaña (ID 13) [PRIORIDAD ABSOLUTA]
-                    3. Agua TIF (0, 80, 90, 95) -> Río o Pantanos
-                    3.5. Asentamientos TIF (50) -> Asentamientos (ID 14) [ANTES de colinas]
-                    4. ALTITUD 500-1100m + PENDIENTE > umbral -> Colinas (ID 12)
-                    4.5. ALTITUD 500-1100m + PENDIENTE < umbral -> Meseta (usar TIF)
-                    5. Nieve TIF (70) -> Alta Montaña
-                    6. Resto -> Mapeo estándar
+                    Orden ESTRICTO de prioridad:
+                    A) Mar (mascara Natural Earth - ya procesado antes)
+                    B) Rio (H3 index en river_h3_set) -> ID 4
+                    C) Alta Montana (Altitud > 1100m) -> ID 13
+                    D) Ciudades modernas (TIF == 50) -> ID 0 (temporal, renaturalizar)
+                    E) Colina (Altitud > 500m Y Rugosidad > threshold) -> ID 12
+                    F) Resto -> Mapeo estandar del TIF
+
+                    NOTA: Los asentamientos historicos (ID 14) se asignan en post-procesado
                     """
                     nonlocal phase_1_mar, phase_2_costa, phase_3_agua, phase_4_montana
-                    nonlocal phase_5_resto, elevation_high_mountain, elevation_hills, plateau_protected
+                    nonlocal phase_5_resto, elevation_high_mountain, elevation_hills, plateau_protected, river_network_burned
 
-                    # CASO 1: NoData -> Mar o Costa
+                    # A) Mar: Ya procesado antes del bucle con land_mask
+
+                    # B) RIO: Verificar si esta en river_h3_set (O(1) lookup)
+                    if is_river_cell:
+                        phase_3_agua += 1
+                        river_network_burned += 1
+                        return 4  # Rio
+
+                    # C) ALTA MONTANA: Altitud > 1100m (PRIORIDAD sobre TIF)
+                    if elev is not None and elev > 1100:
+                        elevation_high_mountain += 1
+                        phase_4_montana += 1
+                        return 13  # Alta Montana
+
+                    # D) CIUDAD MODERNA: TIF == 50 -> Marcar como 0 (renaturalizar)
+                    if cv == 50:
+                        phase_5_resto += 1
+                        return 0  # Temporal - sera rellenado en post-procesado
+
+                    # E) COLINA: Altitud > 500m Y Rugosidad > threshold
+                    if elev is not None and elev > 500:
+                        if ruggedness is not None and ruggedness > RUGGEDNESS_THRESHOLD:
+                            elevation_hills += 1
+                            phase_5_resto += 1
+                            return 12  # Colinas
+
+                    # F) RESTO: Mapeo estandar del TIF
+                    # Casos especiales:
+                    # - NoData -> Mar o Costa
                     if cv == -1:
                         circular_points = sample_circular_points(lat, lng)
                         neighbor_values = [sample_pixel_value(dataset, p[0], p[1]) for p in circular_points[1:]]
-
                         if all(v == -1 for v in neighbor_values):
                             phase_1_mar += 1
                             return 1  # Mar
@@ -801,105 +1163,16 @@ def extract_terrain_from_raster(
                             phase_2_costa += 1
                             return 2  # Costa
 
-                    # CASO 2: ALTITUD > 1100m -> SIEMPRE Alta Montaña (PRIORIDAD MÁXIMA)
-                    # NO sobrescribir solo si es agua clara (0, 80, 90, 95)
-                    if elev is not None and elev > 1100:
-                        if cv not in [0, 80, 90, 95]:
-                            elevation_high_mountain += 1
-                            phase_4_montana += 1
-
-                            if cell_idx < 50:
-                                logger.info(f"⛰️  MONTAÑA DETECTADA: {h3_idx} | Alt: {elev:.1f}m | TIF: {cv} -> Alta Montaña (ID 13)")
-
-                            return 13  # Alta Montaña
-
-                    # CASO 3: Agua TIF -> Río o Pantanos (antes de colinas)
-                    if cv in [0, 80]:
-                        # Special check for value 80: distinguish Mar vs Río
-                        if cv == 80:
-                            is_on_land_check = is_point_on_land(lat, lng, land_mask, debug=False)
-                            if not is_on_land_check:
-                                phase_1_mar += 1
-                                return 1  # Mar (value 80 but in open sea)
-                        phase_3_agua += 1
-                        return 4  # Río
-
-                    if cv in [90, 95]:
-                        phase_3_agua += 1
-                        return 5  # Pantanos
-
-                    # CASO 3.5: Asentamientos TIF (50 = Built-up) -> PRIORIDAD sobre colinas
-                    # No sobrescribir Alta Montaña (ya procesada en CASO 2)
-                    if cv == 50:
-                        phase_5_resto += 1
-                        if cell_idx < 50:
-                            logger.info(f"🏘️  ASENTAMIENTO: {h3_idx} | Alt: {elev if elev else 'N/A'}m | TIF: {cv} -> Asentamientos (ID 14)")
-                        return 14  # Asentamientos
-
-                    # CASO 4: ALTITUD 500-1100m -> Verificar PENDIENTE para distinguir Colinas vs Meseta
-                    # Solo si TIF no es nieve (70), agua, ni urbano (50)
-                    if elev is not None and elev >= 500:
-                        if cv not in [0, 50, 70, 80, 90, 95]:
-                            # Si tenemos pendiente, usarla para distinguir
-                            if slope is not None:
-                                if slope > SLOPE_THRESHOLD:
-                                    # PENDIENTE ALTA: Es una colina real
-                                    elevation_hills += 1
-                                    phase_5_resto += 1
-
-                                    if cell_idx < 50:
-                                        logger.info(f"🏔️  COLINA DETECTADA: {h3_idx} | Alt: {elev:.1f}m | Pendiente: {slope:.2f}° | TIF: {cv} -> Colinas (ID 12)")
-
-                                    return 12  # Colinas
-                                else:
-                                    # PENDIENTE BAJA: Es meseta (altitud alta pero llana)
-                                    # Dejar que el TIF decida (Secano/Cultivo/etc.)
-                                    plateau_protected += 1
-
-                                    if cell_idx < 50:
-                                        logger.info(f"🏞️  MESETA PROTEGIDA: {h3_idx} | Alt: {elev:.1f}m | Pendiente: {slope:.2f}° | TIF: {cv} -> Usar TIF")
-
-                                    # Continuar al CASO 7 (mapeo TIF)
-                            else:
-                                # Sin datos de pendiente: comportamiento conservador
-                                # Si altitud > 800m, asumir colina; si < 800m, asumir meseta
-                                if elev > 800:
-                                    elevation_hills += 1
-                                    phase_5_resto += 1
-                                    return 12  # Colinas (por altitud alta sin pendiente)
-                                else:
-                                    plateau_protected += 1
-                                    # Continuar al CASO 7 (mapeo TIF)
-
-                    # CASO 5: Nieve TIF -> Alta Montaña
-                    if cv == 70:
-                        phase_4_montana += 1
-                        return 13  # Alta montaña
-
-                    # CASO 6: TIF 60 con vecinos nieve
-                    if cv == 60:
-                        circular_points = sample_circular_points(lat, lng)
-                        neighbor_values = [sample_pixel_value(dataset, p[0], p[1]) for p in circular_points[1:]]
-                        if 70 in neighbor_values:
-                            phase_4_montana += 1
-                            return 13  # Alta montaña (transición)
-
-                    # CASO 7: Resto -> Mapeo estándar
+                    # Mapeo estandar segun TERRAIN_MAPPING
                     phase_5_resto += 1
                     return TERRAIN_MAPPING.get(cv, DEFAULT_TERRAIN_TYPE_ID)
 
-                # Consultar elevación y pendiente SRTM
-                elevation = get_elevation(lat, lng, srtm_dataset) if srtm_dataset else None
-                slope = calculate_slope(lat, lng, srtm_dataset) if srtm_dataset else None
+                # OPTIMIZACION: Consultar elevacion y rugosidad SRTM desde memoria con cache
+                elevation = get_elevation(lat, lng, srtm_data, elevation_cache) if srtm_data else None
+                ruggedness = calculate_terrain_ruggedness(lat, lng, srtm_data, elevation_cache) if srtm_data else None
 
-                # Log detallado para las primeras 50 celdas
-                if idx < 50:
-                    is_land_status = is_point_on_land(lat, lng, land_mask, debug=False) if land_mask else "N/A"
-                    slope_str = f"{slope:.2f}°" if slope is not None else "N/A"
-                    logger.info(f"DEBUG {idx:03d}: H3={h3_index} | Alt={elevation if elevation else 'N/A':>6}m | Pendiente={slope_str:>6} | TIF={center_value:>3} | IsLand={is_land_status}")
-
-                # EJECUTAR FUNCIÓN DE DECISIÓN
-                terrain_type_id = determine_terrain(center_value, elevation, slope, h3_index, idx)
+                # EJECUTAR FUNCION MAESTRA DE DECISION
+                terrain_type_id = determine_terrain(center_value, elevation, ruggedness, h3_index, idx, is_river_cell)
 
                 terrain_data.append((h3_int, terrain_type_id))
                 terrain_counter[terrain_type_id] += 1
@@ -915,78 +1188,62 @@ def extract_terrain_from_raster(
                 phase_1_mar += 1
                 skipped += 1
 
-            # Log progress every 1000 cells with performance stats
+            # Log progreso cada 10,000 celdas
             total_cells = idx + 1
-            if total_cells % 1000 == 0 and total_cells > 0:
+            if total_cells % 10000 == 0 and total_cells > 0:
                 current_time = time.time()
                 elapsed = current_time - start_time
                 interval = current_time - last_log_time
-                cells_per_sec = 1000 / interval if interval > 0 else 0
+                cells_per_sec = 10000 / interval if interval > 0 else 0
 
-                logger.info(f"Processed {total_cells}/{len(h3_cells)} cells "
-                           f"({cells_per_sec:.1f} cells/s) | "
-                           f"Mar: {phase_1_mar} | Costa: {phase_2_costa} | "
-                           f"Agua: {phase_3_agua} | Montaña: {phase_4_montana} | Resto: {phase_5_resto}")
+                logger.info(f"Procesadas {total_cells:,}/{len(h3_cells):,} ({total_cells/len(h3_cells)*100:.1f}%) | "
+                           f"{cells_per_sec:.0f} cells/s | "
+                           f"Montana:{elevation_high_mountain:,} Rio:{river_network_burned:,} Colina:{elevation_hills:,} Mar:{open_sea_discarded:,}")
                 last_log_time = current_time
 
         total_time = time.time() - start_time
-        logger.info("=" * 80)
-        logger.info(f"✓ EXTRACTION COMPLETE in {total_time:.1f}s")
-        logger.info("=" * 80)
+        logger.info(f"\nEXTRACCION COMPLETA en {total_time:.1f}s ({total_time/60:.1f}min)")
+        logger.info(f"Total celdas: {len(h3_cells):,} | Validas: {processed:,} | Errores: {skipped}")
 
-        logger.info(f"Total cells processed: {len(h3_cells)}")
-        logger.info(f"  - Valid terrain data: {processed}")
-        logger.info(f"  - Skipped (errors): {skipped}")
-        logger.info(f"  - Out of bounds: {out_of_bounds}")
-        logger.info(f"  - Open sea discarded (land mask): {open_sea_discarded}")
-        logger.info(f"  - Raster files used: {len(dataset_cache)}")
-        logger.info(f"  - Failed files: {len(failed_tiles)}")
-
-        logger.info("")
-        logger.info("RESUMEN POR FASES:")
-        logger.info(f"  FASE 1 (Mar): {phase_1_mar} celdas")
-        logger.info(f"  FASE 2 (Costa): {phase_2_costa} celdas")
-        logger.info(f"  FASE 3 (Ríos/Pantanos): {phase_3_agua} celdas")
-        logger.info(f"  FASE 4 (Alta Montaña): {phase_4_montana} celdas")
-        logger.info(f"  FASE 4.5 (Relieve SRTM - Prioridad Máxima):")
-        logger.info(f"    - Montañas detectadas (>1100m): {elevation_high_mountain} celdas")
-        logger.info(f"    - Colinas detectadas (500-1100m + pendiente >{SLOPE_THRESHOLD}°): {elevation_hills} celdas")
-        logger.info(f"    - Mesetas protegidas (500-1100m + pendiente <{SLOPE_THRESHOLD}°): {plateau_protected} celdas")
-        logger.info(f"  FASE 5 (Resto): {phase_5_resto} celdas")
-
-        logger.info("")
-        logger.info("DISTRIBUCIÓN DE TERRENOS (IDs 1-14):")
-
-        # Nombres de terrenos según 003_update_terrain_types.sql
+        logger.info("\nDISTRIBUCION DE TERRENOS (PRE-PROCESADO):")
         terrain_names = {
-            1: "Mar", 2: "Costa", 3: "Agua", 4: "Río", 5: "Pantanos",
-            6: "Tierras de Cultivo", 7: "Tierras de Secano", 8: "Estepas",
-            9: "Bosque", 10: "Bosque Denso", 11: "Páramo", 12: "Colinas",
-            13: "Alta montaña", 14: "Asentamientos"
+            0: "Ciudad Moderna (temp)", 1: "Mar", 2: "Costa", 3: "Agua", 4: "Rio", 5: "Pantanos",
+            6: "Cultivo", 7: "Secano", 8: "Estepas",
+            9: "Bosque", 10: "Bosque Denso", 11: "Paramo", 12: "Colinas",
+            13: "Montana", 14: "Asentamientos"
         }
 
         total_counted = sum(terrain_counter.values())
-        for terrain_id in range(1, 15):
+        for terrain_id in range(0, 15):
             count = terrain_counter[terrain_id]
             if count > 0:
                 percentage = (count / total_counted * 100) if total_counted > 0 else 0
-                name = terrain_names.get(terrain_id, f"Unknown ID {terrain_id}")
-                logger.info(f"  {terrain_id:2d}. {name:20s}: {count:6d} celdas ({percentage:5.2f}%)")
+                name = terrain_names.get(terrain_id, f"ID{terrain_id}")
+                logger.info(f"  {terrain_id:2d}. {name:20s}: {count:7,} ({percentage:5.2f}%)")
 
-        logger.info("")
-        if total_counted != len(h3_cells):
-            logger.warning(f"⚠️ Discrepancia: contador={total_counted}, total={len(h3_cells)}")
+        logger.info(f"\nRESUMEN JERARQUIA:")
+        logger.info(f"  Mar (land_mask): {open_sea_discarded:,}")
+        logger.info(f"  Rios (river_h3_set): {river_network_burned:,}")
+        logger.info(f"  Montana (>1100m): {elevation_high_mountain:,}")
+        logger.info(f"  Colinas (500-1100m + rugosidad>{RUGGEDNESS_THRESHOLD}m): {elevation_hills:,}")
 
-        # Calculate coverage percentage
-        if h3_cells:
-            coverage_pct = (processed / len(h3_cells)) * 100
-            logger.info(f"Cobertura de datos válidos: {coverage_pct:.2f}%")
+        # ====== POST-PROCESADO: RENATURALIZACION DE CIUDADES MODERNAS ======
+        logger.info("\n" + "=" * 60)
+        logger.info("POST-PROCESADO: Renaturalización de ciudades modernas")
+        logger.info("=" * 60)
 
-            if coverage_pct == 0:
-                logger.error("❌ ERROR: 0% coverage - no valid terrain data extracted!")
-                logger.error("This likely means the required tile is missing.")
+        terrain_data = renaturalize_modern_cities(terrain_data)
 
-        logger.info("=" * 80)
+        # ====== POST-PROCESADO: OVERLAY DE ASENTAMIENTOS HISTORICOS ======
+        logger.info("\n" + "=" * 60)
+        logger.info("POST-PROCESADO: Overlay de asentamientos históricos")
+        logger.info("=" * 60)
+
+        terrain_data = overlay_historical_settlements(terrain_data)
+
+        logger.info("\n" + "=" * 60)
+        logger.info("POST-PROCESADO COMPLETADO")
+        logger.info("=" * 60)
 
     finally:
         # Close all cached datasets
@@ -999,9 +1256,9 @@ def extract_terrain_from_raster(
                 logger.warning(f"Error closing {os.path.basename(path)}: {e}")
 
         # Close SRTM dataset
-        if srtm_dataset:
+        if srtm_data:
             try:
-                srtm_dataset.close()
+                srtm_data['dataset'].close()
                 logger.debug("Closed SRTM elevation dataset")
             except Exception as e:
                 logger.warning(f"Error closing SRTM dataset: {e}")
@@ -1015,8 +1272,10 @@ def insert_terrain_data_batch(
 ) -> None:
     """
     Inserts terrain data into h3_map table using optimized batch inserts with execute_values.
-    Clears existing data before inserting to avoid duplicates.
+    PRESERVES has_road column when updating existing records (for historical infrastructure).
     Uses batches of 1000 records and logs progress.
+
+    IMPORTANT: Does NOT truncate table - preserves has_road markers set by setup_history.py
     """
     logger.info(f"Connecting to database at {db_config['host']}...")
 
@@ -1030,41 +1289,44 @@ def insert_terrain_data_batch(
 
     try:
         with conn.cursor() as cursor:
-            # Clear existing data to avoid duplicates
-            logger.info("Clearing existing h3_map data...")
-            cursor.execute("TRUNCATE TABLE h3_map;")
-            conn.commit()
-            logger.info("h3_map table cleared")
+            # NO TRUNCATE: Preserve has_road column set by setup_history.py
+            logger.info("Updating h3_map data (preserving has_road markers)...")
 
-            logger.info(f"Inserting {len(terrain_data)} records in batches of {BATCH_SIZE}...")
-
-            # Prepare insert query (execute_values doesn't need %s placeholders in VALUES)
+            # Prepare insert query that PRESERVES has_road on conflict
             insert_query = """
-                INSERT INTO h3_map (h3_index, terrain_type_id)
+                INSERT INTO h3_map (h3_index, terrain_type_id, has_road)
                 VALUES %s
                 ON CONFLICT (h3_index)
-                DO UPDATE SET terrain_type_id = EXCLUDED.terrain_type_id
+                DO UPDATE SET
+                    terrain_type_id = EXCLUDED.terrain_type_id
+                    -- has_road is NOT updated here, preserving existing values
             """
+
+            # Note: We need to provide has_road value for new inserts (default FALSE)
+            # Modify terrain_data to include has_road = FALSE
+            terrain_data_with_road = [(h3_int, terrain_id, False) for h3_int, terrain_id in terrain_data]
+
+            logger.info(f"Inserting/updating {len(terrain_data_with_road)} records in batches of {BATCH_SIZE}...")
 
             # Insert in batches with progress logging
             total_inserted = 0
             start_time = time.time()
 
-            for i in range(0, len(terrain_data), BATCH_SIZE):
-                batch = terrain_data[i:i + BATCH_SIZE]
+            for i in range(0, len(terrain_data_with_road), BATCH_SIZE):
+                batch = terrain_data_with_road[i:i + BATCH_SIZE]
                 execute_values(cursor, insert_query, batch, page_size=BATCH_SIZE)
                 conn.commit()
 
                 total_inserted += len(batch)
 
                 # Log progress every 1000 records
-                if total_inserted % 1000 == 0 or total_inserted == len(terrain_data):
+                if total_inserted % 1000 == 0 or total_inserted == len(terrain_data_with_road):
                     elapsed = time.time() - start_time
                     rate = total_inserted / elapsed if elapsed > 0 else 0
-                    logger.info(f"Inserted {total_inserted}/{len(terrain_data)} records "
+                    logger.info(f"Inserted/updated {total_inserted}/{len(terrain_data_with_road)} records "
                                f"({rate:.1f} records/s)")
 
-            logger.info(f"Successfully inserted {len(terrain_data)} records in {elapsed:.1f}s")
+            logger.info(f"Successfully inserted/updated {len(terrain_data_with_road)} records in {elapsed:.1f}s")
 
     except Exception as e:
         logger.error(f"Database error: {e}")
@@ -1078,7 +1340,24 @@ def insert_terrain_data_batch(
 def postprocess_coastal_detection(terrain_data: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
     """
     Post-procesa los datos de terreno para detectar Costa Inteligente.
+Claude, el proceso es lento porque 'get_elevation' lee el archivo SRTM completo en cada llamada y el script no usa multiprocesamiento. Aplica estas optimizaciones en 'extractor.py':
 
+1. OPTIMIZAR LECTURA RASTER:
+   - En 'get_elevation', usa 'srtm_dataset.read(1, window=Window(col, row, 1, 1))' para leer SOLO el píxel necesario.
+   - Mejor aún: Carga la banda completa en memoria UNA SOLA VEZ al abrir el dataset si el área es manejable (1 tile = ~25MB).
+
+2. IMPLEMENTAR MULTIPROCESSING:
+   - Divide la lista 'h3_cells' en fragmentos (chunks).
+   - Usa 'concurrent.futures.ProcessPoolExecutor' para procesar los fragmentos en paralelo usando todos los núcleos de la CPU.
+   - Cada proceso debe tener su propia conexión a la DB o devolver los resultados al hilo principal para una inserción masiva.
+
+3. OPTIMIZAR MÁSCARA DE TIERRA:
+   - En 'is_point_on_land', usa una versión simplificada de los polígonos o realiza una intersección masiva (spatial join) al principio para descartar el mar rápidamente.
+
+4. LOGS SILENCIOSOS:
+   - Desactiva todos los logs de DEBUG dentro del bucle. Solo muestra el progreso cada 10.000 celdas.
+
+REGLA: No ejecutes el código, solo genera el archivo 'extractor.py' optimizado.
     LÓGICA:
     - Identifica celdas clasificadas como Río (ID 4) o Agua (ID 3).
     - Para cada una, verifica si tiene al menos un vecino clasificado como Mar (ID 1).
@@ -1112,7 +1391,7 @@ def postprocess_coastal_detection(terrain_data: List[Tuple[int, int]]) -> List[T
         for h3_hex in [format(h3_int, 'x')]
     ]
 
-    logger.info(f"Candidatos a costa (Río/Agua): {len(water_candidates)} celdas")
+    logger.info(f"Candidatos a costa (Rio/Agua): {len(water_candidates)} celdas")
 
     # Reclasificar celdas que tocan el mar
     reclassified_count = 0

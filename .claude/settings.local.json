@@ -12,7 +12,13 @@
       "Bash(python setup_srtm_v2.py:*)",
       "Bash(unzip:*)",
       "Bash(curl:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(python setup_history.py:*)",
+      "Bash(npm start)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(python -m json.tool:*)"
     ]
   }
 }
