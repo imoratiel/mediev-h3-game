@@ -130,6 +130,7 @@ let map = null;
 let hexagonLayer = null;
 let settlementMarkersLayer = null;
 let settlementMarkersMap = {}; // Map: settlement name -> marker
+let buildingMarkersLayer = null; // Layer for building icons (farms, castles, etc.)
 let debounceTimer = null;
 
 // Configuration
@@ -252,8 +253,9 @@ const initMap = () => {
   // Create a layer group for hexagons with canvas renderer for better performance
   hexagonLayer = L.layerGroup({ renderer: L.canvas() }).addTo(map);
 
-  // Create a separate layer for settlement markers
+  // Create separate layers for markers
   settlementMarkersLayer = L.layerGroup().addTo(map);
+  buildingMarkersLayer = L.layerGroup().addTo(map);
 
   // Track zoom level
   currentZoom.value = map.getZoom();
@@ -498,28 +500,42 @@ const renderHexagons = (hexagons) => {
       // Estilos especiales para caminos históricos
       const hasRoad = hex.has_road || false;
       const borderWeight = hasRoad ? baseBorderWeight * 2.5 : baseBorderWeight;
-      const borderColor = hasRoad ? '#d4af37' : hex.color; // Dorado para caminos
+      const terrainColor = hex.terrain_color || hex.color || '#9e9e9e';
+
+      // CAPA JUGADOR: Si player_color existe, usar como borde (prioridad alta)
+      const playerColor = hex.player_color || null;
+      let borderColor = terrainColor;
+      let finalBorderWeight = borderWeight;
+
+      if (playerColor) {
+        // Hexágono controlado por jugador: borde grueso con color del reino
+        borderColor = playerColor;
+        finalBorderWeight = baseBorderWeight * 3;
+      } else if (hasRoad) {
+        // Sin dueño pero con camino: borde dorado
+        borderColor = '#d4af37';
+      }
 
       // Create Leaflet polygon with estilos ajustados
       const polygon = L.polygon(boundary, {
         color: borderColor,
-        fillColor: hex.color,
+        fillColor: terrainColor,
         fillOpacity: hexagonOpacity.value / 100,
-        weight: borderWeight,
-        opacity: hasRoad ? 0.9 : borderOpacity,
+        weight: finalBorderWeight,
+        opacity: playerColor ? 0.95 : (hasRoad ? 0.9 : borderOpacity),
       });
 
       // Add hover effect
       polygon.on('mouseover', function () {
         this.setStyle({
-          weight: hasRoad ? borderWeight * 1.5 : hoverWeight,
+          weight: finalBorderWeight * 1.5,
           fillOpacity: Math.min(hexagonOpacity.value / 100 + 0.2, 1.0),
         });
       });
 
       polygon.on('mouseout', function () {
         this.setStyle({
-          weight: borderWeight,
+          weight: finalBorderWeight,
           fillOpacity: hexagonOpacity.value / 100,
         });
       });
@@ -527,30 +543,52 @@ const renderHexagons = (hexagons) => {
       // Get center coordinates of hexagon
       const [lat, lng] = cellToLatLng(hex.h3_index);
 
-      // Build popup content con información histórica y coordenadas
-      let popupContent = `<strong>${hex.name}</strong><br>`;
-      popupContent += `<span style="color: #666; font-size: 12px;">Coordenadas: [${lat.toFixed(5)}, ${lng.toFixed(5)}]</span><br>`;
-      popupContent += `H3: ${hex.h3_index}<br>Resolución: ${currentResolution.value}`;
+      // Build popup content con información de juego y coordenadas
+      let popupContent = '';
 
-      if (hasRoad) {
-        popupContent += '<br><span style="color: #d4af37;">🛤️ Vía Romana</span>';
-      }
-
-      if (hex.settlement) {
-        const settlementTypeIcons = {
+      // Mostrar nombre de localización (settlement o custom name)
+      if (hex.location_name) {
+        const locationIcon = {
           city: '🏛️',
           town: '🏘️',
           village: '🏡',
           fort: '⚔️',
           monastery: '⛪'
-        };
-        const icon = settlementTypeIcons[hex.settlement.type] || '📍';
-        popupContent += `<br><br><strong>${icon} ${hex.settlement.name}</strong>`;
-        popupContent += `<br>Tipo: ${hex.settlement.type}`;
-        popupContent += `<br>Periodo: ${hex.settlement.period}`;
-        if (hex.settlement.population_rank) {
-          popupContent += `<br>Rango: ${hex.settlement.population_rank}/10`;
+        }[hex.settlement_type] || '📍';
+        popupContent += `<strong style="font-size: 15px;">${locationIcon} ${hex.location_name}</strong><br>`;
+        if (hex.settlement_type) {
+          popupContent += `<span style="color: #666;">Tipo: ${hex.settlement_type}</span><br>`;
         }
+      }
+
+      // Información de terreno
+      popupContent += `<span style="color: #666; font-size: 12px;">Coordenadas: [${lat.toFixed(5)}, ${lng.toFixed(5)}]</span><br>`;
+      popupContent += `<span style="color: #888; font-size: 11px;">H3: ${hex.h3_index} (res ${currentResolution.value})</span>`;
+
+      // Información de edificio (nuevo)
+      if (hex.icon_slug && hex.building_type_id > 0) {
+        const buildingIcons = {
+          village: '🏘️',
+          town: '🏛️',
+          city: '🏰',
+          castle: '🏰',
+          farm: '🌾',
+          mine: '⛏️',
+          port: '⚓'
+        };
+        const buildingIcon = buildingIcons[hex.icon_slug] || '🏗️';
+        popupContent += `<br><br><strong>${buildingIcon} Edificio: ${hex.icon_slug}</strong>`;
+      }
+
+      // Información de jugador/reino (nuevo)
+      if (playerColor) {
+        popupContent += `<br><span style="color: ${playerColor}; font-weight: bold;">⚔️ Controlado por Jugador</span>`;
+        popupContent += `<br><span style="font-size: 11px;">Color: <span style="display: inline-block; width: 12px; height: 12px; background: ${playerColor}; border: 1px solid #333;"></span> ${playerColor}</span>`;
+      }
+
+      // Infraestructura
+      if (hasRoad) {
+        popupContent += '<br><span style="color: #d4af37;">🛤️ Vía Romana</span>';
       }
 
       polygon.bindPopup(popupContent);
@@ -569,11 +607,13 @@ const renderHexagons = (hexagons) => {
 
   console.log(`✓ Finished rendering ${hexagons.length} hexagons at resolution ${currentResolution.value}`);
 
-  // Render settlement markers if zoom is sufficient
+  // Render building and settlement markers if zoom is sufficient
   if (currentZoom.value >= MIN_ZOOM_SETTLEMENTS) {
+    renderBuildingMarkers(hexagons);
     renderSettlementMarkers(hexagons);
   } else {
     clearSettlementMarkers();
+    clearBuildingMarkers();
   }
 };
 
@@ -721,6 +761,88 @@ const renderSettlementMarkers = (hexagons) => {
 const clearSettlementMarkers = () => {
   if (settlementMarkersLayer) {
     settlementMarkersLayer.clearLayers();
+  }
+};
+
+/**
+ * Render building markers (farms, castles, mines, etc.)
+ * Only shows buildings that DON'T have a settlement marker (to avoid overlap)
+ * @param {Array} hexagons - Array of hexagons with building data
+ */
+const renderBuildingMarkers = (hexagons) => {
+  // Clear existing building markers
+  if (buildingMarkersLayer) {
+    buildingMarkersLayer.clearLayers();
+  }
+
+  // Filter hexagons that have buildings but NO settlement name (avoid overlap)
+  const buildingsToRender = hexagons.filter(hex =>
+    hex.icon_slug &&
+    hex.building_type_id > 0 &&
+    !hex.location_name  // Only show if no settlement/custom name
+  );
+
+  if (buildingsToRender.length === 0) {
+    return;
+  }
+
+  console.log(`Rendering ${buildingsToRender.length} building markers...`);
+
+  buildingsToRender.forEach((hex) => {
+    try {
+      // Get center coordinates
+      const [lat, lng] = cellToLatLng(hex.h3_index);
+
+      // Map icon_slug to emoji icons
+      const buildingIcons = {
+        village: '🏘️',
+        town: '🏛️',
+        city: '🏰',
+        castle: '🏰',
+        farm: '🌾',
+        mine: '⛏️',
+        port: '⚓'
+      };
+      const icon = buildingIcons[hex.icon_slug] || '🏗️';
+
+      // Create simple divIcon with emoji
+      const buildingIcon = L.divIcon({
+        className: 'building-marker',
+        html: `<div class="building-icon-emoji">${icon}</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+
+      // Create marker
+      const marker = L.marker([lat, lng], {
+        icon: buildingIcon,
+        zIndexOffset: 500, // Below settlements (1000) but above hexagons
+      });
+
+      // Add simple tooltip
+      marker.bindTooltip(hex.icon_slug, {
+        permanent: false,
+        direction: 'top',
+        className: 'building-tooltip',
+        offset: [0, -10],
+      });
+
+      // Add to layer
+      marker.addTo(buildingMarkersLayer);
+    } catch (err) {
+      console.error(`Error rendering building marker for ${hex.h3_index}:`, err);
+    }
+  });
+
+  console.log(`✓ Rendered ${buildingsToRender.length} building markers`);
+};
+
+/**
+ * Clear all building markers from the map
+ */
+const clearBuildingMarkers = () => {
+  if (buildingMarkersLayer) {
+    buildingMarkersLayer.clearLayers();
   }
 };
 
@@ -1063,6 +1185,37 @@ onBeforeUnmount(() => {
   border-radius: 5px;
   z-index: 1001;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Building Markers - Game Buildings (Farms, Castles, Mines, etc.) */
+:deep(.building-marker) {
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.building-icon-emoji) {
+  font-size: 20px;
+  filter: drop-shadow(0 0 2px white) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+  transition: transform 0.2s ease;
+}
+
+:deep(.building-marker:hover .building-icon-emoji) {
+  transform: scale(1.3);
+  cursor: pointer;
+  filter: drop-shadow(0 0 3px white) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7));
+}
+
+:deep(.building-tooltip) {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid #666 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+  padding: 4px 8px !important;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: capitalize;
 }
 
 /* Settlement Markers - Medieval Style with SVG */

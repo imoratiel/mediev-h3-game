@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const pool = require('./db');
+const h3 = require('h3-js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,31 +10,48 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Terrain type colors mapping (fallback if database color is NULL)
+// Terrain type colors fallback (si la BD no tiene color)
 const TERRAIN_COLORS = {
-  'Vegas Reales': '#7db35d',       // Fertile green
-  'Tierras de Secano': '#b8a170',  // Light brown/ochre
-  'Yermos': '#9e9e9e',             // Stone gray
-  'Picos de Granito': '#546e7a',   // Dark grayish blue
-  'Oteros': '#a1887f',             // Hill brown
-  'Espesuras': '#2d5a27',          // Dark forest green
-  'Sotos': '#558b2f',              // Grove green
-  'Albuferas': '#4fc3f7',          // Water blue
-  'Tremedales': '#4e342e',         // Dark swamp brown
-  'Estepas': '#d4e157',            // Yellowish green
-  'Desconocido': '#9e9e9e'         // Gray for unknown
+  'Mar': '#0a4b78',
+  'Costa': '#fff59d',
+  'Agua': '#4fc3f7',
+  'Río': '#00bcd4',
+  'Pantanos': '#4e342e',
+  'Tierras de Cultivo': '#7db35d',
+  'Tierras de Secano': '#b8a170',
+  'Estepas': '#d4e157',
+  'Bosque': '#558b2f',
+  'Espesuras': '#2d5a27',
+  'Oteros': '#a1887f',
+  'Colinas': '#8d6e63',
+  'Alta Montaña': '#546e7a',
+  'Asentamiento': '#e53935'
 };
 
 /**
  * GET /api/map/region
- * Returns H3 hexagons within a bounding box with terrain data
- * Query params: minLat, maxLat, minLng, maxLng, res (optional, default 8)
- * Response: Array of { h3_index: string, name: string, color: string }
- * Limit: Maximum 50000 hexagons per request
+ * Returns H3 hexagons within a bounding box with terrain and game state data
+ *
+ * Query params:
+ *   - minLat, maxLat, minLng, maxLng (required): Bounding box coordinates
+ *   - res (optional, default 8): H3 resolution
+ *
+ * Response: Array of {
+ *   h3_index: string,                // Hexadecimal format for h3-js
+ *   terrain_type_id: number,
+ *   terrain_color: string,
+ *   has_road: boolean,
+ *   player_id: number | null,        // Owner player ID
+ *   player_color: string | null,     // Owner kingdom color (hex)
+ *   building_type_id: number,        // 0 = none
+ *   icon_slug: string | null,        // Icon name (castle, farm, etc.)
+ *   location_name: string | null,    // Settlement or custom name
+ *   settlement_type: string | null   // city, town, village, etc.
+ * }
  */
 app.get('/api/map/region', async (req, res) => {
   try {
-    const { minLat, maxLat, minLng, maxLng, res } = req.query;
+    const { minLat, maxLat, minLng, maxLng, res: resolution } = req.query;
 
     // Validate bounding box parameters
     if (!minLat || !maxLat || !minLng || !maxLng) {
@@ -58,10 +76,10 @@ app.get('/api/map/region', async (req, res) => {
       });
     }
 
-    // Parse resolution parameter (default to 8 if not provided or invalid)
-    const H3_RESOLUTION = res ? parseInt(res, 10) : 8;
+    // Parse resolution (default to 8)
+    const H3_RESOLUTION = resolution ? parseInt(resolution, 10) : 8;
 
-    // Validate resolution (H3 supports 0-15, but we limit to 8-10 for this app)
+    // Validate resolution (8-10 for this app)
     if (H3_RESOLUTION < 8 || H3_RESOLUTION > 10) {
       return res.status(400).json({
         error: 'Invalid resolution parameter',
@@ -69,10 +87,9 @@ app.get('/api/map/region', async (req, res) => {
       });
     }
 
-    // Import h3-js for H3 operations
-    const h3 = require('h3-js');
+    console.log(`[${new Date().toISOString()}] Fetching map region: bounds=${JSON.stringify(bounds)}, res=${H3_RESOLUTION}`);
 
-    // Generate ALL H3 cells for the bounding box at specified resolution
+    // PASO 1: Convertir bounding box a lista de celdas H3 usando h3-js
     const polygon = [
       [bounds.minLat, bounds.minLng],
       [bounds.minLat, bounds.maxLng],
@@ -80,143 +97,78 @@ app.get('/api/map/region', async (req, res) => {
       [bounds.maxLat, bounds.minLng],
     ];
 
-    // h3-js v4 API: polygonToCells accepts array directly (no LatLngPoly wrapper)
     const h3CellsSet = h3.polygonToCells(polygon, H3_RESOLUTION);
     const h3CellsArray = Array.from(h3CellsSet);
 
-    console.log(`Generated ${h3CellsArray.length} H3 cells (res ${H3_RESOLUTION}) for bounding box`);
+    console.log(`Generated ${h3CellsArray.length} H3 cells (res ${H3_RESOLUTION})`);
 
-    // If no cells in the bounding box, return empty array
     if (h3CellsArray.length === 0) {
       console.log('No H3 cells in bounding box');
       return res.json([]);
     }
 
-    // Limit to 50000 cells to avoid query size issues
+    // Limit to 50000 cells to avoid query issues
     const cellsToQuery = h3CellsArray.slice(0, 50000);
 
-    // ESTRATEGIA DE RESOLUCION:
-    // - La base de datos contiene datos en resolucion 8
-    // - Para res > 8: Convertir cada celda a su celda padre (res 8), buscar en DB, y heredar el terreno
-    // - Para res = 8: Consulta directa
+    // PASO 2: Consultar la vista v_map_display usando los índices H3
+    // Convertir h3_index de hexadecimal (string) a BIGINT para la consulta
+    // h3-js devuelve strings hexadecimales, la BD usa BIGINT
+    const h3IndexValues = cellsToQuery.map(hexStr => BigInt('0x' + hexStr).toString());
 
-    let hexagons = [];
+    // Query usando v_map_display (incluye nuevos campos: player_color, icon_slug, location_name)
+    const query = `
+      SELECT
+        h3_index,
+        terrain_type_id,
+        terrain_color,
+        has_road,
+        player_id,
+        player_color,
+        building_type_id,
+        icon_slug,
+        location_name,
+        settlement_type
+      FROM v_map_display
+      WHERE h3_index = ANY($1::text[])
+    `;
 
-    if (H3_RESOLUTION === 8) {
-      // CONSULTA DIRECTA: res 8 (incluye has_road y settlements)
-      const h3IndexValues = cellsToQuery.map(hexStr => BigInt('0x' + hexStr).toString());
+    const result = await pool.query(query, [h3IndexValues]);
 
-      const query = `
-        SELECT
-          h3_map.h3_index,
-          terrain_types.name,
-          terrain_types.color,
-          h3_map.has_road,
-          s.name AS settlement_name,
-          s.settlement_type,
-          s.population_rank,
-          s.period
-        FROM h3_map
-        INNER JOIN terrain_types ON h3_map.terrain_type_id = terrain_types.terrain_type_id
-        LEFT JOIN settlements s ON h3_map.h3_index = s.h3_index
-        WHERE h3_map.h3_index = ANY($1::bigint[])
-      `;
+    // PASO 3: Formatear respuesta para el frontend
+    // Convertir h3_index de BIGINT decimal a hexadecimal para h3-js
+    const hexagons = result.rows.map(row => {
+      // row.h3_index es TEXT con valor decimal BIGINT, convertir a hex sin '0x'
+      const h3Hex = BigInt(row.h3_index).toString(16);
 
-      const result = await pool.query(query, [h3IndexValues]);
-
-      hexagons = result.rows.map(row => ({
-        h3_index: BigInt(row.h3_index).toString(16),
-        name: row.name,
-        color: row.color || TERRAIN_COLORS[row.name] || TERRAIN_COLORS['Desconocido'],
+      return {
+        h3_index: h3Hex,  // Hexadecimal string para h3-js
+        terrain_type_id: row.terrain_type_id,
+        terrain_color: row.terrain_color || '#9e9e9e',
         has_road: row.has_road || false,
-        settlement: row.settlement_name ? {
-          name: row.settlement_name,
-          type: row.settlement_type,
-          population_rank: row.population_rank,
-          period: row.period
-        } : null
-      }));
 
-    } else {
-      // RESOLUCION SUPERIOR (10): Convertir a celdas padre (res 8) y heredar terreno
-      // Mapa: celda hijo (res 10) -> celda padre (res 8)
-      const childToParentMap = {};
-      const parentCellsSet = new Set();
+        // Capa Jugador (Nuevo)
+        player_id: row.player_id || null,
+        player_color: row.player_color || null,
 
-      cellsToQuery.forEach(childHex => {
-        const parentHex = h3.cellToParent(childHex, 8);
-        childToParentMap[childHex] = parentHex;
-        parentCellsSet.add(parentHex);
-      });
+        // Capa Edificios/Asentamientos (Nuevo)
+        building_type_id: row.building_type_id || 0,
+        icon_slug: row.icon_slug || null,
+        location_name: row.location_name || null,
+        settlement_type: row.settlement_type || null
+      };
+    });
 
-      const parentCellsArray = Array.from(parentCellsSet);
-      const parentIndexValues = parentCellsArray.map(hexStr => BigInt('0x' + hexStr).toString());
-
-      // Consultar DB para celdas padre (res 8) con has_road y settlements
-      const query = `
-        SELECT
-          h3_map.h3_index,
-          terrain_types.name,
-          terrain_types.color,
-          h3_map.has_road,
-          s.name AS settlement_name,
-          s.settlement_type,
-          s.population_rank,
-          s.period
-        FROM h3_map
-        INNER JOIN terrain_types ON h3_map.terrain_type_id = terrain_types.terrain_type_id
-        LEFT JOIN settlements s ON h3_map.h3_index = s.h3_index
-        WHERE h3_map.h3_index = ANY($1::bigint[])
-      `;
-
-      const result = await pool.query(query, [parentIndexValues]);
-
-      // Crear mapa: celda padre -> datos completos (terreno, has_road, settlement)
-      const parentDataMap = {};
-      result.rows.forEach(row => {
-        const parentHex = BigInt(row.h3_index).toString(16);
-        parentDataMap[parentHex] = {
-          name: row.name,
-          color: row.color || TERRAIN_COLORS[row.name] || TERRAIN_COLORS['Desconocido'],
-          has_road: row.has_road || false,
-          settlement: row.settlement_name ? {
-            name: row.settlement_name,
-            type: row.settlement_type,
-            population_rank: row.population_rank,
-            period: row.period
-          } : null
-        };
-      });
-
-      // Mapear celdas hijo (res 10) a datos heredados de celdas padre (res 8)
-      hexagons = cellsToQuery
-        .filter(childHex => {
-          const parentHex = childToParentMap[childHex];
-          return parentDataMap[parentHex] !== undefined;
-        })
-        .map(childHex => {
-          const parentHex = childToParentMap[childHex];
-          const data = parentDataMap[parentHex];
-          return {
-            h3_index: childHex,
-            name: data.name,
-            color: data.color,
-            has_road: data.has_road,
-            settlement: data.settlement
-          };
-        });
-
-      console.log(`Mapped ${hexagons.length} child cells (res ${H3_RESOLUTION}) from ${parentCellsArray.length} parent cells (res 8)`);
-    }
-
-    console.log(`✓ Returned ${hexagons.length} hexagons (res ${H3_RESOLUTION}) for bounds: [${bounds.minLat}, ${bounds.maxLat}], [${bounds.minLng}, ${bounds.maxLng}]`);
+    console.log(`✓ Returned ${hexagons.length} hexagons (res ${H3_RESOLUTION})`);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.json(hexagons);
 
   } catch (error) {
-    console.error('Error fetching map data:', error);
+    console.error('❌ Error fetching map data:', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({
       error: 'Failed to fetch map data',
-      message: error.message
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -224,24 +176,32 @@ app.get('/api/map/region', async (req, res) => {
 /**
  * GET /api/settlements
  * Returns all historical settlements with their coordinates
- * Response: Array of { name: string, lat: number, lng: number, type: string, period: string }
+ *
+ * Response: Array of {
+ *   name: string,
+ *   h3_index: string,
+ *   lat: number,
+ *   lng: number,
+ *   type: string,
+ *   population_rank: number,
+ *   period: string
+ * }
  */
 app.get('/api/settlements', async (req, res) => {
   try {
-    const h3 = require('h3-js');
+    console.log('Fetching settlements from database...');
 
     const query = `
       SELECT
         name,
         h3_index,
-        settlement_type,
+        type,
         population_rank,
         period
       FROM settlements
       ORDER BY name ASC
     `;
 
-    console.log('Fetching settlements from database...');
     const result = await pool.query(query);
 
     if (!result.rows || result.rows.length === 0) {
@@ -249,19 +209,22 @@ app.get('/api/settlements', async (req, res) => {
       return res.json([]);
     }
 
-    // Convert H3 indices to lat/lng coordinates
-    const settlements = result.rows.map((row, index) => {
+    // Convert H3 indices to lat/lng coordinates usando h3-js
+    const settlements = result.rows.map((row) => {
       try {
-        const h3Index = BigInt(row.h3_index).toString(16);
+        // settlements.h3_index es TEXT en formato hexadecimal (ya está correcto)
+        // No necesita conversión, h3-js acepta hex strings directamente
+        const h3Index = row.h3_index;
         const [lat, lng] = h3.cellToLatLng(h3Index);
 
         return {
           name: row.name,
+          h3_index: h3Index,
           lat: lat,
           lng: lng,
-          type: row.settlement_type,
-          period: row.period,
-          population_rank: row.population_rank
+          type: row.type,
+          population_rank: row.population_rank,
+          period: row.period
         };
       } catch (rowError) {
         console.error(`Error processing settlement ${row.name}:`, rowError);
@@ -287,7 +250,12 @@ app.get('/api/settlements', async (req, res) => {
 /**
  * GET /api/terrain-types
  * Returns all terrain types with their colors for the legend
- * Response: Array of { terrain_type_id: number, name: string, color: string }
+ *
+ * Response: Array of {
+ *   terrain_type_id: number,
+ *   name: string,
+ *   color: string
+ * }
  */
 app.get('/api/terrain-types', async (req, res) => {
   try {
@@ -305,7 +273,7 @@ app.get('/api/terrain-types', async (req, res) => {
     const terrainTypes = result.rows.map(row => ({
       terrain_type_id: row.terrain_type_id,
       name: row.name,
-      color: row.color || TERRAIN_COLORS[row.name] || TERRAIN_COLORS['Desconocido']
+      color: row.color || TERRAIN_COLORS[row.name] || '#9e9e9e'
     }));
 
     console.log(`✓ Returned ${terrainTypes.length} terrain types`);
@@ -320,13 +288,24 @@ app.get('/api/terrain-types', async (req, res) => {
   }
 });
 
-// Health check endpoint
+/**
+ * GET /health
+ * Health check endpoint
+ */
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    database: 'connected'
+  });
 });
 
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📍 API endpoint: http://localhost:${PORT}/api/map/region`);
+  console.log(`📍 API endpoints:`);
+  console.log(`   - GET /api/map/region?minLat=X&maxLat=X&minLng=X&maxLng=X&res=8`);
+  console.log(`   - GET /api/settlements`);
+  console.log(`   - GET /api/terrain-types`);
+  console.log(`   - GET /health`);
 });

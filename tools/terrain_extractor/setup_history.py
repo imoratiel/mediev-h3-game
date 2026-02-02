@@ -502,14 +502,14 @@ def load_settlements_from_csv(csv_path: Path) -> List[Tuple]:
             try:
                 # Convertir coordenadas geográficas a índice H3 (resolución 8)
                 h3_index = h3.latlng_to_cell(row['lat'], row['lng'], 8)
-                h3_int = int(h3_index, 16)
+                # Keep as TEXT string for settlements table (not BIGINT)
 
                 settlements.append((
-                    h3_int,
+                    h3_index,  # TEXT format for settlements.h3_index
                     row['name'],
                     row['type'],
-                    int(row['population_rank']),
-                    row['period']
+                    int(row['population_rank'])
+                    # Note: 'period' removed in 002_game_schema_complete.sql
                 ))
 
             except Exception as e:
@@ -594,9 +594,13 @@ def insert_settlements(settlements: List[Tuple]):
 
         # Verificar que hexágonos existen en h3_map (para evitar violacion de FK)
         logger.info("Verificando hexágonos existentes en h3_map...")
-        h3_indices = [s[0] for s in settlements]
-        cursor.execute("SELECT h3_index FROM h3_map WHERE h3_index = ANY(%s::bigint[])", (h3_indices,))
-        existing_h3_indices = set(row[0] for row in cursor.fetchall())
+        h3_indices = [s[0] for s in settlements]  # TEXT hex strings
+        # Convert TEXT to BIGINT for comparison with h3_map.h3_index (which is BIGINT)
+        h3_bigints = [int(h3_hex, 16) for h3_hex in h3_indices]
+        cursor.execute("SELECT h3_index FROM h3_map WHERE h3_index = ANY(%s::bigint[])", (h3_bigints,))
+        existing_h3_bigints = set(row[0] for row in cursor.fetchall())
+        # Convert back to TEXT for filtering settlements
+        existing_h3_indices = set(hex(bigint)[2:] for bigint in existing_h3_bigints)
 
         # Filtrar settlements a solo los que tienen hexágonos en h3_map
         valid_settlements = [s for s in settlements if s[0] in existing_h3_indices]
@@ -614,15 +618,16 @@ def insert_settlements(settlements: List[Tuple]):
 
         # Insertar asentamientos válidos
         # CORRECCION: ON CONFLICT solo con h3_index (matching UNIQUE constraint)
+        # Column name is 'type' not 'settlement_type' in new schema
+        # Note: 'period' column removed in 002_game_schema_complete.sql
         insert_query = """
-            INSERT INTO settlements (h3_index, name, settlement_type, population_rank, period)
+            INSERT INTO settlements (h3_index, name, type, population_rank)
             VALUES %s
             ON CONFLICT (h3_index)
             DO UPDATE SET
                 name = EXCLUDED.name,
-                settlement_type = EXCLUDED.settlement_type,
-                population_rank = EXCLUDED.population_rank,
-                period = EXCLUDED.period
+                type = EXCLUDED.type,
+                population_rank = EXCLUDED.population_rank
         """
 
         execute_values(cursor, insert_query, valid_settlements)
@@ -634,9 +639,9 @@ def insert_settlements(settlements: List[Tuple]):
 
         # Verificar resultados por tipo
         cursor.execute("""
-            SELECT settlement_type, COUNT(*) as count
+            SELECT type, COUNT(*) as count
             FROM settlements
-            GROUP BY settlement_type
+            GROUP BY type
             ORDER BY count DESC
         """)
         results = cursor.fetchall()
@@ -644,17 +649,8 @@ def insert_settlements(settlements: List[Tuple]):
         for settlement_type, count in results:
             logger.info(f"  {settlement_type}: {count}")
 
-        # Verificar resultados por periodo
-        cursor.execute("""
-            SELECT period, COUNT(*) as count
-            FROM settlements
-            GROUP BY period
-            ORDER BY count DESC
-        """)
-        results = cursor.fetchall()
-        logger.info("Distribución de asentamientos por periodo:")
-        for period, count in results:
-            logger.info(f"  {period}: {count}")
+        # Note: 'period' column removed in 002_game_schema_complete.sql
+        # Verification by period no longer applicable
 
         cursor.close()
         conn.close()

@@ -1293,40 +1293,41 @@ def insert_terrain_data_batch(
             logger.info("Updating h3_map data (preserving has_road markers)...")
 
             # Prepare insert query that PRESERVES has_road on conflict
+            # New schema includes player_id and building_type_id (defaults: NULL, 0)
             insert_query = """
-                INSERT INTO h3_map (h3_index, terrain_type_id, has_road)
+                INSERT INTO h3_map (h3_index, terrain_type_id, player_id, building_type_id, has_road)
                 VALUES %s
                 ON CONFLICT (h3_index)
                 DO UPDATE SET
                     terrain_type_id = EXCLUDED.terrain_type_id
-                    -- has_road is NOT updated here, preserving existing values
+                    -- player_id, building_type_id, has_road NOT updated, preserving existing values
             """
 
-            # Note: We need to provide has_road value for new inserts (default FALSE)
-            # Modify terrain_data to include has_road = FALSE
-            terrain_data_with_road = [(h3_int, terrain_id, False) for h3_int, terrain_id in terrain_data]
+            # Note: We need to provide all fields for new inserts
+            # Defaults: player_id=NULL, building_type_id=0, has_road=FALSE
+            terrain_data_with_fields = [(h3_int, terrain_id, None, 0, False) for h3_int, terrain_id in terrain_data]
 
-            logger.info(f"Inserting/updating {len(terrain_data_with_road)} records in batches of {BATCH_SIZE}...")
+            logger.info(f"Inserting/updating {len(terrain_data_with_fields)} records in batches of {BATCH_SIZE}...")
 
             # Insert in batches with progress logging
             total_inserted = 0
             start_time = time.time()
 
-            for i in range(0, len(terrain_data_with_road), BATCH_SIZE):
-                batch = terrain_data_with_road[i:i + BATCH_SIZE]
+            for i in range(0, len(terrain_data_with_fields), BATCH_SIZE):
+                batch = terrain_data_with_fields[i:i + BATCH_SIZE]
                 execute_values(cursor, insert_query, batch, page_size=BATCH_SIZE)
                 conn.commit()
 
                 total_inserted += len(batch)
 
                 # Log progress every 1000 records
-                if total_inserted % 1000 == 0 or total_inserted == len(terrain_data_with_road):
+                if total_inserted % 1000 == 0 or total_inserted == len(terrain_data_with_fields):
                     elapsed = time.time() - start_time
                     rate = total_inserted / elapsed if elapsed > 0 else 0
-                    logger.info(f"Inserted/updated {total_inserted}/{len(terrain_data_with_road)} records "
+                    logger.info(f"Inserted/updated {total_inserted}/{len(terrain_data_with_fields)} records "
                                f"({rate:.1f} records/s)")
 
-            logger.info(f"Successfully inserted/updated {len(terrain_data_with_road)} records in {elapsed:.1f}s")
+            logger.info(f"Successfully inserted/updated {len(terrain_data_with_fields)} records in {elapsed:.1f}s")
 
     except Exception as e:
         logger.error(f"Database error: {e}")
