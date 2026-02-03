@@ -524,139 +524,96 @@ def load_settlements_from_csv(csv_path: Path) -> List[Tuple]:
         return []
 
 
-def update_database_with_roads(road_h3_set: Set[str], resolution: int = 8):
+def update_database_with_roads(road_h3_indices, resolution=8):
     """
-    Actualiza la columna has_road en h3_map para hexágonos con caminos.
-
-    Args:
-        road_h3_set: Set de índices H3 (strings) con caminos
-        resolution: Resolución H3 (default: 8)
+    Actualiza la base de datos marcando has_road = TRUE.
+    Recibe una lista o set de índices H3.
     """
-    logger.info(f"\nActualizando base de datos con {len(road_h3_set):,} hexágonos con caminos (res {resolution})...")
-
-    if not road_h3_set:
-        logger.warning("No hay datos de caminos para actualizar")
+    # CRÍTICO: Asegurar que todos los índices son STRINGS HEXADECIMALES
+    h3_strings = [str(h) if isinstance(h, str) else h3.to_string(h) for h in road_h3_indices]
+    
+    if not h3_strings:
+        logger.warning(f"No hay hexágonos de caminos para actualizar en resolución {resolution}")
         return
 
+    logger.info(f"Actualizando base de datos con {len(h3_strings):,} hexágonos con caminos (res {resolution})...")
+    
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
-
-        # Convertir índices H3 de hex string a bigint
-        h3_bigints = [int(h3_hex, 16) for h3_hex in road_h3_set]
-
-        # Actualizar has_road = TRUE para hexágonos con caminos
+        
+        # Eliminamos el casteo ::bigint y usamos ::text
         update_query = """
-            UPDATE h3_map
-            SET has_road = TRUE
-            WHERE h3_index = ANY(%s::bigint[])
+            UPDATE h3_map 
+            SET has_road = TRUE 
+            WHERE h3_index = ANY(%s::text[])
         """
-
-        cursor.execute(update_query, (h3_bigints,))
-        updated_count = cursor.rowcount
-
+        
+        cursor.execute(update_query, (h3_strings,))
         conn.commit()
-
-        logger.info(f"Actualizados {updated_count:,} hexágonos con has_road = TRUE")
-
-        # Verificar resultados
-        cursor.execute("SELECT COUNT(*) FROM h3_map WHERE has_road = TRUE")
-        total_with_roads = cursor.fetchone()[0]
-        logger.info(f"Total de hexágonos con caminos en DB: {total_with_roads:,}")
-
-        cursor.close()
-        conn.close()
-
+        logger.info(f"Caminos actualizados correctamente en h3_map.")
+        
     except Exception as e:
-        logger.error(f"Error actualizando base de datos: {e}", exc_info=True)
+        logger.error(f"Error actualizando base de datos: {e}")
+    finally:
+        if conn: conn.close()
 
-
-def insert_settlements(settlements: List[Tuple]):
+def insert_settlements(settlements_list):
     """
-    Inserta asentamientos históricos en la tabla settlements.
-
-    Args:
-        settlements: Lista de tuplas (h3_index_bigint, name, type, pop_rank, period)
+    Inserta los asentamientos históricos en la tabla settlements.
     """
-    logger.info(f"\nInsertando {len(settlements)} asentamientos en la base de datos...")
-
-    if not settlements:
-        logger.warning("No hay asentamientos para insertar")
-        return
-
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
+        
+        # Limpiar tabla
+        cursor.execute("TRUNCATE TABLE settlements CASCADE")
+        
+        # Preparar datos asegurando que el índice es TEXT
+        values = []
+        h3_to_verify = []
+        
+        for s in settlements_list:
+            # Si el índice viene como número, convertir a hex string
+            h_index = s['h3_index']
+            if not isinstance(h_index, str):
+                h_index = h3.to_string(h_index)
+            
+            values.append((
+                h_index,
+                s['name'],
+                s['type'],
+                s.get('population_rank', 0)
+            ))
+            h3_to_verify.append(h_index)
 
-        # Limpiar tabla settlements antes de insertar (opcional, comentar si quieres acumular)
-        cursor.execute("TRUNCATE TABLE settlements CASCADE;")
-        logger.info("Tabla settlements limpiada")
-
-        # Verificar que hexágonos existen en h3_map (para evitar violacion de FK)
-        logger.info("Verificando hexágonos existentes en h3_map...")
-        h3_indices = [s[0] for s in settlements]  # TEXT hex strings
-        # Convert TEXT to BIGINT for comparison with h3_map.h3_index (which is BIGINT)
-        h3_bigints = [int(h3_hex, 16) for h3_hex in h3_indices]
-        cursor.execute("SELECT h3_index FROM h3_map WHERE h3_index = ANY(%s::bigint[])", (h3_bigints,))
-        existing_h3_bigints = set(row[0] for row in cursor.fetchall())
-        # Convert back to TEXT for filtering settlements
-        existing_h3_indices = set(hex(bigint)[2:] for bigint in existing_h3_bigints)
-
-        # Filtrar settlements a solo los que tienen hexágonos en h3_map
-        valid_settlements = [s for s in settlements if s[0] in existing_h3_indices]
-        skipped_count = len(settlements) - len(valid_settlements)
-
-        if skipped_count > 0:
-            logger.warning(f"Omitidos {skipped_count} asentamientos (hexágonos no existen en h3_map)")
-            logger.warning("Ejecuta el extractor primero para generar el mapa base")
-
-        if not valid_settlements:
-            logger.warning("No hay asentamientos válidos para insertar")
-            cursor.close()
-            conn.close()
-            return
-
-        # Insertar asentamientos válidos
-        # CORRECCION: ON CONFLICT solo con h3_index (matching UNIQUE constraint)
-        # Column name is 'type' not 'settlement_type' in new schema
-        # Note: 'period' column removed in 002_game_schema_complete.sql
-        insert_query = """
-            INSERT INTO settlements (h3_index, name, type, population_rank)
-            VALUES %s
-            ON CONFLICT (h3_index)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                type = EXCLUDED.type,
-                population_rank = EXCLUDED.population_rank
-        """
-
-        execute_values(cursor, insert_query, valid_settlements)
-        inserted_count = cursor.rowcount
-
-        conn.commit()
-
-        logger.info(f"Asentamientos historicos inyectados: {inserted_count}")
-
-        # Verificar resultados por tipo
-        cursor.execute("""
-            SELECT type, COUNT(*) as count
-            FROM settlements
-            GROUP BY type
-            ORDER BY count DESC
-        """)
-        results = cursor.fetchall()
-        logger.info("Distribución de asentamientos por tipo:")
-        for settlement_type, count in results:
-            logger.info(f"  {settlement_type}: {count}")
-
-        # Note: 'period' column removed in 002_game_schema_complete.sql
-        # Verification by period no longer applicable
-
-        cursor.close()
-        conn.close()
+        # Verificar si los hexágonos existen en h3_map (usando TEXT)
+        check_query = "SELECT h3_index FROM h3_map WHERE h3_index = ANY(%s::text[])"
+        cursor.execute(check_query, (h3_to_verify,))
+        existing_h3 = {row[0] for row in cursor.fetchall()}
+        
+        # Filtrar solo los que existen en el mapa
+        final_values = [v for v in values if v[0] in existing_h3]
+        
+        if final_values:
+            insert_query = """
+                INSERT INTO settlements (h3_index, name, type, population_rank)
+                VALUES %s
+                ON CONFLICT (h3_index) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    type = EXCLUDED.type,
+                    population_rank = EXCLUDED.population_rank
+            """
+            execute_values(cursor, insert_query, final_values)
+            conn.commit()
+            logger.info(f"Insertados {len(final_values)} asentamientos históricos.")
+        else:
+            logger.warning("Ninguno de los asentamientos coincide con hexágonos existentes en h3_map.")
 
     except Exception as e:
-        logger.error(f"Error insertando asentamientos: {e}", exc_info=True)
+        logger.error(f"Error insertando asentamientos: {e}")
+    finally:
+        if conn: conn.close()
 
 
 def main():

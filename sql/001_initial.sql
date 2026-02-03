@@ -1,40 +1,31 @@
--- ==================================================================================
--- SCHEMA COMPLETO: Medieval H3 Game (Versión Definitiva)
--- Fecha: 2026-02-02
--- Descripción: Reinicio total. Incluye Mapa, Economía, Militar y Turnos.
--- ==================================================================================
+-- Medieval H3 Game - Schema V2 (Unified H3 Index as TEXT)
 
--- 1. LIMPIEZA RADICAL (¡CUIDADO! BORRA TODO)
-DROP SCHEMA IF EXISTS public CASCADE;
-CREATE SCHEMA public;
-GRANT ALL ON SCHEMA public TO public;
+-- 1. LIMPIEZA
+DROP VIEW IF EXISTS v_map_display;
+DROP TABLE IF EXISTS armies;
+DROP TABLE IF EXISTS territory_details;
+DROP TABLE IF EXISTS settlements;
+DROP TABLE IF EXISTS h3_map;
+DROP TABLE IF EXISTS players;
+DROP TABLE IF EXISTS world_state;
+DROP TABLE IF EXISTS unit_types;
+DROP TABLE IF EXISTS building_types;
+DROP TABLE IF EXISTS terrain_types;
 
--- Habilitar PostGIS (Necesario para geometría avanzada si se usa en el futuro)
-CREATE EXTENSION IF NOT EXISTS postgis;
-
--- ==================================================================================
--- CAPA 1: CATÁLOGOS (Metadatos Estáticos)
--- ==================================================================================
-
--- 1.1 Tipos de Terreno
+-- 2. CATÁLOGOS
 CREATE TABLE terrain_types (
     terrain_type_id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
     color VARCHAR(7) NOT NULL,
-    -- Modificadores de Juego
     fertility INT DEFAULT 0,
     wood_output INT DEFAULT 0,
     stone_output INT DEFAULT 0,
     iron_output INT DEFAULT 0,
     fishing_output INT DEFAULT 0,
     defense_bonus INT DEFAULT 0,
-    -- CORRECCIÓN: Ampliado a (5,2) para permitir valores como 10.0 o 100.0
-    movement_cost DECIMAL(5,2) DEFAULT 1.0,
-    difficulty_foot INT DEFAULT 0,
-    difficulty_horse INT DEFAULT 0
+    movement_cost DECIMAL(5,2) DEFAULT 1.0
 );
 
--- Inserción de Datos Maestros (IDs Fijos)
 INSERT INTO terrain_types (terrain_type_id, name, color, fertility, wood_output, fishing_output, stone_output, iron_output, movement_cost, defense_bonus) VALUES
 (1, 'Mar', '#0a4b78', 0, 0, 100, 0, 0, 10.0, 0),
 (2, 'Costa', '#fff59d', 10, 5, 85, 5, 0, 1.0, 0),
@@ -51,13 +42,10 @@ INSERT INTO terrain_types (terrain_type_id, name, color, fertility, wood_output,
 (13, 'Alta Montaña', '#546e7a', 0, 5, 0, 100, 100, 5.0, 80),
 (14, 'Asentamiento', '#e53935', 0, 0, 0, 0, 0, 1.0, 50);
 
-ALTER SEQUENCE terrain_types_terrain_type_id_seq RESTART WITH 15;
-
--- 1.2 Tipos de Edificios (Iconos)
 CREATE TABLE building_types (
     building_type_id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
-    icon_slug VARCHAR(50) -- Nombre del archivo SVG (ej: 'castle', 'farm')
+    icon_slug VARCHAR(50)
 );
 
 INSERT INTO building_types (building_type_id, name, icon_slug) VALUES
@@ -70,14 +58,13 @@ INSERT INTO building_types (building_type_id, name, icon_slug) VALUES
 (6, 'Mina', 'mine'),
 (7, 'Puerto', 'port');
 
--- 1.3 Tipos de Unidades (Tropas)
 CREATE TABLE unit_types (
     unit_type_id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
     base_attack INT NOT NULL,
     base_defense INT NOT NULL,
-    base_speed INT NOT NULL,      -- Hexágonos por turno
-    carry_capacity INT DEFAULT 0, -- Recursos que pueden cargar
+    base_speed INT NOT NULL,
+    carry_capacity INT DEFAULT 0,
     cost_gold INT DEFAULT 0,
     cost_pop INT DEFAULT 1
 );
@@ -88,11 +75,7 @@ INSERT INTO unit_types (name, base_attack, base_defense, base_speed, carry_capac
 ('Arqueros', 25, 5, 3, 5),
 ('Caballería', 40, 20, 6, 20);
 
--- ==================================================================================
--- CAPA 2: JUGADORES Y ESTADO GLOBAL
--- ==================================================================================
-
--- 2.1 Reloj del Juego
+-- 3. JUGADORES Y ESTADO
 CREATE TABLE world_state (
     id INT PRIMARY KEY CHECK (id = 1),
     current_turn INT NOT NULL DEFAULT 1,
@@ -102,66 +85,45 @@ CREATE TABLE world_state (
 );
 INSERT INTO world_state (id, current_turn, game_date) VALUES (1, 1, '1039-03-01');
 
--- 2.2 Jugadores
 CREATE TABLE players (
     player_id SERIAL PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
-    color VARCHAR(7) NOT NULL DEFAULT '#cccccc', -- Color del reino
+    color VARCHAR(7) NOT NULL DEFAULT '#cccccc',
     gold INT DEFAULT 100,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
--- Jugador Neutral / IA
-INSERT INTO players (username, color) VALUES ('Neutral', '#999999');
+INSERT INTO players (username, color, gold) VALUES ('Neutral', '#999999', 0);
+INSERT INTO players (username, color, gold) VALUES ('LordAdmin', '#FFD700', 5000);
 
--- ==================================================================================
--- CAPA 3: EL MAPA (Optimizado para Lectura Rápida)
--- ==================================================================================
-
+-- 4. EL MAPA (H3_INDEX como TEXT)
 CREATE TABLE h3_map (
-    id SERIAL PRIMARY KEY,
-    h3_index BIGINT NOT NULL UNIQUE,          -- Índice numérico puro para velocidad
+    h3_index TEXT PRIMARY KEY,
     terrain_type_id INT NOT NULL REFERENCES terrain_types(terrain_type_id),
-    
-    -- Visual Flags (Desnormalizados para velocidad de renderizado)
     player_id INT REFERENCES players(player_id) ON DELETE SET NULL,
     building_type_id INT DEFAULT 0 REFERENCES building_types(building_type_id),
     has_road BOOLEAN DEFAULT FALSE,
-    
+    is_capital BOOLEAN DEFAULT FALSE,
     last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_h3_map_terrain ON h3_map(terrain_type_id);
-CREATE INDEX idx_h3_map_player ON h3_map(player_id);
 
--- ==================================================================================
--- CAPA 4: ECONOMÍA Y LORE (Detalle Profundo)
--- ==================================================================================
-
--- 4.1 Asentamientos Históricos (Nombres Reales)
 CREATE TABLE settlements (
     settlement_id SERIAL PRIMARY KEY,
-    h3_index TEXT NOT NULL UNIQUE, -- Texto para cruce fácil
+    h3_index TEXT NOT NULL UNIQUE REFERENCES h3_map(h3_index) ON DELETE CASCADE,
     name TEXT NOT NULL,
     type TEXT,
-    population_rank INTEGER CHECK (population_rank >= 0) -- Sin límite superior
+    population_rank INTEGER
 );
 
--- 4.2 Economía del Territorio (Solo existe si hay un jugador dueño)
 CREATE TABLE territory_details (
     territory_id SERIAL PRIMARY KEY,
-    h3_index BIGINT NOT NULL UNIQUE REFERENCES h3_map(h3_index) ON DELETE CASCADE,
-    
-    -- Estado Civil
+    h3_index TEXT NOT NULL UNIQUE REFERENCES h3_map(h3_index) ON DELETE CASCADE,
     custom_name VARCHAR(100),
-    population INT DEFAULT 10,
-    happiness INT DEFAULT 100,
-    
-    -- Almacenes Locales
+    population INT DEFAULT 200,
+    happiness INT DEFAULT 50,
     food_stored DECIMAL(10,2) DEFAULT 0,
     wood_stored DECIMAL(10,2) DEFAULT 0,
     stone_stored DECIMAL(10,2) DEFAULT 0,
     iron_stored DECIMAL(10,2) DEFAULT 0,
-    
-    -- Niveles de Infraestructura
     farm_level INT DEFAULT 0,
     mine_level INT DEFAULT 0,
     lumber_level INT DEFAULT 0,
@@ -169,57 +131,38 @@ CREATE TABLE territory_details (
     defense_level INT DEFAULT 0
 );
 
--- ==================================================================================
--- CAPA 5: MILITAR (Ejércitos Móviles)
--- ==================================================================================
-
 CREATE TABLE armies (
     army_id SERIAL PRIMARY KEY,
     player_id INT NOT NULL REFERENCES players(player_id),
     unit_type_id INT NOT NULL REFERENCES unit_types(unit_type_id),
-    
-    -- Posición (Puede no coincidir con territorio propio)
-    h3_index BIGINT NOT NULL, 
-    
-    -- Estado
+    h3_index TEXT NOT NULL, 
     count INT NOT NULL DEFAULT 1,
     current_health DECIMAL(5,2) DEFAULT 100.0,
     fatigue DECIMAL(5,2) DEFAULT 0.0,
     experience DECIMAL(10,2) DEFAULT 0.0,
-    
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_armies_location ON armies(h3_index);
 
--- ==================================================================================
--- CAPA 6: VISTA PARA API (El secreto de la velocidad)
--- ==================================================================================
-
+-- 5. VISTA API
 CREATE OR REPLACE VIEW v_map_display AS
 SELECT 
-    m.h3_index::TEXT AS h3_index, -- Casteo a string para JSON seguro
+    m.h3_index,
     m.terrain_type_id,
     t.name AS terrain_name,
     t.color AS terrain_color,
     m.has_road,
-    
-    -- Capa Jugador
+    m.is_capital,
     m.player_id,
     p.color AS player_color,
     p.username AS owner_name,
-    
-    -- Capa Edificios/Iconos
     m.building_type_id,
     bt.icon_slug,
-    
-    -- Capa Nombres (Histórico o Custom)
     COALESCE(td.custom_name, s.name) AS location_name,
     s.type AS settlement_type,
     s.population_rank
-    
 FROM h3_map m
 JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
 LEFT JOIN players p ON m.player_id = p.player_id
 LEFT JOIN building_types bt ON m.building_type_id = bt.building_type_id
-LEFT JOIN settlements s ON m.h3_index::TEXT = s.h3_index
+LEFT JOIN settlements s ON m.h3_index = s.h3_index
 LEFT JOIN territory_details td ON m.h3_index = td.h3_index;

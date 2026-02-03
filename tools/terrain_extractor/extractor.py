@@ -780,7 +780,7 @@ def calculate_terrain_ruggedness(lat: float, lng: float, srtm_data: Optional[dic
         return None
 
 
-def renaturalize_modern_cities(terrain_data: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+def renaturalize_modern_cities(terrain_data: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
     """
     Renaturaliza ciudades modernas (TIF=50, marcadas como ID 0) usando inpainting.
 
@@ -791,14 +791,14 @@ def renaturalize_modern_cities(terrain_data: List[Tuple[int, int]]) -> List[Tupl
     4. Si es interior, aplica Moda de vecinos naturales (relleno)
 
     Args:
-        terrain_data: Lista de tuplas (h3_index_int, terrain_type_id)
+        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id)
 
     Returns:
         Lista actualizada con ciudades renaturalizadas
     """
     logger.info("Identificando ciudades modernas (TIF=50) para renaturalizar...")
 
-    # Crear diccionario h3_index -> terrain_type_id para lookup rapido
+    # Crear diccionario h3_index (hex string) -> terrain_type_id para lookup rapido
     terrain_dict = {h3_idx: terrain_id for h3_idx, terrain_id in terrain_data}
 
     # Identificar ciudades modernas (ID 0)
@@ -809,20 +809,10 @@ def renaturalize_modern_cities(terrain_data: List[Tuple[int, int]]) -> List[Tupl
         logger.info("No hay ciudades modernas para renaturalizar")
         return terrain_data
 
-    # Convertir h3_index_int a h3_index_str para usar H3 API
-    h3_idx_int_to_str = {}
-    for h3_idx_int, _ in terrain_data:
-        h3_idx_str = format(h3_idx_int, 'x')
-        h3_idx_int_to_str[h3_idx_int] = h3_idx_str
-
     converted_to_coast = 0
     renaturalized = 0
 
-    for h3_idx_int, _ in modern_cities:
-        h3_idx_str = h3_idx_int_to_str.get(h3_idx_int)
-        if not h3_idx_str:
-            continue
-
+    for h3_idx_str, _ in modern_cities:
         # Obtener vecinos H3 (k=1 ring, 6 vecinos)
         try:
             neighbors_set = h3.grid_disk(h3_idx_str, 1)
@@ -836,8 +826,7 @@ def renaturalize_modern_cities(terrain_data: List[Tuple[int, int]]) -> List[Tupl
         has_sea_neighbor = False
 
         for neighbor_str in neighbors_list:
-            neighbor_int = int(neighbor_str, 16)
-            neighbor_terrain = terrain_dict.get(neighbor_int)
+            neighbor_terrain = terrain_dict.get(neighbor_str)
 
             if neighbor_terrain is not None:
                 if neighbor_terrain == 1:  # Mar
@@ -850,17 +839,17 @@ def renaturalize_modern_cities(terrain_data: List[Tuple[int, int]]) -> List[Tupl
         # DECISION:
         if has_sea_neighbor:
             # Convertir en Costa
-            terrain_dict[h3_idx_int] = 2
+            terrain_dict[h3_idx_str] = 2
             converted_to_coast += 1
         elif neighbor_terrains:
             # Aplicar Moda (terreno mas frecuente)
             from collections import Counter
             terrain_mode = Counter(neighbor_terrains).most_common(1)[0][0]
-            terrain_dict[h3_idx_int] = terrain_mode
+            terrain_dict[h3_idx_str] = terrain_mode
             renaturalized += 1
         else:
             # Sin vecinos validos, asignar default (Cultivo ID 6)
-            terrain_dict[h3_idx_int] = 6
+            terrain_dict[h3_idx_str] = 6
             renaturalized += 1
 
     logger.info(f"Ciudades modernas renaturalizadas: {renaturalized}")
@@ -872,7 +861,7 @@ def renaturalize_modern_cities(terrain_data: List[Tuple[int, int]]) -> List[Tupl
     return updated_terrain_data
 
 
-def overlay_historical_settlements(terrain_data: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+def overlay_historical_settlements(terrain_data: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
     """
     Carga asentamientos historicos desde la base de datos y sobreescribe el terreno con ID 14.
 
@@ -880,7 +869,7 @@ def overlay_historical_settlements(terrain_data: List[Tuple[int, int]]) -> List[
     no las ciudades modernas detectadas en el TIF.
 
     Args:
-        terrain_data: Lista de tuplas (h3_index_int, terrain_type_id)
+        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id)
 
     Returns:
         Lista actualizada con asentamientos historicos marcados como ID 14
@@ -930,7 +919,7 @@ def overlay_historical_settlements(terrain_data: List[Tuple[int, int]]) -> List[
 def extract_terrain_from_raster(
     raster_dir: str,
     h3_cells: List[str]
-) -> List[Tuple[int, int]]:
+) -> List[Tuple[str, int]]:
     """
     Extracts terrain values from GeoTIFF files using OPTIMIZED MASTER HIERARCHY
     with MEDIEVAL NATURALIZATION.
@@ -955,7 +944,7 @@ def extract_terrain_from_raster(
     - Usa Window() para lectura de pixels individuales
     - Logs limpios sin emojis, resumen cada 10,000 celdas
 
-    Returns list of tuples (h3_index_as_int, terrain_type_id).
+    Returns list of tuples (h3_index_as_hex_string, terrain_type_id).
     """
     # Load land mask for spatial optimization
     logger.info("Cargando mascara de tierra (Natural Earth 10m)...")
@@ -1041,13 +1030,13 @@ def extract_terrain_from_raster(
         for idx, h3_index in enumerate(h3_cells):
             # Get center coordinates of H3 cell (returns lat, lng) - h3 v4 API
             lat, lng = h3.cell_to_latlng(h3_index)
-            h3_int = int(h3_index, 16)
+            # CHANGED: Store h3_index as hexadecimal string, not integer
             terrain_type_id = None
 
             # ====== A) MAR: Descartar mar abierto con land_mask ======
             if not is_point_on_land(lat, lng, land_mask, debug=False):
                 terrain_type_id = 1  # Mar
-                terrain_data.append((h3_int, terrain_type_id))
+                terrain_data.append((h3_index, terrain_type_id))
                 terrain_counter[terrain_type_id] += 1
                 phase_1_mar += 1
                 open_sea_discarded += 1
@@ -1064,7 +1053,7 @@ def extract_terrain_from_raster(
                 # ====== FASE 1: MAR (fuera de cobertura) ======
                 if not raster_path:
                     terrain_type_id = 1  # Mar
-                    terrain_data.append((h3_int, terrain_type_id))
+                    terrain_data.append((h3_index, terrain_type_id))
                     terrain_counter[terrain_type_id] += 1
                     phase_1_mar += 1
                     out_of_bounds += 1
@@ -1075,7 +1064,7 @@ def extract_terrain_from_raster(
                 # Skip tiles that previously failed to open
                 if raster_path in failed_tiles:
                     terrain_type_id = 1  # Mar
-                    terrain_data.append((h3_int, terrain_type_id))
+                    terrain_data.append((h3_index, terrain_type_id))
                     terrain_counter[terrain_type_id] += 1
                     phase_1_mar += 1
                     skipped += 1
@@ -1094,7 +1083,7 @@ def extract_terrain_from_raster(
                         logger.error(f"Failed to open {os.path.basename(raster_path)}: {e}")
                         failed_tiles.add(raster_path)
                         terrain_type_id = 1  # Mar
-                        terrain_data.append((h3_int, terrain_type_id))
+                        terrain_data.append((h3_index, terrain_type_id))
                         terrain_counter[terrain_type_id] += 1
                         phase_1_mar += 1
                         skipped += 1
@@ -1174,7 +1163,7 @@ def extract_terrain_from_raster(
                 # EJECUTAR FUNCION MAESTRA DE DECISION
                 terrain_type_id = determine_terrain(center_value, elevation, ruggedness, h3_index, idx, is_river_cell)
 
-                terrain_data.append((h3_int, terrain_type_id))
+                terrain_data.append((h3_index, terrain_type_id))
                 terrain_counter[terrain_type_id] += 1
                 processed += 1
 
@@ -1183,7 +1172,7 @@ def extract_terrain_from_raster(
                 if idx < 5:  # Log first few errors
                     logger.warning(f"Error processing cell {h3_index} at lat={lat:.6f}, lng={lng:.6f}: {e}")
                 terrain_type_id = 1  # Mar
-                terrain_data.append((h3_int, terrain_type_id))
+                terrain_data.append((h3_index, terrain_type_id))
                 terrain_counter[terrain_type_id] += 1
                 phase_1_mar += 1
                 skipped += 1
@@ -1268,7 +1257,7 @@ def extract_terrain_from_raster(
 
 def insert_terrain_data_batch(
     db_config: Dict[str, str],
-    terrain_data: List[Tuple[int, int]]
+    terrain_data: List[Tuple[str, int]]
 ) -> None:
     """
     Inserts terrain data into h3_map table using optimized batch inserts with execute_values.
@@ -1276,6 +1265,7 @@ def insert_terrain_data_batch(
     Uses batches of 1000 records and logs progress.
 
     IMPORTANT: Does NOT truncate table - preserves has_road markers set by setup_history.py
+    IMPORTANT: h3_index is stored as TEXT (hexadecimal string), not BIGINT
     """
     logger.info(f"Connecting to database at {db_config['host']}...")
 
@@ -1305,7 +1295,8 @@ def insert_terrain_data_batch(
 
             # Note: We need to provide all fields for new inserts
             # Defaults: player_id=NULL, building_type_id=0, has_road=FALSE
-            terrain_data_with_fields = [(h3_int, terrain_id, None, 0, False) for h3_int, terrain_id in terrain_data]
+            # h3_index is already a hexadecimal string
+            terrain_data_with_fields = [(h3_index, terrain_id, None, 0, False) for h3_index, terrain_id in terrain_data]
 
             logger.info(f"Inserting/updating {len(terrain_data_with_fields)} records in batches of {BATCH_SIZE}...")
 
@@ -1338,37 +1329,20 @@ def insert_terrain_data_batch(
         logger.info("Database connection closed")
 
 
-def postprocess_coastal_detection(terrain_data: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+def postprocess_coastal_detection(terrain_data: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
     """
     Post-procesa los datos de terreno para detectar Costa Inteligente.
-Claude, el proceso es lento porque 'get_elevation' lee el archivo SRTM completo en cada llamada y el script no usa multiprocesamiento. Aplica estas optimizaciones en 'extractor.py':
 
-1. OPTIMIZAR LECTURA RASTER:
-   - En 'get_elevation', usa 'srtm_dataset.read(1, window=Window(col, row, 1, 1))' para leer SOLO el píxel necesario.
-   - Mejor aún: Carga la banda completa en memoria UNA SOLA VEZ al abrir el dataset si el área es manejable (1 tile = ~25MB).
-
-2. IMPLEMENTAR MULTIPROCESSING:
-   - Divide la lista 'h3_cells' en fragmentos (chunks).
-   - Usa 'concurrent.futures.ProcessPoolExecutor' para procesar los fragmentos en paralelo usando todos los núcleos de la CPU.
-   - Cada proceso debe tener su propia conexión a la DB o devolver los resultados al hilo principal para una inserción masiva.
-
-3. OPTIMIZAR MÁSCARA DE TIERRA:
-   - En 'is_point_on_land', usa una versión simplificada de los polígonos o realiza una intersección masiva (spatial join) al principio para descartar el mar rápidamente.
-
-4. LOGS SILENCIOSOS:
-   - Desactiva todos los logs de DEBUG dentro del bucle. Solo muestra el progreso cada 10.000 celdas.
-
-REGLA: No ejecutes el código, solo genera el archivo 'extractor.py' optimizado.
     LÓGICA:
     - Identifica celdas clasificadas como Río (ID 4) o Agua (ID 3).
     - Para cada una, verifica si tiene al menos un vecino clasificado como Mar (ID 1).
     - Si es así, reclasifica la celda como Costa (ID 2).
 
     Args:
-        terrain_data: Lista de tuplas (h3_index_int, terrain_type_id)
+        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id)
 
     Returns:
-        Lista actualizada de tuplas (h3_index_int, terrain_type_id) con costas detectadas
+        Lista actualizada de tuplas (h3_index_hex_string, terrain_type_id) con costas detectadas
     """
     logger.info("=" * 80)
     logger.info("FASE DE POST-PROCESAMIENTO: DETECCIÓN DE COSTA INTELIGENTE")
@@ -1377,28 +1351,24 @@ REGLA: No ejecutes el código, solo genera el archivo 'extractor.py' optimizado.
     start_time = time.time()
 
     # Crear diccionario para búsqueda rápida: {h3_index_hex_str: terrain_type_id}
-    terrain_dict = {}
-    for h3_int, terrain_id in terrain_data:
-        h3_hex = format(h3_int, 'x')  # Convertir int a hex string
-        terrain_dict[h3_hex] = terrain_id
+    terrain_dict = {h3_hex: terrain_id for h3_hex, terrain_id in terrain_data}
 
     logger.info(f"Total de celdas a procesar: {len(terrain_data)}")
 
     # Identificar candidatos a costa: celdas Río (ID 4) o Agua (ID 3)
     water_candidates = [
-        (h3_int, h3_hex)
-        for h3_int, terrain_id in terrain_data
+        h3_hex
+        for h3_hex, terrain_id in terrain_data
         if terrain_id in [3, 4]
-        for h3_hex in [format(h3_int, 'x')]
     ]
 
     logger.info(f"Candidatos a costa (Rio/Agua): {len(water_candidates)} celdas")
 
     # Reclasificar celdas que tocan el mar
     reclassified_count = 0
-    updated_terrain = {}  # {h3_int: new_terrain_id}
+    updated_terrain = {}  # {h3_hex: new_terrain_id}
 
-    for h3_int, h3_hex in water_candidates:
+    for h3_hex in water_candidates:
         # Obtener vecinos usando h3.grid_disk (radio 1 = vecinos inmediatos)
         try:
             neighbors = h3.grid_disk(h3_hex, 1)
@@ -1416,7 +1386,7 @@ REGLA: No ejecutes el código, solo genera el archivo 'extractor.py' optimizado.
 
             # Si toca el mar, reclasificar como Costa (ID 2)
             if has_sea_neighbor:
-                updated_terrain[h3_int] = 2  # Costa
+                updated_terrain[h3_hex] = 2  # Costa
                 reclassified_count += 1
 
         except Exception as e:
@@ -1427,11 +1397,11 @@ REGLA: No ejecutes el código, solo genera el archivo 'extractor.py' optimizado.
 
     # Aplicar las reclasificaciones a terrain_data
     updated_terrain_data = []
-    for h3_int, terrain_id in terrain_data:
-        if h3_int in updated_terrain:
-            updated_terrain_data.append((h3_int, updated_terrain[h3_int]))
+    for h3_hex, terrain_id in terrain_data:
+        if h3_hex in updated_terrain:
+            updated_terrain_data.append((h3_hex, updated_terrain[h3_hex]))
         else:
-            updated_terrain_data.append((h3_int, terrain_id))
+            updated_terrain_data.append((h3_hex, terrain_id))
 
     elapsed = time.time() - start_time
     logger.info(f"Post-procesamiento completado en {elapsed:.2f}s")

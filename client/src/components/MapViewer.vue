@@ -80,6 +80,35 @@
         </p>
       </div>
 
+      <!-- Navigation Section -->
+      <div class="navigation-control">
+        <h4>Navegación</h4>
+        <div class="search-container">
+          <input
+            id="search-h3-input"
+            type="text"
+            v-model="searchH3Input"
+            placeholder="Índice H3..."
+            @keyup.enter="goToH3Index"
+            class="search-input"
+          />
+          <button
+            id="btn-go-to-h3"
+            @click="goToH3Index"
+            class="search-button"
+          >
+            🔍
+          </button>
+        </div>
+        <button
+          id="link-to-capital"
+          @click="goToCapital"
+          class="capital-link"
+        >
+          Ir a la Capital ⭐
+        </button>
+      </div>
+
     </div>
 
     <!-- Map Container -->
@@ -215,6 +244,10 @@ const showActionPanel = ref(false);
 const selectedHexData = ref(null);
 const actionPanelPosition = ref({ x: 0, y: 0 });
 
+// Navigation search state
+const searchH3Input = ref('');
+const capitalH3Index = ref(null); // Cache capital location
+
 // Toast notifications state
 const toasts = ref([]);
 let toastIdCounter = 0;
@@ -224,6 +257,7 @@ let hexagonLayer = null;
 let settlementMarkersLayer = null;
 let settlementMarkersMap = {}; // Map: settlement name -> marker
 let buildingMarkersLayer = null; // Layer for building icons (farms, castles, etc.)
+let highlightLayer = null; // Temporary highlight polygon for navigation
 let debounceTimer = null;
 
 // Configuration
@@ -356,6 +390,14 @@ const initMap = () => {
   // Event listeners
   map.on('moveend', handleMapMove);
   map.on('zoomend', handleZoomChange);
+
+  // Clean up highlight when popup closes
+  map.on('popupclose', () => {
+    if (highlightLayer) {
+      map.removeLayer(highlightLayer);
+      highlightLayer = null;
+    }
+  });
 
   // Initial load
   loadHexagonsIfZoomValid();
@@ -706,6 +748,35 @@ const renderHexagons = (hexagons) => {
   });
 
   console.log(`✓ Finished rendering ${hexagons.length} hexagons at resolution ${currentResolution.value}`);
+
+  // Render capital star markers
+  hexagons.forEach(hex => {
+    if (hex.is_capital === true) {
+      try {
+        // Calculate center of hexagon
+        const [lat, lng] = cellToLatLng(hex.h3_index);
+
+        // Create star icon using divIcon
+        const starIcon = L.divIcon({
+          className: 'capital-star-label',
+          html: '⭐',
+          iconSize: [30, 30],
+          iconAnchor: [15, 15] // Center the icon perfectly
+        });
+
+        // Add marker to map with high z-index
+        L.marker([lat, lng], {
+          icon: starIcon,
+          interactive: false, // Don't block clicks to hexagon below
+          zIndexOffset: 1000
+        }).addTo(hexagonLayer);
+
+        console.log(`✓ Rendered capital star at ${hex.h3_index}`);
+      } catch (err) {
+        console.error(`Error rendering capital marker for ${hex.h3_index}:`, err);
+      }
+    }
+  });
 
   // Render building and settlement markers if zoom is sufficient
   if (currentZoom.value >= MIN_ZOOM_SETTLEMENTS) {
@@ -1110,6 +1181,108 @@ const togglePoliticalView = () => {
 
   // Redibujar el mapa con los nuevos estilos
   loadHexagonsIfZoomValid();
+};
+
+/**
+ * Focus on a specific hexagon with highlight
+ * @param {string} h3Index - H3 index to focus on
+ */
+const focusOnHex = async (h3Index) => {
+  if (!map || !h3Index) return;
+
+  try {
+    // Get coordinates of the hexagon
+    const [lat, lng] = cellToLatLng(h3Index);
+
+    // Center map on hexagon with smooth animation
+    map.setView([lat, lng], 12, {
+      animate: true,
+      duration: 1
+    });
+
+    // Remove previous highlight if exists
+    if (highlightLayer) {
+      map.removeLayer(highlightLayer);
+      highlightLayer = null;
+    }
+
+    // Create highlight polygon
+    const boundary = cellToBoundary(h3Index);
+    highlightLayer = L.polygon(boundary, {
+      color: '#FFFF00',      // Bright yellow
+      weight: 8,
+      fillOpacity: 0,        // No fill
+      opacity: 1,
+      interactive: false     // Don't block clicks
+    });
+
+    highlightLayer.addTo(map);
+
+    // Show cell details popup
+    await showCellDetailsPopup(h3Index, [lat, lng]);
+
+    console.log(`✓ Focused on hexagon: ${h3Index}`);
+  } catch (err) {
+    console.error(`Error focusing on hex ${h3Index}:`, err);
+    showToast('Error: Índice H3 inválido', 'error');
+  }
+};
+
+/**
+ * Navigate to H3 index from search input
+ */
+const goToH3Index = async () => {
+  const h3Index = searchH3Input.value.trim();
+
+  if (!h3Index) {
+    showToast('Por favor introduce un índice H3', 'warning');
+    return;
+  }
+
+  // Validate H3 index format (basic check - should be 15 character hex string)
+  if (!/^[0-9a-f]{15}$/i.test(h3Index)) {
+    showToast('Formato de índice H3 inválido', 'error');
+    return;
+  }
+
+  await focusOnHex(h3Index);
+};
+
+/**
+ * Navigate to player's capital
+ */
+const goToCapital = async () => {
+  try {
+    // Use cached capital if available
+    if (capitalH3Index.value) {
+      await focusOnHex(capitalH3Index.value);
+      showToast('Navegando a tu capital ⭐', 'success');
+      return;
+    }
+
+    // Fetch capital from settlements endpoint
+    const response = await axios.get(`${API_URL}/api/settlements`);
+    const settlements = response.data;
+
+    // Find player's capital
+    const capital = settlements.find(s =>
+      s.player_id === playerId.value && s.is_capital === true
+    );
+
+    if (!capital) {
+      showToast('No tienes una capital establecida aún. Coloniza tu primer territorio.', 'warning');
+      return;
+    }
+
+    // Cache the capital location
+    capitalH3Index.value = capital.h3_index;
+
+    await focusOnHex(capital.h3_index);
+    showToast('Navegando a tu capital ⭐', 'success');
+  } catch (err) {
+    console.error('Error navigating to capital:', err);
+    showToast('Error al buscar la capital', 'error');
+  }
 };
 
 /**
@@ -1593,6 +1766,91 @@ onBeforeUnmount(() => {
   color: #f44336;
   font-weight: bold;
   margin-top: 10px;
+}
+
+/* Navigation Control */
+.navigation-control {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-top: 15px;
+}
+
+.navigation-control h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+}
+
+.search-container {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.search-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: monospace;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #4CAF50;
+}
+
+.search-button {
+  padding: 8px 15px;
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.search-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.search-button:active {
+  transform: translateY(0);
+}
+
+.capital-link {
+  width: 100%;
+  padding: 10px 15px;
+  background: linear-gradient(135deg, #FFD700 0%, #FFC107 100%);
+  border: 2px solid #FF8F00;
+  border-radius: 4px;
+  color: #5D4E37;
+  font-size: 14px;
+  font-weight: bold;
+  font-family: 'Cinzel', 'Georgia', serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.capital-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+  background: linear-gradient(135deg, #FFE44D 0%, #FFD54F 100%);
+}
+
+.capital-link:active {
+  transform: translateY(0);
 }
 
 /* Map Container */
@@ -2323,5 +2581,14 @@ onBeforeUnmount(() => {
   stroke: #ff0000 !important;
   stroke-opacity: 1.0 !important;
   filter: drop-shadow(0 0 8px rgba(255, 0, 0, 0.6));
+}
+
+/* Capital star marker styling */
+:deep(.capital-star-label) {
+  font-size: 30px;
+  text-align: center;
+  line-height: 30px;
+  filter: drop-shadow(0px 0px 4px black);
+  pointer-events: none; /* Allow clicks to pass through to hexagon below */
 }
 </style>

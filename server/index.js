@@ -111,9 +111,9 @@ app.get('/api/map/region', async (req, res) => {
     const cellsToQuery = h3CellsArray.slice(0, 50000);
 
     // PASO 2: Consultar la vista v_map_display usando los índices H3
-    // Convertir h3_index de hexadecimal (string) a BIGINT para la consulta
-    // h3-js devuelve strings hexadecimales, la BD usa BIGINT
-    const h3IndexValues = cellsToQuery.map(hexStr => BigInt('0x' + hexStr).toString());
+    // IMPORTANT: h3_index is stored as TEXT (hexadecimal string), not BIGINT
+    // h3-js returns hex strings, DB stores hex strings - no conversion needed
+    const h3IndexValues = cellsToQuery; // Already hex strings
 
     // Query usando v_map_display (incluye nuevos campos: player_color, icon_slug, location_name)
     const query = `
@@ -135,13 +135,10 @@ app.get('/api/map/region', async (req, res) => {
     const result = await pool.query(query, [h3IndexValues]);
 
     // PASO 3: Formatear respuesta para el frontend
-    // Convertir h3_index de BIGINT decimal a hexadecimal para h3-js
+    // h3_index is already a hexadecimal string - no conversion needed
     const hexagons = result.rows.map(row => {
-      // row.h3_index es TEXT con valor decimal BIGINT, convertir a hex sin '0x'
-      const h3Hex = BigInt(row.h3_index).toString(16);
-
       return {
-        h3_index: h3Hex,  // Hexadecimal string para h3-js
+        h3_index: row.h3_index,  // Already hexadecimal string for h3-js
         terrain_type_id: row.terrain_type_id,
         terrain_color: row.terrain_color || '#9e9e9e',
         has_road: row.has_road || false,
@@ -333,8 +330,8 @@ app.post('/api/game/claim', async (req, res) => {
 
     console.log(`[Claim] Player ${player_id} attempting to claim ${h3_index}`);
 
-    // Convertir h3_index hex a BIGINT para la base de datos
-    const h3_bigint = BigInt('0x' + h3_index).toString();
+    // IMPORTANT: h3_index is stored as TEXT (hexadecimal string), not BIGINT
+    // No conversion needed - use h3_index directly
 
     // Iniciar transacción
     await client.query('BEGIN');
@@ -360,7 +357,7 @@ app.post('/api/game/claim', async (req, res) => {
       WHERE m.h3_index = $1
       FOR UPDATE OF m
     `;
-    const hexResult = await client.query(hexQuery, [h3_bigint]);
+    const hexResult = await client.query(hexQuery, [h3_index]);
 
     if (hexResult.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -426,16 +423,16 @@ app.post('/api/game/claim', async (req, res) => {
       // Filtrar solo los vecinos inmediatos (distancia 1, sin incluir el centro)
       const immediateNeighbors = neighbors.filter(neighbor => neighbor !== h3_index);
 
-      // Convertir vecinos a BIGINT para consulta
-      const neighborBigints = immediateNeighbors.map(hexStr => BigInt('0x' + hexStr).toString());
+      // No conversion needed - h3_index is stored as TEXT
+      // immediateNeighbors is already an array of hex strings
 
       // Verificar si algún vecino pertenece al jugador
       const neighborQuery = `
         SELECT COUNT(*) as count
         FROM h3_map
-        WHERE player_id = $1 AND h3_index = ANY($2::bigint[])
+        WHERE player_id = $1 AND h3_index = ANY($2::text[])
       `;
-      const neighborResult = await client.query(neighborQuery, [player_id, neighborBigints]);
+      const neighborResult = await client.query(neighborQuery, [player_id, immediateNeighbors]);
       const adjacentOwnedCount = parseInt(neighborResult.rows[0].count);
 
       console.log(`[Claim] Found ${adjacentOwnedCount} adjacent territories owned by player`);
@@ -486,7 +483,7 @@ app.post('/api/game/claim', async (req, res) => {
       `UPDATE h3_map
        SET player_id = $1, building_type_id = 0, is_capital = $2, last_update = CURRENT_TIMESTAMP
        WHERE h3_index = $3`,
-      [player_id, isFirstTerritory, h3_bigint]
+      [player_id, isFirstTerritory, h3_index]
     );
 
     // PASO 4: Insertar en territory_details
@@ -503,7 +500,7 @@ app.post('/api/game/claim', async (req, res) => {
         iron_stored = EXCLUDED.iron_stored
     `;
     await client.query(insertTerritoryDetailsQuery, [
-      h3_bigint,
+      h3_index,
       initialPopulation,
       initialHappiness,
       initialFood,
@@ -583,8 +580,8 @@ app.get('/api/map/cell-details/:h3_index', async (req, res) => {
   try {
     const { h3_index } = req.params;
 
-    // Convert hex string to BIGINT
-    const h3_bigint = BigInt('0x' + h3_index).toString();
+    // IMPORTANT: h3_index is stored as TEXT (hexadecimal string), not BIGINT
+    // No conversion needed - use h3_index directly
 
     // Query to get all cell details (join h3_map, territory_details, players, settlements, terrain_types, building_types)
     const query = `
@@ -614,7 +611,7 @@ app.get('/api/map/cell-details/:h3_index', async (req, res) => {
       WHERE m.h3_index = $1
     `;
 
-    const result = await pool.query(query, [h3_bigint]);
+    const result = await pool.query(query, [h3_index]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({

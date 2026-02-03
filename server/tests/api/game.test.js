@@ -22,10 +22,10 @@ describe('GET /api/map/region', () => {
 
   it('debería devolver status 200 y un array de celdas con datos válidos', async () => {
     // Mock data: array of hexagons from the view
-    // h3_index is returned as TEXT representation of BIGINT (decimal string)
+    // h3_index is stored as TEXT (hexadecimal string)
     const mockHexagons = [
       {
-        h3_index: '618318123583045631', // Decimal BIGINT as string
+        h3_index: '88185ba635fffff', // Hexadecimal string
         terrain_type_id: 6,
         terrain_color: '#7db35d',
         terrain_name: 'Tierras de Cultivo',
@@ -41,7 +41,7 @@ describe('GET /api/map/region', () => {
         population_rank: null
       },
       {
-        h3_index: '618318123578720255', // Decimal BIGINT as string
+        h3_index: '88185ba44dfffff', // Hexadecimal string
         terrain_type_id: 1,
         terrain_color: '#0a4b78',
         terrain_name: 'Mar',
@@ -72,15 +72,14 @@ describe('GET /api/map/region', () => {
       });
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('hexagons');
-    expect(Array.isArray(response.body.hexagons)).toBe(true);
-    expect(response.body.hexagons.length).toBe(2);
+    expect(Array.isArray(response.body)).toBe(true);
+    expect(response.body.length).toBe(2);
   });
 
   it('debería devolver h3_index como String, no como BigInt', async () => {
     const mockHexagons = [
       {
-        h3_index: '618318123583045631', // Decimal BIGINT as string
+        h3_index: '88185ba635fffff', // Hexadecimal string
         terrain_type_id: 6,
         terrain_color: '#7db35d',
         terrain_name: 'Tierras de Cultivo',
@@ -110,10 +109,10 @@ describe('GET /api/map/region', () => {
       });
 
     expect(response.status).toBe(200);
-    expect(Array.isArray(response.body.hexagons)).toBe(true);
-    expect(typeof response.body.hexagons[0].h3_index).toBe('string');
-    // The endpoint converts decimal BIGINT to hex string, so it should be hex format
-    expect(response.body.hexagons[0].h3_index).toMatch(/^[0-9a-f]+$/);
+    expect(Array.isArray(response.body)).toBe(true);
+    expect(typeof response.body[0].h3_index).toBe('string');
+    // h3_index is stored as hexadecimal string
+    expect(response.body[0].h3_index).toMatch(/^[0-9a-f]+$/);
   });
 
   it('debería rechazar la petición si faltan parámetros obligatorios', async () => {
@@ -261,40 +260,44 @@ describe('POST /api/game/claim', () => {
       release: jest.fn()
     };
 
-    // Mock BEGIN transaction
+    // Correct order according to actual endpoint flow:
+    // 1. BEGIN
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Mock terrain check (valid terrain - not sea/water)
+    // 2. Territory count query - returns 0 (first territory)
+    mockClient.query.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+    // 3. Hex query - check terrain and ownership
     mockClient.query.mockResolvedValueOnce({
-      rows: [{ terrain_type_id: 6, terrain_name: 'Tierras de Cultivo' }]
+      rows: [{
+        h3_index: '88185ba635fffff',
+        player_id: null,
+        terrain_type_id: 6,
+        iron_output: 0,
+        terrain_name: 'Tierras de Cultivo'
+      }]
     });
 
-    // Mock ownership check (not owned)
-    mockClient.query.mockResolvedValueOnce({ rows: [] });
-
-    // Mock territory count (0 territories = first territory)
-    mockClient.query.mockResolvedValueOnce({ rows: [{ count: 0 }] });
-
-    // Mock player gold check (enough gold)
+    // 4. Player query - check gold balance
     mockClient.query.mockResolvedValueOnce({
       rows: [{ player_id: 1, username: 'Neutral', gold: 50000 }]
     });
 
-    // Mock update player gold
+    // 5. UPDATE h3_map - set ownership
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Mock update h3_map ownership
+    // 6. INSERT territory_details
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Mock insert into territory_details
+    // 7. UPDATE players - deduct gold
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Mock get new gold balance
+    // 8. SELECT new gold balance
     mockClient.query.mockResolvedValueOnce({
       rows: [{ gold: 49900 }]
     });
 
-    // Mock COMMIT
+    // 9. COMMIT
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
     pool.connect.mockResolvedValueOnce(mockClient);
@@ -319,26 +322,29 @@ describe('POST /api/game/claim', () => {
       release: jest.fn()
     };
 
-    // BEGIN
+    // 1. BEGIN
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Terrain check
+    // 2. Territory count query
+    mockClient.query.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+    // 3. Hex query - valid terrain, not owned
     mockClient.query.mockResolvedValueOnce({
-      rows: [{ terrain_type_id: 6, terrain_name: 'Tierras de Cultivo' }]
+      rows: [{
+        h3_index: '88185ba635fffff',
+        player_id: null,
+        terrain_type_id: 6,
+        iron_output: 0,
+        terrain_name: 'Tierras de Cultivo'
+      }]
     });
 
-    // Ownership check
-    mockClient.query.mockResolvedValueOnce({ rows: [] });
-
-    // Territory count
-    mockClient.query.mockResolvedValueOnce({ rows: [{ count: 0 }] });
-
-    // Player gold check (NOT ENOUGH gold)
+    // 4. Player gold check (NOT ENOUGH gold)
     mockClient.query.mockResolvedValueOnce({
       rows: [{ player_id: 1, username: 'Neutral', gold: 50 }] // Only 50 gold
     });
 
-    // ROLLBACK
+    // 5. ROLLBACK
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
     pool.connect.mockResolvedValueOnce(mockClient);
@@ -362,15 +368,24 @@ describe('POST /api/game/claim', () => {
       release: jest.fn()
     };
 
-    // BEGIN
+    // 1. BEGIN
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Terrain check (SEA - terrain_type_id = 1)
+    // 2. Territory count query
+    mockClient.query.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+    // 3. Hex query - SEA terrain (terrain_type_id = 1)
     mockClient.query.mockResolvedValueOnce({
-      rows: [{ terrain_type_id: 1, terrain_name: 'Mar' }]
+      rows: [{
+        h3_index: '88185ba635fffff',
+        player_id: null,
+        terrain_type_id: 1,
+        iron_output: 0,
+        terrain_name: 'Mar'
+      }]
     });
 
-    // ROLLBACK
+    // 4. ROLLBACK (endpoint rejects after terrain check)
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
     pool.connect.mockResolvedValueOnce(mockClient);
@@ -394,15 +409,24 @@ describe('POST /api/game/claim', () => {
       release: jest.fn()
     };
 
-    // BEGIN
+    // 1. BEGIN
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Terrain check (WATER - terrain_type_id = 3)
+    // 2. Territory count query
+    mockClient.query.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+    // 3. Hex query - WATER terrain (terrain_type_id = 3)
     mockClient.query.mockResolvedValueOnce({
-      rows: [{ terrain_type_id: 3, terrain_name: 'Agua' }]
+      rows: [{
+        h3_index: '88185ba44dfffff',
+        player_id: null,
+        terrain_type_id: 3,
+        iron_output: 0,
+        terrain_name: 'Agua'
+      }]
     });
 
-    // ROLLBACK
+    // 4. ROLLBACK (endpoint rejects after terrain check)
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
     pool.connect.mockResolvedValueOnce(mockClient);
@@ -426,29 +450,32 @@ describe('POST /api/game/claim', () => {
       release: jest.fn()
     };
 
-    // BEGIN
+    // 1. BEGIN
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Terrain check (valid)
+    // 2. Territory count (already has 2 territories)
+    mockClient.query.mockResolvedValueOnce({ rows: [{ count: '2' }] });
+
+    // 3. Hex query - valid terrain, not owned
     mockClient.query.mockResolvedValueOnce({
-      rows: [{ terrain_type_id: 6, terrain_name: 'Tierras de Cultivo' }]
+      rows: [{
+        h3_index: '88185ba635fffff',
+        player_id: null,
+        terrain_type_id: 6,
+        iron_output: 0,
+        terrain_name: 'Tierras de Cultivo'
+      }]
     });
 
-    // Ownership check
-    mockClient.query.mockResolvedValueOnce({ rows: [] });
-
-    // Territory count (already has 2 territories)
-    mockClient.query.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-
-    // Player gold check (enough gold)
+    // 4. Player gold check (enough gold)
     mockClient.query.mockResolvedValueOnce({
       rows: [{ player_id: 1, username: 'Neutral', gold: 50000 }]
     });
 
-    // Adjacent territories check (NO adjacent territories found)
-    mockClient.query.mockResolvedValueOnce({ rows: [] });
+    // 5. Adjacent territories check (NO adjacent territories found - count = 0)
+    mockClient.query.mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
-    // ROLLBACK
+    // 6. ROLLBACK
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
     pool.connect.mockResolvedValueOnce(mockClient);
@@ -531,42 +558,42 @@ describe('POST /api/game/claim', () => {
       release: jest.fn()
     };
 
-    // BEGIN
+    // 1. BEGIN
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Terrain check
+    // 2. Territory count (0 = first)
+    mockClient.query.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+    // 3. Hex query - valid terrain, not owned
     mockClient.query.mockResolvedValueOnce({
-      rows: [{ terrain_type_id: 6, terrain_name: 'Tierras de Cultivo' }]
+      rows: [{
+        h3_index: '88185ba635fffff',
+        player_id: null,
+        terrain_type_id: 6,
+        iron_output: 0,
+        terrain_name: 'Tierras de Cultivo'
+      }]
     });
 
-    // Ownership check
-    mockClient.query.mockResolvedValueOnce({ rows: [] });
-
-    // Territory count (0 = first)
-    mockClient.query.mockResolvedValueOnce({ rows: [{ count: 0 }] });
-
-    // Player gold check
+    // 4. Player gold check
     mockClient.query.mockResolvedValueOnce({
       rows: [{ player_id: 1, username: 'Neutral', gold: 50000 }]
     });
 
-    // Update gold
-    mockClient.query.mockResolvedValueOnce({ rows: [] });
-
-    // Update h3_map - verify is_capital is set
+    // 5. Update h3_map - verify is_capital is set
     mockClient.query.mockImplementationOnce((query, params) => {
       expect(query).toMatch(/is_capital/i);
-      expect(params[2]).toBe(true); // Third param should be is_capital = true
+      expect(params[1]).toBe(true); // Second param (0-indexed) should be is_capital = true
       return Promise.resolve({ rows: [] });
     });
 
-    // Insert territory_details
+    // 6. Insert territory_details
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // Get new balance
-    mockClient.query.mockResolvedValueOnce({ rows: [{ gold: 49900 }] });
+    // 7. Update players gold
+    mockClient.query.mockResolvedValueOnce({ rows: [] });
 
-    // COMMIT
+    // 8. COMMIT
     mockClient.query.mockResolvedValueOnce({ rows: [] });
 
     pool.connect.mockResolvedValueOnce(mockClient);
