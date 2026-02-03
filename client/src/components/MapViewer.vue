@@ -54,6 +54,19 @@
             <span class="toggle-text">Mostrar Malla H3</span>
           </label>
         </div>
+        <div class="toggle-container">
+          <label class="toggle-label">
+            <input
+              id="toggle-political-view"
+              type="checkbox"
+              v-model="isPoliticalView"
+              @change="togglePoliticalView"
+              class="toggle-checkbox"
+            />
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">Vista Política</span>
+          </label>
+        </div>
       </div>
 
       <!-- Map Info -->
@@ -80,6 +93,71 @@
       </div>
       <div id="map" ref="mapContainer"></div>
 
+      <!-- Player Gold Indicator - Top Right -->
+      <div class="player-gold-indicator">
+        <div class="gold-icon">💰</div>
+        <div class="gold-amount">{{ playerGold }}</div>
+        <div class="gold-label">Oro</div>
+      </div>
+
+      <!-- Action Panel - Medieval Style -->
+      <div
+        v-if="showActionPanel && selectedHexData"
+        class="action-panel"
+        :style="{ left: actionPanelPosition.x + 'px', top: actionPanelPosition.y + 'px' }"
+      >
+        <div class="action-panel-header">
+          <h3>⚔️ Territorio</h3>
+          <button class="close-button" @click="closeActionPanel">✕</button>
+        </div>
+        <div class="action-panel-body">
+          <!-- Hex Info -->
+          <div class="hex-info">
+            <p><strong>Terreno:</strong> {{ selectedHexData.terrain_name || 'Desconocido' }}</p>
+            <p v-if="selectedHexData.location_name">
+              <strong>Nombre:</strong> {{ selectedHexData.location_name }}
+            </p>
+            <p v-if="selectedHexData.owner_name">
+              <strong>Dueño:</strong>
+              <span :style="{ color: selectedHexData.player_color }">
+                {{ selectedHexData.owner_name }}
+              </span>
+            </p>
+          </div>
+
+          <!-- Actions -->
+          <div class="actions">
+            <!-- Colonize button if unclaimed -->
+            <button
+              v-if="!selectedHexData.player_id"
+              class="action-button colonize-button"
+              @click="colonizeTerritory"
+              :disabled="playerGold < 100"
+            >
+              🏰 Colonizar (100 💰)
+            </button>
+
+            <!-- If already owned -->
+            <div v-else class="owned-message">
+              <p v-if="selectedHexData.player_id === playerId">✅ Este territorio es tuyo</p>
+              <p v-else>🛡️ Territorio enemigo</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast Notifications Container -->
+      <div class="toast-container">
+        <div
+          v-for="(toast, index) in toasts"
+          :key="toast.id"
+          :class="['toast', `toast-${toast.type}`, toast.isLeaving ? 'toast-leaving' : '']"
+        >
+          <span class="toast-icon">{{ getToastIcon(toast.type) }}</span>
+          <span class="toast-message">{{ toast.message }}</span>
+        </div>
+      </div>
+
       <!-- Settlements Navigation Panel - Medieval Style -->
       <div class="settlements-sidebar">
         <div class="settlements-header">
@@ -100,7 +178,7 @@
           >
             <span class="settlement-icon">{{ getSettlementIcon(settlement.type) }}</span>
             <span class="settlement-name">{{ settlement.name }}</span>
-            <span class="settlement-period">{{ settlement.period }}</span>
+            <span class="settlement-type-label">{{ settlement.type }}</span>
           </a>
         </div>
       </div>
@@ -111,7 +189,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import L from 'leaflet';
-import { cellToBoundary, cellToLatLng } from 'h3-js';
+import { cellToBoundary, cellToLatLng, gridDisk } from 'h3-js';
 import axios from 'axios';
 import 'leaflet/dist/leaflet.css';
 
@@ -124,7 +202,22 @@ const currentZoom = ref(13);
 const currentResolution = ref(8); // H3 resolution (8 or 10)
 const terrainTypes = ref([]);
 const showH3Layer = ref(true);
+const isPoliticalView = ref(true); // Vista política para resaltar territorios de jugadores (activada por defecto)
 const settlements = ref([]);
+
+// Player state (hardcoded for testing)
+const playerId = ref(1); // Simular que somos el jugador 1
+const playerGold = ref(0); // Oro inicial (se carga del servidor)
+const playerHexes = ref(new Set()); // Track player's owned hexagons for adjacency checks
+
+// Action panel state
+const showActionPanel = ref(false);
+const selectedHexData = ref(null);
+const actionPanelPosition = ref({ x: 0, y: 0 });
+
+// Toast notifications state
+const toasts = ref([]);
+let toastIdCounter = 0;
 
 let map = null;
 let hexagonLayer = null;
@@ -266,6 +359,7 @@ const initMap = () => {
 
   // Initial load
   loadHexagonsIfZoomValid();
+  fetchPlayerData();
 };
 
 /**
@@ -385,6 +479,21 @@ const fetchHexagonData = async () => {
 };
 
 /**
+ * Fetch player data (gold, color, etc)
+ */
+const fetchPlayerData = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/api/players/${playerId.value}`);
+    if (response.data) {
+      playerGold.value = response.data.gold;
+      console.log(`✓ Player data loaded: ${response.data.username} has ${playerGold.value} gold`);
+    }
+  } catch (err) {
+    console.error('Failed to fetch player data:', err);
+  }
+};
+
+/**
  * Fetch terrain types for the legend
  */
 const fetchTerrainTypes = async () => {
@@ -484,6 +593,16 @@ const renderHexagons = (hexagons) => {
   // Clear existing hexagons
   hexagonLayer.clearLayers();
 
+  // Update player's owned hexagons for adjacency checks
+  const newPlayerHexes = new Set();
+  hexagons.forEach(hex => {
+    if (hex.player_id === playerId.value) {
+      newPlayerHexes.add(hex.h3_index);
+    }
+  });
+  playerHexes.value = newPlayerHexes;
+  console.log(`Player owns ${playerHexes.value.size} territories`);
+
   console.log(`Rendering ${hexagons.length} hexagons at resolution ${currentResolution.value}...`);
 
   // Ajustar estilos según resolución
@@ -504,25 +623,51 @@ const renderHexagons = (hexagons) => {
 
       // CAPA JUGADOR: Si player_color existe, usar como borde (prioridad alta)
       const playerColor = hex.player_color || null;
+      const isCapital = hex.is_capital === true;
       let borderColor = terrainColor;
       let finalBorderWeight = borderWeight;
+      let finalFillOpacity = hexagonOpacity.value / 100;
+      let borderOpacityValue = borderOpacity;
 
-      if (playerColor) {
-        // Hexágono controlado por jugador: borde grueso con color del reino
+      // PRIORITY 1: CAPITAL - Estilo ultra prominente
+      if (isCapital) {
+        // Borde ROJO PURO y GRUESO para la capital (máxima prominencia)
+        borderColor = '#ff0000';  // Rojo puro brillante
+        finalBorderWeight = 6;     // Doble que territorios normales
+        finalFillOpacity = 0.8;    // Más sólido
+        borderOpacityValue = 1.0;  // Totalmente opaco
+      }
+      // PRIORITY 2: VISTA POLÍTICA - Resaltar territorios de jugadores
+      else if (isPoliticalView.value && hex.player_id) {
+        // Modo político: borde rojo intenso para territorios controlados
+        borderColor = '#d32f2f';
+        finalBorderWeight = 3;
+        finalFillOpacity = 0.7;
+        borderOpacityValue = 1.0;
+      }
+      // PRIORITY 3: Vista normal con dueño
+      else if (playerColor) {
+        // Vista normal: borde grueso con color del reino
         borderColor = playerColor;
         finalBorderWeight = baseBorderWeight * 3;
-      } else if (hasRoad) {
+        borderOpacityValue = 0.95;
+      }
+      // PRIORITY 4: Camino histórico
+      else if (hasRoad) {
         // Sin dueño pero con camino: borde dorado
         borderColor = '#d4af37';
+        borderOpacityValue = 0.9;
       }
 
       // Create Leaflet polygon with estilos ajustados
       const polygon = L.polygon(boundary, {
         color: borderColor,
         fillColor: terrainColor,
-        fillOpacity: hexagonOpacity.value / 100,
+        fillOpacity: finalFillOpacity,
         weight: finalBorderWeight,
-        opacity: playerColor ? 0.95 : (hasRoad ? 0.9 : borderOpacity),
+        opacity: borderOpacityValue,
+        // zIndexOffset for capitals to render on top
+        ...(isCapital && { className: 'capital-hexagon' })
       });
 
       // Add hover effect
@@ -543,55 +688,10 @@ const renderHexagons = (hexagons) => {
       // Get center coordinates of hexagon
       const [lat, lng] = cellToLatLng(hex.h3_index);
 
-      // Build popup content con información de juego y coordenadas
-      let popupContent = '';
-
-      // Mostrar nombre de localización (settlement o custom name)
-      if (hex.location_name) {
-        const locationIcon = {
-          city: '🏛️',
-          town: '🏘️',
-          village: '🏡',
-          fort: '⚔️',
-          monastery: '⛪'
-        }[hex.settlement_type] || '📍';
-        popupContent += `<strong style="font-size: 15px;">${locationIcon} ${hex.location_name}</strong><br>`;
-        if (hex.settlement_type) {
-          popupContent += `<span style="color: #666;">Tipo: ${hex.settlement_type}</span><br>`;
-        }
-      }
-
-      // Información de terreno
-      popupContent += `<span style="color: #666; font-size: 12px;">Coordenadas: [${lat.toFixed(5)}, ${lng.toFixed(5)}]</span><br>`;
-      popupContent += `<span style="color: #888; font-size: 11px;">H3: ${hex.h3_index} (res ${currentResolution.value})</span>`;
-
-      // Información de edificio (nuevo)
-      if (hex.icon_slug && hex.building_type_id > 0) {
-        const buildingIcons = {
-          village: '🏘️',
-          town: '🏛️',
-          city: '🏰',
-          castle: '🏰',
-          farm: '🌾',
-          mine: '⛏️',
-          port: '⚓'
-        };
-        const buildingIcon = buildingIcons[hex.icon_slug] || '🏗️';
-        popupContent += `<br><br><strong>${buildingIcon} Edificio: ${hex.icon_slug}</strong>`;
-      }
-
-      // Información de jugador/reino (nuevo)
-      if (playerColor) {
-        popupContent += `<br><span style="color: ${playerColor}; font-weight: bold;">⚔️ Controlado por Jugador</span>`;
-        popupContent += `<br><span style="font-size: 11px;">Color: <span style="display: inline-block; width: 12px; height: 12px; background: ${playerColor}; border: 1px solid #333;"></span> ${playerColor}</span>`;
-      }
-
-      // Infraestructura
-      if (hasRoad) {
-        popupContent += '<br><span style="color: #d4af37;">🛤️ Vía Romana</span>';
-      }
-
-      polygon.bindPopup(popupContent);
+      // Add click event to show detailed popup
+      polygon.on('click', async function () {
+        await showCellDetailsPopup(hex.h3_index, [lat, lng]);
+      });
 
       // Add to layer group
       polygon.addTo(hexagonLayer);
@@ -734,9 +834,8 @@ const renderSettlementMarkers = (hexagons) => {
       popupContent += `📍 Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
       popupContent += `</div>`;
       popupContent += `<strong>Tipo:</strong> ${hex.settlement.type}<br>`;
-      popupContent += `<strong>Periodo:</strong> ${hex.settlement.period}<br>`;
       if (hex.settlement.population_rank) {
-        popupContent += `<strong>Rango:</strong> ${hex.settlement.population_rank}/10`;
+        popupContent += `<strong>Rango:</strong> ${hex.settlement.population_rank}/10<br>`;
       }
       popupContent += `</div>`;
 
@@ -767,6 +866,7 @@ const clearSettlementMarkers = () => {
 /**
  * Render building markers (farms, castles, mines, etc.)
  * Only shows buildings that DON'T have a settlement marker (to avoid overlap)
+ * Also renders CAPITAL markers (crown icon) for player capitals
  * @param {Array} hexagons - Array of hexagons with building data
  */
 const renderBuildingMarkers = (hexagons) => {
@@ -782,12 +882,16 @@ const renderBuildingMarkers = (hexagons) => {
     !hex.location_name  // Only show if no settlement/custom name
   );
 
-  if (buildingsToRender.length === 0) {
+  // Filter capital hexagons (for crown markers)
+  const capitalsToRender = hexagons.filter(hex => hex.is_capital === true);
+
+  if (buildingsToRender.length === 0 && capitalsToRender.length === 0) {
     return;
   }
 
-  console.log(`Rendering ${buildingsToRender.length} building markers...`);
+  console.log(`Rendering ${buildingsToRender.length} building markers and ${capitalsToRender.length} capital markers...`);
 
+  // Render regular building markers
   buildingsToRender.forEach((hex) => {
     try {
       // Get center coordinates
@@ -834,7 +938,42 @@ const renderBuildingMarkers = (hexagons) => {
     }
   });
 
-  console.log(`✓ Rendered ${buildingsToRender.length} building markers`);
+  // Render CAPITAL markers (crown icon)
+  capitalsToRender.forEach((hex) => {
+    try {
+      // Get center coordinates
+      const [lat, lng] = cellToLatLng(hex.h3_index);
+
+      // Create crown divIcon (larger and more prominent)
+      const crownIcon = L.divIcon({
+        className: 'capital-marker',
+        html: `<div class="capital-icon-emoji">👑</div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      });
+
+      // Create marker
+      const marker = L.marker([lat, lng], {
+        icon: crownIcon,
+        zIndexOffset: 600, // Above regular buildings (500)
+      });
+
+      // Add tooltip
+      marker.bindTooltip('Capital', {
+        permanent: false,
+        direction: 'top',
+        className: 'capital-tooltip',
+        offset: [0, -15],
+      });
+
+      // Add to layer
+      marker.addTo(buildingMarkersLayer);
+    } catch (err) {
+      console.error(`Error rendering capital marker for ${hex.h3_index}:`, err);
+    }
+  });
+
+  console.log(`✓ Rendered ${buildingsToRender.length} building markers and ${capitalsToRender.length} capital markers`);
 };
 
 /**
@@ -860,6 +999,82 @@ const updateHexagonOpacity = () => {
 };
 
 /**
+ * Close the action panel
+ */
+const closeActionPanel = () => {
+  showActionPanel.value = false;
+  selectedHexData.value = null;
+};
+
+/**
+ * Open the action panel at mouse position with hex data
+ * @param {Object} hexData - Hexagon data from API
+ * @param {Object} event - Leaflet mouse event
+ */
+const openActionPanel = (hexData, event) => {
+  selectedHexData.value = hexData;
+
+  // Get mouse position relative to the viewport
+  const mouseX = event.originalEvent.clientX;
+  const mouseY = event.originalEvent.clientY;
+
+  // Position panel near the click, with offset to avoid covering the hex
+  actionPanelPosition.value = {
+    x: Math.min(mouseX + 10, window.innerWidth - 320), // 320px = panel width
+    y: Math.min(mouseY + 10, window.innerHeight - 250)  // 250px = approx panel height
+  };
+
+  showActionPanel.value = true;
+};
+
+/**
+ * Colonize territory (claim hexagon for player)
+ * Calls POST /api/game/claim and updates UI on success
+ * NOTE: This is the old action panel version, now replaced by colonizeFromPopup
+ */
+const colonizeTerritory = async () => {
+  if (!selectedHexData.value) return;
+
+  try {
+    const hexToColonize = selectedHexData.value.h3_index;
+
+    console.log(`[Colonize] Attempting to claim ${hexToColonize} for player ${playerId.value}`);
+
+    // Call API
+    const response = await axios.post(`${API_URL}/api/game/claim`, {
+      player_id: playerId.value,
+      h3_index: hexToColonize
+    });
+
+    if (response.data.success) {
+      // Update player gold
+      playerGold.value = response.data.new_gold;
+
+      // Close action panel
+      closeActionPanel();
+
+      // Refresh the map to show the new territory
+      console.log(`✓ Territory claimed successfully! New gold: ${playerGold.value}`);
+      await fetchHexagonData();
+
+      // Show success toast
+      const message = response.data.is_capital
+        ? '👑 ¡Capital fundada! Tu reino comienza aquí.'
+        : '🏰 ¡Territorio colonizado! Recursos añadidos.';
+      showToast(message, 'success');
+    } else {
+      showToast(response.data.message, 'error');
+    }
+  } catch (err) {
+    console.error('❌ Error colonizing territory:', err);
+
+    // Show error message from server or generic error
+    const errorMsg = err.response?.data?.message || err.message || 'Error desconocido';
+    showToast(errorMsg, 'error');
+  }
+};
+
+/**
  * Toggle H3 layer visibility
  */
 const toggleH3Layer = () => {
@@ -877,6 +1092,252 @@ const toggleH3Layer = () => {
     // Limpiar hexágonos de memoria
     clearHexagons();
     console.log('✓ Malla H3 desactivada');
+  }
+};
+
+/**
+ * Toggle Political View - Resalta territorios controlados por jugadores
+ * Redibuja el mapa sin hacer un nuevo fetch
+ */
+const togglePoliticalView = () => {
+  if (!map) return;
+
+  if (isPoliticalView.value) {
+    console.log('✓ Vista Política activada: resaltando territorios de jugadores');
+  } else {
+    console.log('✓ Vista Política desactivada: mostrando vista normal');
+  }
+
+  // Redibujar el mapa con los nuevos estilos
+  loadHexagonsIfZoomValid();
+};
+
+/**
+ * Get toast icon based on type
+ */
+const getToastIcon = (type) => {
+  const icons = {
+    success: '✅',
+    error: '❌',
+    warning: '⚠️',
+    info: 'ℹ️'
+  };
+  return icons[type] || 'ℹ️';
+};
+
+/**
+ * Show toast notification
+ * @param {string} message - Message to display
+ * @param {string} type - Type of toast (success, error, warning, info)
+ */
+const showToast = (message, type = 'info') => {
+  const id = toastIdCounter++;
+  const toast = {
+    id,
+    message,
+    type,
+    isLeaving: false
+  };
+
+  toasts.value.push(toast);
+
+  // Auto-remove after 3 seconds
+  setTimeout(() => {
+    // Start leave animation
+    const toastIndex = toasts.value.findIndex(t => t.id === id);
+    if (toastIndex !== -1) {
+      toasts.value[toastIndex].isLeaving = true;
+
+      // Remove from array after animation completes
+      setTimeout(() => {
+        toasts.value = toasts.value.filter(t => t.id !== id);
+      }, 300); // Match CSS animation duration
+    }
+  }, 3000);
+};
+
+/**
+ * Show detailed cell information popup
+ * Fetches full cell details from API and displays in Leaflet popup
+ */
+const showCellDetailsPopup = async (h3_index, latLng) => {
+  try {
+    // Fetch detailed cell information from API
+    const response = await axios.get(`${API_URL}/api/map/cell-details/${h3_index}`);
+    const cell = response.data;
+
+    // Build popup HTML content
+    let popupContent = '<div class="cell-inspector" style="font-family: \'Cinzel\', Georgia, serif; min-width: 250px;">';
+
+    // TITLE - Settlement name or "Territorio Salvaje"
+    const title = cell.settlement_name || (cell.player_id ? `Territorio de ${cell.player_name}` : 'Territorio Salvaje');
+    const titleIcon = cell.is_capital ? '👑' : (cell.settlement_name ? '🏛️' : '🗺️');
+    popupContent += `<h3 style="margin: 0 0 10px 0; color: #2c1810; font-size: 16px; border-bottom: 2px solid #8b7355; padding-bottom: 8px;">${titleIcon} ${title}</h3>`;
+
+    // OWNER - Player name or "Sin reclamar"
+    const ownerText = cell.player_name
+      ? `<span style="color: ${cell.player_color}; font-weight: bold;">⚔️ ${cell.player_name}</span>`
+      : '<span style="color: #888;">🌿 Sin reclamar</span>';
+    popupContent += `<p style="margin: 5px 0;"><strong>Dueño:</strong> ${ownerText}</p>`;
+
+    // TERRAIN TYPE
+    popupContent += `<p style="margin: 5px 0;"><strong>Terreno:</strong> ${cell.terrain_type}</p>`;
+
+    // BUILDING (if any)
+    if (cell.building_type) {
+      popupContent += `<p style="margin: 5px 0;"><strong>Edificio:</strong> ${cell.building_type}</p>`;
+    }
+
+    // TERRITORY DETAILS (only if owned and has territory data)
+    if (cell.territory && cell.player_id === playerId.value) {
+      popupContent += '<div style="margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 5px;">';
+      popupContent += '<p style="margin: 5px 0; font-weight: bold; color: #5d4e37;">📊 Detalles del Territorio</p>';
+
+      // Population & Happiness
+      popupContent += `<p style="margin: 3px 0; font-size: 13px;">👥 Población: ${cell.territory.population} habitantes</p>`;
+      popupContent += `<p style="margin: 3px 0; font-size: 13px;">😊 Felicidad: ${cell.territory.happiness}%</p>`;
+
+      // Resources
+      popupContent += '<p style="margin: 8px 0 3px 0; font-weight: bold; font-size: 12px;">Recursos Almacenados:</p>';
+      popupContent += `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 12px;">`;
+      popupContent += `<span>🌾 Comida: ${cell.territory.food}</span>`;
+      popupContent += `<span>🌲 Madera: ${cell.territory.wood}</span>`;
+      popupContent += `<span>⛰️ Piedra: ${cell.territory.stone}</span>`;
+      popupContent += `<span>⛏️ Hierro: ${cell.territory.iron}</span>`;
+      popupContent += `</div>`;
+
+      popupContent += '</div>';
+    } else if (cell.territory && cell.player_id) {
+      // Territory owned by someone else
+      popupContent += '<p style="margin: 10px 0; font-size: 12px; color: #888; font-style: italic;">🔒 Información detallada requiere espionaje</p>';
+    }
+
+    // ACTIONS
+    popupContent += '<div style="margin-top: 15px; display: flex; flex-direction: column; gap: 8px;">';
+
+    if (!cell.player_id) {
+      // Colonize button - check gold AND adjacency
+      const hasEnoughGold = playerGold.value >= 100;
+      let isAdjacent = false;
+      let disabledReason = '';
+
+      // Check adjacency
+      if (playerHexes.value.size === 0) {
+        // First territory - always allowed
+        isAdjacent = true;
+      } else {
+        // Get neighbors of clicked hex (6 adjacent hexes)
+        const neighbors = gridDisk(h3_index, 1); // Returns array including center + 6 neighbors
+        // Check if ANY neighbor is owned by player
+        isAdjacent = neighbors.some(neighborHex =>
+          neighborHex !== h3_index && playerHexes.value.has(neighborHex)
+        );
+      }
+
+      const canColonize = hasEnoughGold && isAdjacent;
+
+      if (!hasEnoughGold) {
+        disabledReason = 'Oro insuficiente';
+      } else if (!isAdjacent) {
+        disabledReason = 'Debe ser contiguo a tu territorio';
+      }
+
+      const buttonStyle = canColonize
+        ? 'background: linear-gradient(135deg, #8b6914 0%, #b8860b 100%); color: white; cursor: pointer;'
+        : 'background: #999; color: #666; cursor: not-allowed;';
+
+      popupContent += `<button
+        id="colonize-btn-${h3_index}"
+        style="padding: 10px 15px; border: 2px solid #5d4e37; border-radius: 5px; font-family: 'Cinzel', Georgia, serif; font-size: 13px; font-weight: 600; ${buttonStyle}"
+        ${!canColonize ? 'disabled' : ''}
+        title="${disabledReason}"
+      >
+        🏰 Colonizar (100 💰)
+      </button>`;
+    } else if (cell.player_id === playerId.value) {
+      // Manage button (disabled for now)
+      popupContent += `<button
+        style="padding: 10px 15px; border: 2px solid #5d4e37; border-radius: 5px; font-family: 'Cinzel', Georgia, serif; font-size: 13px; font-weight: 600; background: #999; color: #666; cursor: not-allowed;"
+        disabled
+      >
+        ⚙️ Gestionar (Próximamente)
+      </button>`;
+    }
+
+    popupContent += '</div>';
+    popupContent += '</div>';
+
+    // Create and show popup
+    const popup = L.popup({
+      maxWidth: 350,
+      className: 'cell-details-popup'
+    })
+      .setLatLng(latLng)
+      .setContent(popupContent)
+      .openOn(map);
+
+    // Add event listener to colonize button (if exists)
+    if (!cell.player_id) {
+      setTimeout(() => {
+        const colonizeBtn = document.getElementById(`colonize-btn-${h3_index}`);
+        if (colonizeBtn) {
+          colonizeBtn.addEventListener('click', () => {
+            colonizeFromPopup(h3_index);
+          });
+        }
+      }, 100);
+    }
+
+  } catch (error) {
+    console.error('Error fetching cell details:', error);
+    showToast('Error al cargar información del territorio', 'error');
+  }
+};
+
+/**
+ * Colonize territory from popup
+ */
+const colonizeFromPopup = async (h3_index) => {
+  try {
+    console.log(`[Colonize] Attempting to claim ${h3_index} for player ${playerId.value}`);
+
+    // Call API
+    const response = await axios.post(`${API_URL}/api/game/claim`, {
+      player_id: playerId.value,
+      h3_index: h3_index
+    });
+
+    if (response.data.success) {
+      // Update player gold
+      playerGold.value = response.data.new_gold_balance || response.data.new_gold;
+
+      // CRITICAL: Immediately add this hex to player's territories for adjacency checks
+      playerHexes.value.add(h3_index);
+      console.log(`✓ Territory claimed successfully! Player now owns ${playerHexes.value.size} territories`);
+
+      // Close popup
+      map.closePopup();
+
+      // Refresh the map to show the new territory
+      await fetchHexagonData();
+
+      // Show success toast (including iron vein message if found)
+      let message = response.data.is_capital
+        ? '👑 ¡Capital fundada! Tu reino comienza aquí.'
+        : '🏰 ¡Territorio colonizado!';
+
+      if (response.data.iron_vein_found && response.data.iron_message) {
+        message += ' ' + response.data.iron_message;
+      }
+
+      showToast(message, 'success');
+    } else {
+      showToast(response.data.message, 'error');
+    }
+  } catch (err) {
+    console.error('❌ Error colonizing territory:', err);
+    const errorMsg = err.response?.data?.message || err.message || 'Error desconocido';
+    showToast(errorMsg, 'error');
   }
 };
 
@@ -1048,6 +1509,11 @@ onBeforeUnmount(() => {
 .toggle-container {
   display: flex;
   align-items: center;
+  margin-bottom: 10px;
+}
+
+.toggle-container:last-child {
+  margin-bottom: 0;
 }
 
 .toggle-label {
@@ -1216,6 +1682,49 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: bold;
   text-transform: capitalize;
+}
+
+/* Capital Markers - Crown Icon for Player Capitals */
+:deep(.capital-marker) {
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.capital-icon-emoji) {
+  font-size: 28px; /* Larger than regular buildings */
+  filter: drop-shadow(0 0 3px #ffd700) drop-shadow(0 2px 5px rgba(0, 0, 0, 0.6));
+  transition: transform 0.2s ease;
+  animation: pulse-crown 2s ease-in-out infinite;
+}
+
+@keyframes pulse-crown {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+:deep(.capital-marker:hover .capital-icon-emoji) {
+  transform: scale(1.4);
+  cursor: pointer;
+  filter: drop-shadow(0 0 5px #ffd700) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.8));
+}
+
+:deep(.capital-tooltip) {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%) !important;
+  border: 2px solid #daa520 !important;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4) !important;
+  padding: 6px 12px !important;
+  font-size: 13px;
+  font-weight: bold;
+  color: #2c1810;
+  font-family: 'Cinzel', 'Georgia', serif;
+  letter-spacing: 0.5px;
 }
 
 /* Settlement Markers - Medieval Style with SVG */
@@ -1406,7 +1915,7 @@ onBeforeUnmount(() => {
   line-height: 1.3;
 }
 
-.settlement-period {
+.settlement-type-label {
   font-size: 11px;
   color: #6d5a47;
   font-style: italic;
@@ -1493,5 +2002,326 @@ onBeforeUnmount(() => {
   :deep(.leaflet-top.leaflet-left) {
     left: 10px;
   }
+}
+
+/* Player Gold Indicator - Top Right Corner */
+.player-gold-indicator {
+  position: fixed;
+  top: 20px;
+  right: 360px; /* Offset to avoid settlements sidebar */
+  background: linear-gradient(135deg, #f4e4bc 0%, #e8d4a8 100%);
+  border: 3px solid #8b7355;
+  border-radius: 12px;
+  padding: 12px 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Cinzel', 'Georgia', serif;
+  min-width: 150px;
+}
+
+.gold-icon {
+  font-size: 28px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.gold-amount {
+  font-size: 24px;
+  font-weight: 700;
+  color: #8b6914;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.gold-label {
+  font-size: 12px;
+  color: #5d4e37;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+/* Action Panel - Medieval Floating Panel */
+.action-panel {
+  position: fixed;
+  width: 300px;
+  background: linear-gradient(135deg, #f4e4bc 0%, #e8d4a8 100%);
+  border: 3px solid #5d4e37;
+  border-radius: 8px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+  z-index: 1002;
+  font-family: 'Cinzel', 'Georgia', serif;
+  overflow: hidden;
+}
+
+.action-panel-header {
+  background: linear-gradient(to bottom, #8b7355, #6d5a47);
+  color: #f4e4bc;
+  padding: 12px 15px;
+  border-bottom: 2px solid #5d4e37;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action-panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.close-button {
+  background: transparent;
+  border: none;
+  color: #f4e4bc;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.close-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+.action-panel-body {
+  padding: 15px;
+}
+
+.hex-info {
+  margin-bottom: 15px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 5px;
+  border: 1px solid #d4c4a8;
+}
+
+.hex-info p {
+  margin: 5px 0;
+  font-size: 13px;
+  color: #2c1810;
+}
+
+.hex-info strong {
+  color: #5d4e37;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.action-button {
+  padding: 12px 20px;
+  font-family: 'Cinzel', 'Georgia', serif;
+  font-size: 14px;
+  font-weight: 600;
+  border: 2px solid #5d4e37;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+  letter-spacing: 0.5px;
+}
+
+.colonize-button {
+  background: linear-gradient(135deg, #8b6914 0%, #b8860b 100%);
+  color: #fff;
+}
+
+.colonize-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #b8860b 0%, #daa520 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.colonize-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.colonize-button:disabled {
+  background: #999;
+  border-color: #666;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.owned-message {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 5px;
+  text-align: center;
+  font-size: 13px;
+  color: #2c1810;
+}
+
+.owned-message p {
+  margin: 5px 0;
+}
+
+/* Mobile adjustments for gold indicator and action panel */
+@media (max-width: 768px) {
+  .player-gold-indicator {
+    top: 10px;
+    right: 10px;
+    padding: 8px 15px;
+    min-width: 120px;
+  }
+
+  .gold-icon {
+    font-size: 24px;
+  }
+
+  .gold-amount {
+    font-size: 20px;
+  }
+
+  .gold-label {
+    font-size: 10px;
+  }
+
+  .action-panel {
+    width: calc(100% - 40px);
+    max-width: 300px;
+    left: 50% !important;
+    transform: translateX(-50%);
+  }
+}
+
+/* Toast Notifications - Bottom Right Corner */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 400px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-family: 'Cinzel', 'Georgia', serif;
+  font-size: 14px;
+  font-weight: 600;
+  animation: toast-slide-in 0.3s ease-out;
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+}
+
+.toast-leaving {
+  opacity: 0;
+  transform: translateX(400px);
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(400px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.toast-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  flex: 1;
+  color: white;
+  line-height: 1.4;
+}
+
+.toast-success {
+  background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+  border: 2px solid #1b5e20;
+}
+
+.toast-error {
+  background: linear-gradient(135deg, #c62828 0%, #e53935 100%);
+  border: 2px solid #b71c1c;
+}
+
+.toast-warning {
+  background: linear-gradient(135deg, #f57c00 0%, #fb8c00 100%);
+  border: 2px solid #e65100;
+}
+
+.toast-info {
+  background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
+  border: 2px solid #0d47a1;
+}
+
+/* Cell Details Popup - Enhanced Styling */
+:deep(.cell-details-popup .leaflet-popup-content-wrapper) {
+  background: linear-gradient(135deg, #f4e4bc 0%, #e8d4a8 100%);
+  border: 3px solid #5d4e37;
+  border-radius: 8px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+  padding: 0;
+}
+
+:deep(.cell-details-popup .leaflet-popup-content) {
+  margin: 0;
+  font-family: 'Cinzel', 'Georgia', serif;
+}
+
+:deep(.cell-details-popup .leaflet-popup-tip) {
+  background: #e8d4a8;
+  border: 3px solid #5d4e37;
+  border-top: none;
+  border-right: none;
+}
+
+/* Mobile adjustments for toasts */
+@media (max-width: 768px) {
+  .toast-container {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+
+  .toast {
+    padding: 12px 15px;
+    font-size: 13px;
+  }
+
+  .toast-icon {
+    font-size: 18px;
+  }
+}
+
+/* Capital hexagon styling - render on top with higher z-index */
+:deep(.capital-hexagon) {
+  z-index: 1000 !important;
+}
+
+:deep(.capital-hexagon path) {
+  stroke-width: 6 !important;
+  stroke: #ff0000 !important;
+  stroke-opacity: 1.0 !important;
+  filter: drop-shadow(0 0 8px rgba(255, 0, 0, 0.6));
 }
 </style>

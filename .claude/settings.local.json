@@ -20,7 +20,12 @@
       "Bash(taskkill:*)",
       "Bash(python -m json.tool:*)",
       "Bash(timeout:*)",
-      "Bash(ping:*)"
+      "Bash(ping:*)",
+      "Bash(tasklist:*)",
+      "Bash(psql:*)",
+      "Bash(docker:*)",
+      "Bash(node:*)",
+      "Bash(npm test:*)"
     ]
   }
 }
