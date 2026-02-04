@@ -139,6 +139,174 @@
         <div class="gold-label">Oro</div>
       </div>
 
+      <!-- Time Control Panel - Medieval Style -->
+      <div id="time-control" class="time-control">
+        <div class="time-info">
+          <div class="time-row">
+            <span class="time-icon">📅</span>
+            <span class="time-label">Fecha:</span>
+            <span class="time-value date-display">{{ formattedDate }}</span>
+          </div>
+          <div class="time-row">
+            <span class="time-icon">⚔️</span>
+            <span class="time-label">Turno:</span>
+            <span class="time-value">{{ currentTurn }}</span>
+          </div>
+          <div class="time-row harvest-info">
+            <span class="time-icon">🌾</span>
+            <span class="harvest-label">{{ nextHarvestLabel }}</span>
+          </div>
+        </div>
+
+        <!-- Server Time Info -->
+        <div class="server-time-info">
+          <div class="sync-status">
+            <span class="sync-icon">🔄</span>
+            <span class="sync-text">Sincronizando con servidor...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fiefs Monitoring Panel -->
+      <div id="fiefs-panel" class="fiefs-panel">
+        <div class="fiefs-header">
+          <h3>🏰 Mis Feudos</h3>
+          <span class="fiefs-count">{{ myFiefs.length }}</span>
+        </div>
+        <div id="fiefs-list" class="fiefs-list">
+          <div
+            v-if="loadingFiefs"
+            class="fiefs-empty"
+          >
+            Cargando feudos...
+          </div>
+          <div
+            v-else-if="myFiefs.length === 0"
+            class="fiefs-empty"
+          >
+            No tienes feudos aún. ¡Coloniza territorios para comenzar!
+          </div>
+          <div
+            v-for="fief in myFiefs"
+            :key="fief.h3_index"
+            class="fief-card"
+            :class="{ 'fief-low-food': Number(fief.food_stored || 0) < 5.0 }"
+            @click="focusOnFief(fief.h3_index)"
+          >
+            <div class="fief-name">
+              {{ fief.location_name || fief.h3_index?.substring(0, 8) || 'Territorio' }}
+            </div>
+            <div class="fief-terrain">{{ fief.terrain_name || 'Desconocido' }}</div>
+            <div class="fief-stats">
+              <span class="fief-stat">
+                <span class="fief-icon">👥</span>
+                <span class="fief-value">{{ Math.floor(Number(fief.population || 0)) }}</span>
+              </span>
+              <span class="fief-stat">
+                <span class="fief-icon">🌾</span>
+                <span
+                  class="fief-value fief-food"
+                  :data-h3="fief.h3_index"
+                >{{ Number(fief.food_stored || 0).toFixed(1) }}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Messages Panel -->
+      <div id="messages-panel" class="messages-panel">
+        <div class="messages-header">
+          <h3>📜 Mensajes</h3>
+          <span class="messages-count">{{ unreadCount }}</span>
+        </div>
+        <div id="messages-list" class="messages-list">
+          <div
+            v-if="loadingMessages"
+            class="messages-empty"
+          >
+            Cargando mensajes...
+          </div>
+          <div
+            v-else-if="myMessages.length === 0"
+            class="messages-empty"
+          >
+            No tienes mensajes.
+          </div>
+          <div
+            v-for="message in myMessages"
+            :key="message.id"
+            class="message-card"
+            :class="{ 'message-unread': !message.is_read }"
+            @click="readMessage(message)"
+          >
+            <div class="message-header">
+              <span class="message-sender">
+                {{ message.sender_name || '🏰 Sistema' }}
+              </span>
+              <span class="message-date">{{ formatMessageDate(message.sent_at) }}</span>
+            </div>
+            <div class="message-subject">{{ message.subject }}</div>
+            <div class="message-preview">{{ message.body.substring(0, 80) }}...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Link (only visible for admins) -->
+      <div
+        v-if="currentUser && currentUser.role === 'admin'"
+        class="admin-link-container"
+      >
+        <a href="/admin.html" class="admin-link">
+          ⚙️ Panel de Administración
+        </a>
+      </div>
+
+      <!-- Logout Button -->
+      <div
+        v-if="currentUser"
+        class="logout-container"
+      >
+        <button class="logout-button" @click="handleLogout">
+          <span class="logout-icon">🚪</span>
+          <span class="logout-text">Cerrar Sesión</span>
+        </button>
+        <div class="user-info">{{ currentUser.username }}</div>
+      </div>
+
+      <!-- Message Detail Panel -->
+      <div
+        v-if="selectedMessage"
+        id="message-detail"
+        class="message-detail-panel"
+      >
+        <div class="message-detail-header">
+          <h3>📜 Detalle del Mensaje</h3>
+          <button class="close-button" @click="closeMessageDetail">✕</button>
+        </div>
+        <div class="message-detail-body">
+          <div class="message-detail-meta">
+            <span class="message-detail-sender">
+              De: {{ selectedMessage.sender_name || '🏰 Sistema' }}
+            </span>
+            <span class="message-detail-date">
+              {{ formatMessageDate(selectedMessage.sent_at) }}
+            </span>
+          </div>
+          <h4 class="message-detail-subject">{{ selectedMessage.subject }}</h4>
+          <div class="message-detail-content">
+            {{ selectedMessage.body }}
+          </div>
+          <button
+            v-if="selectedMessage.h3_index"
+            class="message-detail-map-button"
+            @click="focusOnHexFromMessage(selectedMessage.h3_index)"
+          >
+            🗺️ Ver en Mapa
+          </button>
+        </div>
+      </div>
+
       <!-- Action Panel - Medieval Style -->
       <div
         v-if="showActionPanel && selectedHexData"
@@ -201,11 +369,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import L from 'leaflet';
 import { cellToBoundary, cellToLatLng, gridDisk } from 'h3-js';
 import axios from 'axios';
 import 'leaflet/dist/leaflet.css';
+
+// Configure axios to send credentials (cookies) with all requests
+axios.defaults.withCredentials = true;
 
 const mapContainer = ref(null);
 const loading = ref(false);
@@ -218,10 +389,52 @@ const terrainTypes = ref([]);
 const showH3Layer = ref(true);
 const isPoliticalView = ref(true); // Vista política para resaltar territorios de jugadores (activada por defecto)
 
-// Player state (hardcoded for testing)
-const playerId = ref(1); // Simular que somos el jugador 1
+// Player state (from session)
+const currentUser = ref(null); // Current logged-in user { player_id, username, role }
+const playerId = computed(() => currentUser.value?.player_id || 1); // Player ID from session
 const playerGold = ref(0); // Oro inicial (se carga del servidor)
 const playerHexes = ref(new Set()); // Track player's owned hexagons for adjacency checks
+
+// World state (turn and date)
+const currentTurn = ref(1);
+const gameDate = ref(new Date('1039-03-01'));
+const formattedDate = ref('1 de marzo de 1039');
+const dayOfYear = ref(1);
+
+// Computed property for next harvest information
+const nextHarvestLabel = computed(() => {
+  const day = dayOfYear.value;
+
+  if (day < 75) {
+    // Before spring harvest
+    const daysUntil = 75 - day;
+    return `Próxima Cosecha: Primavera (15 de Mayo) - ${daysUntil} días`;
+  } else if (day >= 75 && day < 180) {
+    // Before summer harvest
+    const daysUntil = 180 - day;
+    return `Próxima Cosecha: Verano (31 de Agosto) - ${daysUntil} días`;
+  } else {
+    // After summer harvest, next is spring of next year
+    const daysUntil = (365 - day) + 75;
+    return `Próxima Cosecha: Primavera (Año siguiente) - ${daysUntil} días`;
+  }
+});
+
+// Fiefs monitoring
+const myFiefs = ref([]);
+const loadingFiefs = ref(false);
+let previousFoodValues = {}; // Track food values for highlight animation
+
+// Messages state
+const myMessages = ref([]);
+const loadingMessages = ref(false);
+const selectedMessage = ref(null); // Currently selected message for detail view
+const unreadCount = computed(() => myMessages.value.filter(m => !m.is_read).length);
+
+// Server synchronization state
+const SYNC_INTERVAL = 30000; // Poll server every 30 seconds
+let syncIntervalId = null;
+let lastSyncTime = null;
 
 // Action panel state
 const showActionPanel = ref(false);
@@ -306,13 +519,35 @@ let terrainLayer = null;
 
 /**
  * Initialize Leaflet map
- * Usa parámetros de URL si existen, caso contrario usa valores por defecto (León)
+ * Priority: 1) Player capital, 2) URL params, 3) León default
  */
 const initMap = () => {
-  // Leer parámetros de la URL
+  // Try to get player's capital from localStorage (set on login)
+  const capitalH3 = localStorage.getItem('capitalH3');
+  let center = LEON_CENTER;
+  let zoom = INITIAL_ZOOM;
+
+  if (capitalH3) {
+    try {
+      // Convert H3 index to lat/lng
+      const [lat, lng] = cellToLatLng(capitalH3);
+      center = [lat, lng];
+      zoom = 11; // Close zoom to see the capital clearly
+      console.log(`[Map Init] Centering on player's capital: ${capitalH3}`);
+
+      // Clear the capital from localStorage after using it once
+      localStorage.removeItem('capitalH3');
+    } catch (error) {
+      console.warn('[Map Init] Could not parse capital H3 index:', error);
+    }
+  }
+
+  // Leer parámetros de la URL (override capital if URL params exist)
   const urlParams = getURLParams();
-  const center = urlParams ? [urlParams.lat, urlParams.lng] : LEON_CENTER;
-  const zoom = urlParams ? urlParams.zoom : INITIAL_ZOOM;
+  if (urlParams) {
+    center = [urlParams.lat, urlParams.lng];
+    zoom = urlParams.zoom;
+  }
 
   // Inicializar resolución desde URL o determinar automáticamente según zoom
   if (urlParams && urlParams.res) {
@@ -328,6 +563,19 @@ const initMap = () => {
     zoom: zoom,
     zoomControl: true,
   });
+
+  // Create custom Panes to ensure correct stacking order
+  // Territory Pane (Fill) - Bottom
+  map.createPane('territoryPane');
+  map.getPane('territoryPane').style.zIndex = 400;
+  
+  // Border Pane (Lines) - Middle
+  map.createPane('borderPane');
+  map.getPane('borderPane').style.zIndex = 450;
+  
+  // Star Pane (Icons) - Top
+  map.createPane('starPane');
+  map.getPane('starPane').style.zIndex = 650;
 
   // OpenStreetMap layer
   osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -536,6 +784,388 @@ const fetchTerrainTypes = async () => {
   }
 };
 
+/**
+ * Fetch world state (turn and date)
+ */
+const fetchWorldState = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/api/game/world-state`);
+    if (response.data.success) {
+      currentTurn.value = response.data.turn;
+      gameDate.value = new Date(response.data.date);
+      formattedDate.value = formatDate(gameDate.value);
+      dayOfYear.value = currentTurn.value % 365;
+      console.log(`✓ World state loaded: Turn ${currentTurn.value}, Day ${dayOfYear.value}/365, Date ${formattedDate.value}`);
+    }
+  } catch (err) {
+    console.error('Failed to fetch world state:', err);
+  }
+};
+
+/**
+ * Format date to Spanish format: "1 de marzo de 1039"
+ */
+const formatDate = (date) => {
+  const months = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  const day = date.getDate();
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day} de ${month}, ${year}`;
+};
+
+/**
+ * Advance to next turn
+ * Processes turn advancement and updates UI
+ */
+/**
+ * Sync game state with server
+ * Polls the server to check for turn updates and refreshes UI accordingly
+ */
+const syncWithServer = async () => {
+  try {
+    console.log('[Sync] Checking server for game state updates...');
+    const response = await axios.get(`${API_URL}/api/game/world-state`);
+
+    if (response.data.success) {
+      const serverTurn = response.data.turn;
+      const serverDate = new Date(response.data.date);
+
+      // Check if turn has changed
+      if (serverTurn !== currentTurn.value) {
+        console.log(`[Sync] 🔄 Turn changed! ${currentTurn.value} → ${serverTurn}`);
+
+        // Update world state
+        const oldTurn = currentTurn.value;
+        currentTurn.value = serverTurn;
+        gameDate.value = serverDate;
+        formattedDate.value = formatDate(serverDate);
+        dayOfYear.value = serverTurn % 365;
+
+        console.log(`[Sync] ✓ Updated to Turn ${serverTurn}, Day ${dayOfYear.value}/365`);
+
+        // Check if it's a harvest day
+        if (dayOfYear.value === 75 || dayOfYear.value === 180) {
+          const harvestSeason = dayOfYear.value === 75 ? 'PRIMAVERA' : 'VERANO';
+          showToast(`🌾 ¡Cosecha de ${harvestSeason} completada por el servidor!`, 'success');
+          showHarvestBanner(harvestSeason);
+        }
+
+        // Reload map data to reflect changes
+        if (currentZoom.value >= MIN_ZOOM) {
+          await loadHexagonsIfZoomValid();
+        }
+
+        // Update fiefs list
+        await updateFiefsUI();
+
+        // Reload messages (new harvest messages may have been generated)
+        await loadMessages();
+
+        lastSyncTime = Date.now();
+      } else {
+        console.log(`[Sync] ✓ No changes (Turn ${currentTurn.value})`);
+      }
+    }
+  } catch (err) {
+    console.error('[Sync] Error syncing with server:', err);
+  }
+};
+
+/**
+ * Start server synchronization polling
+ */
+const startSync = () => {
+  console.log(`[Sync] Starting server sync (polling every ${SYNC_INTERVAL / 1000}s)`);
+
+  // Clear any existing interval
+  if (syncIntervalId) {
+    clearInterval(syncIntervalId);
+  }
+
+  // Immediate first sync
+  syncWithServer();
+
+  // Poll server at regular intervals
+  syncIntervalId = setInterval(syncWithServer, SYNC_INTERVAL);
+};
+
+/**
+ * Stop server synchronization
+ */
+const stopSync = () => {
+  if (syncIntervalId) {
+    clearInterval(syncIntervalId);
+    syncIntervalId = null;
+    console.log('[Sync] Stopped server synchronization');
+  }
+};
+
+/**
+ * Update fiefs list from server
+ * Fetches all territories owned by the current player
+ */
+const updateFiefsUI = async () => {
+  try {
+    loadingFiefs.value = true;
+    console.log(`[Fiefs] Updating fiefs list for player ${playerId.value}...`);
+    console.log(`[Fiefs] API URL: ${API_URL}/api/game/my-fiefs`);
+
+    const response = await axios.get(`${API_URL}/api/game/my-fiefs`);
+
+    console.log('[Fiefs] ===== RAW SERVER RESPONSE =====');
+    console.log('[Fiefs] Full response:', response.data);
+    console.log('[Fiefs] Success:', response.data.success);
+    console.log('[Fiefs] Fiefs array:', response.data.fiefs);
+    console.log('[Fiefs] Fiefs count:', response.data.fiefs?.length);
+
+    if (response.data.success) {
+      const receivedFiefs = response.data.fiefs;
+
+      // Debug: Log first fief structure if exists
+      if (receivedFiefs && receivedFiefs.length > 0) {
+        console.log('[Fiefs] First fief structure:', receivedFiefs[0]);
+        console.log('[Fiefs] Fields:', Object.keys(receivedFiefs[0]));
+      } else {
+        console.warn('[Fiefs] ⚠️ No fiefs returned from server (array is empty)');
+      }
+
+      // Store previous food values for animation
+      previousFoodValues = {};
+      myFiefs.value.forEach(fief => {
+        previousFoodValues[fief.h3_index] = fief.food_stored;
+      });
+
+      // CRITICAL: Clear and update fiefs array
+      myFiefs.value = [];
+      console.log('[Fiefs] Cleared myFiefs array');
+
+      // Use nextTick to ensure Vue processes the clear
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      myFiefs.value = receivedFiefs || [];
+      console.log(`[Fiefs] ✓ Updated myFiefs.value with ${myFiefs.value.length} fiefs`);
+      console.log('[Fiefs] myFiefs.value contents:', JSON.stringify(myFiefs.value, null, 2));
+
+      // Verify the assignment worked
+      if (myFiefs.value.length > 0) {
+        console.log('[Fiefs] ✓ Fiefs successfully loaded and assigned');
+      } else {
+        console.warn('[Fiefs] ⚠️ myFiefs.value is still empty after assignment');
+      }
+
+      // Highlight food changes (green if increased)
+      setTimeout(() => {
+        myFiefs.value.forEach(fief => {
+          const prevValue = previousFoodValues[fief.h3_index];
+          if (prevValue !== undefined && fief.food_stored > prevValue) {
+            const foodElement = document.querySelector(`.fief-food[data-h3="${fief.h3_index}"]`);
+            if (foodElement) {
+              foodElement.classList.add('food-increased');
+              setTimeout(() => {
+                foodElement.classList.remove('food-increased');
+              }, 2000);
+            }
+          }
+        });
+      }, 100);
+    } else {
+      console.error('[Fiefs] Server returned success=false:', response.data);
+      myFiefs.value = [];
+    }
+  } catch (err) {
+    console.error('[Fiefs] ❌ Error fetching fiefs:', err);
+    console.error('[Fiefs] Error details:', err.response?.data || err.message);
+    myFiefs.value = [];
+  } finally {
+    loadingFiefs.value = false;
+  }
+};
+
+/**
+ * Focus map on a specific fief
+ * @param {string} h3_index - The H3 index to focus on
+ */
+const focusOnFief = (h3_index) => {
+  try {
+    const [lat, lng] = cellToLatLng(h3_index);
+    map.flyTo([lat, lng], 11, {
+      duration: 1.0
+    });
+    console.log(`[Fiefs] Focused on ${h3_index}`);
+  } catch (err) {
+    console.error('[Fiefs] Error focusing on fief:', err);
+    showToast('Error al enfocar el feudo', 'error');
+  }
+};
+
+/**
+ * Load messages from server
+ * Fetches all messages for the current player
+ */
+const loadMessages = async () => {
+  try {
+    loadingMessages.value = true;
+    console.log(`[Messages] Loading messages for player ${playerId.value}...`);
+
+    const response = await axios.get(`${API_URL}/api/messages`, {
+      params: {
+        unread_only: false  // Load all messages, not just unread
+      }
+    });
+
+    console.log('[Messages] Response:', response.data);
+
+    if (response.data.success) {
+      myMessages.value = response.data.messages || [];
+      console.log(`[Messages] ✓ Loaded ${myMessages.value.length} messages (${unreadCount.value} unread)`);
+    } else {
+      console.error('[Messages] Server returned success=false:', response.data);
+      myMessages.value = [];
+    }
+  } catch (err) {
+    console.error('[Messages] ❌ Error loading messages:', err);
+    console.error('[Messages] Error details:', err.response?.data || err.message);
+    myMessages.value = [];
+  } finally {
+    loadingMessages.value = false;
+  }
+};
+
+/**
+ * Mark message as read and show full content
+ * @param {Object} message - The message to mark as read
+ */
+const readMessage = async (message) => {
+  try {
+    console.log('[Messages] Opening message:', message.id);
+    console.log('[Messages] Message data:', {
+      id: message.id,
+      subject: message.subject,
+      bodyLength: message.body?.length || 0,
+      hasBody: !!message.body
+    });
+
+    // Show message detail immediately
+    selectedMessage.value = message;
+
+    // Mark as read on server if not already read
+    if (!message.is_read) {
+      console.log(`[Messages] Marking message ${message.id} as read...`);
+      const response = await axios.put(`${API_URL}/api/messages/${message.id}/read`);
+
+      if (response.data.success) {
+        // Update local state
+        message.is_read = true;
+        console.log(`[Messages] ✓ Message ${message.id} marked as read`);
+      } else {
+        console.error('[Messages] Failed to mark message as read:', response.data);
+      }
+    }
+  } catch (err) {
+    console.error('[Messages] ❌ Error with message:', err);
+    showToast('Error al abrir mensaje', 'error');
+  }
+};
+
+/**
+ * Close message detail view
+ */
+const closeMessageDetail = () => {
+  selectedMessage.value = null;
+};
+
+/**
+ * Focus map on hex from message
+ * @param {string} h3_index - The H3 index to focus on
+ */
+const focusOnHexFromMessage = (h3_index) => {
+  if (!h3_index) return;
+
+  try {
+    const [lat, lng] = cellToLatLng(h3_index);
+    map.flyTo([lat, lng], 11, {
+      duration: 1.0
+    });
+    console.log(`[Messages] Focused map on ${h3_index}`);
+    showToast('Mapa enfocado en territorio', 'success');
+
+    // Close message detail after focusing
+    closeMessageDetail();
+  } catch (err) {
+    console.error('[Messages] Error focusing on hex:', err);
+    showToast('Error al enfocar en el mapa', 'error');
+  }
+};
+
+/**
+ * Format message date for display
+ * @param {string} dateString - ISO date string
+ * @returns {string} Formatted relative time
+ */
+const formatMessageDate = (dateString) => {
+  if (!dateString) return '';
+
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Ahora';
+    if (diffMins < 60) return `Hace ${diffMins}m`;
+    if (diffHours < 24) return `Hace ${diffHours}h`;
+    if (diffDays < 7) return `Hace ${diffDays}d`;
+
+    // Format as date if older than a week
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    return `${day}/${month}`;
+  } catch (err) {
+    console.error('[Messages] Error formatting date:', err);
+    return '';
+  }
+};
+
+/**
+ * Show central harvest banner
+ * @param {string} season - The harvest season (PRIMAVERA or VERANO)
+ */
+const showHarvestBanner = (season) => {
+  // Create banner element
+  const banner = document.createElement('div');
+  banner.className = 'harvest-banner';
+  banner.innerHTML = `
+    <div class="harvest-banner-content">
+      <div class="harvest-wheat">🌾</div>
+      <div class="harvest-text">
+        ✨ ¡COSECHA DE ${season} FINALIZADA! ✨
+        <div class="harvest-subtext">Se han recolectado suministros en todo el reino</div>
+      </div>
+      <div class="harvest-wheat">🌾</div>
+    </div>
+  `;
+
+  // Add to document
+  document.body.appendChild(banner);
+
+  // Trigger animation
+  setTimeout(() => {
+    banner.classList.add('harvest-banner-show');
+  }, 10);
+
+  // Remove after 4 seconds
+  setTimeout(() => {
+    banner.classList.remove('harvest-banner-show');
+    setTimeout(() => {
+      document.body.removeChild(banner);
+    }, 500);
+  }, 4000);
+};
 
 /**
  * Render H3 hexagons on the map
@@ -563,155 +1193,153 @@ const renderHexagons = (hexagons) => {
 
   // Ajustar estilos según resolución
   const isHighRes = currentResolution.value >= 10;
-  const baseBorderWeight = isHighRes ? 0.5 : 1;
-  const borderOpacity = isHighRes ? 0.6 : 0.8;
-  const hoverWeight = isHighRes ? 2 : 3;
-
+  // const baseBorderWeight = isHighRes ? 0.5 : 1; // Unused in new design logic but kept for reference
+  
+  // New Rendering Logic with Panes
   hexagons.forEach((hex, index) => {
     try {
       // Get boundary coordinates for this H3 cell
       const boundary = cellToBoundary(hex.h3_index);
 
-      // Estilos especiales para caminos históricos
+      // --- CONFIGURATION ---
+      // Estilos especiales
       const hasRoad = hex.has_road || false;
-      const borderWeight = hasRoad ? baseBorderWeight * 2.5 : baseBorderWeight;
+      const isCapital = hex.is_capital === true;
+      const isMyTerritory = hex.player_id === playerId.value;
+      const playerColor = hex.player_color || null;
       const terrainColor = hex.terrain_color || hex.color || '#9e9e9e';
 
-      // CAPA JUGADOR: Si player_color existe, usar como borde (prioridad alta)
-      const playerColor = hex.player_color || null;
-      const isCapital = hex.is_capital === true;
-      const isMyTerritory = hex.player_id === playerId.value; // Check if belongs to current player
-      let borderColor = terrainColor;
-      let finalBorderWeight = borderWeight;
-      let finalFillOpacity = hexagonOpacity.value / 100;
-      let finalFillColor = terrainColor;
-      let borderOpacityValue = borderOpacity;
+      // --- 1. FILL SETUP (territoryPane) ---
+      let fillColor = terrainColor;
+      let fillOpacity = 0.3; // Default requested
+      
+      // Override fill logic based on priorities
+      if (isCapital && isMyTerritory) {
+         fillColor = '#ff0000';
+         fillOpacity = 0.5;
+      } else if (isMyTerritory) {
+         fillColor = '#ff0000';
+         fillOpacity = 0.3;
+      } else if (isPoliticalView.value && hex.player_id) {
+         fillOpacity = 0.05; // Enemy territory faint fill
+      } else if (playerColor) {
+         fillOpacity = 0.05;
+      }
 
-      // PRIORITY 1: CAPITAL - Estilo ultra prominente
+      // --- 2. BORDER SETUP (borderPane) ---
+      // Default: color red, weight 3 (from requirements: "color: '#d32f2f', weight: 3")
+      let borderColor = '#d32f2f'; 
+      let borderWeight = 3;
+      
+      // Logic from requirements for CAPITAL
       if (isCapital) {
-        // Borde ROJO PURO y GRUESO para la capital (máxima prominencia)
-        borderColor = '#ff0000';  // Rojo puro brillante
-        finalBorderWeight = 6;     // Doble que territorios normales
-        borderOpacityValue = 1.0;  // Totalmente opaco
-
-        // Relleno rojo sombreado para capital (más opaco)
-        if (isMyTerritory) {
-          finalFillColor = '#ff0000';
-          finalFillOpacity = 0.5;  // Capital más opaca que territorios normales
-        }
-      }
-      // PRIORITY 2: TERRITORIO DEL JUGADOR - Relleno rojo sombreado
+          borderColor = '#ff0000';
+          borderWeight = 6;
+      } 
+      // Logic for other cases (Roads, Enemies) - maintaining some existing logic mixed with new requirements
       else if (isMyTerritory) {
-        // Borde rojo intenso para territorios del jugador
-        borderColor = '#d32f2f';
-        finalBorderWeight = 3;
-        borderOpacityValue = 1.0;
-
-        // Relleno rojo sombreado semi-transparente
-        finalFillColor = '#ff0000';
-        finalFillOpacity = 0.3;  // Semi-transparente para ver el terreno debajo
-      }
-      // PRIORITY 3: VISTA POLÍTICA - Resaltar territorios de otros jugadores
-      else if (isPoliticalView.value && hex.player_id) {
-        // Modo político: borde del color del jugador para territorios enemigos
-        borderColor = playerColor || '#d32f2f';
-        finalBorderWeight = 3;
-        finalFillOpacity = 0.05;  // Muy poca opacidad para territorios enemigos
-        borderOpacityValue = 0.8;
-      }
-      // PRIORITY 4: Vista normal con dueño (territorio enemigo)
-      else if (playerColor) {
-        // Vista normal: borde grueso con color del reino enemigo
-        borderColor = playerColor;
-        finalBorderWeight = baseBorderWeight * 3;
-        finalFillOpacity = 0.05;  // Muy poca opacidad
-        borderOpacityValue = 0.95;
-      }
-      // PRIORITY 5: Camino histórico
-      else if (hasRoad) {
-        // Sin dueño pero con camino: borde dorado
-        borderColor = '#d4af37';
-        borderOpacityValue = 0.9;
+          borderColor = '#d32f2f';
+          borderWeight = 3;
+      } else if (isPoliticalView.value && playerColor) {
+           borderColor = playerColor; // Enemy border color
+           borderWeight = 3;
+      } else if (hasRoad) {
+           borderColor = '#d4af37'; // Gold road
+      } else {
+          // Standard terrain border?
+          // If we want to follow the "Two Elements" strict rule for *player* hexagons:
+          // The prompt says: "Cada hexágono del jugador debe tener DOS elementos"
+          // It implies logic mainly for player/capital. But we should render the map consistently.
+          // Using terrain color for neutral borders or keeping red theme?
+          // Assuming neutral hexes just use terrain color or minimal border
+          if (!hex.player_id && !hasRoad) {
+             borderColor = terrainColor;
+             borderWeight = isHighRes ? 0.5 : 1;
+          }
       }
 
-      // Create Leaflet polygon with estilos ajustados
-      const polygon = L.polygon(boundary, {
-        color: borderColor,
-        fillColor: finalFillColor,
-        fillOpacity: finalFillOpacity,
-        fill: true, // Always enable fill
-        weight: finalBorderWeight,
-        opacity: borderOpacityValue,
-        // zIndexOffset for capitals to render on top
-        ...(isCapital && { className: 'capital-hexagon' })
+      // --- LAYER 1: FILL (territoryPane) ---
+      // "A) El RELLENO: L.polygon con fill: true, fillColor: '#ff0000', fillOpacity: 0.3, stroke: false y pane: 'territoryPane'."
+      const fillPolygon = L.polygon(boundary, {
+        pane: 'territoryPane',
+        stroke: false,
+        fill: true,
+        fillColor: fillColor,
+        fillOpacity: fillOpacity,
+        // Make this the interactive layer
+        interactive: true 
       });
 
-      // Add hover effect (maintain fillColor for player territories)
-      polygon.on('mouseover', function () {
+      // Hover effects on Fill
+      fillPolygon.on('mouseover', function () {
         this.setStyle({
-          weight: finalBorderWeight * 1.5,
-          fillOpacity: Math.min(finalFillOpacity + 0.2, 1.0),
+          fillOpacity: Math.min(fillOpacity + 0.2, 1.0)
+        });
+      });
+      fillPolygon.on('mouseout', function () {
+        this.setStyle({
+          fillOpacity: fillOpacity
         });
       });
 
-      polygon.on('mouseout', function () {
-        this.setStyle({
-          weight: finalBorderWeight,
-          fillOpacity: finalFillOpacity,
-        });
-      });
-
-      // Get center coordinates of hexagon
+      // Click interaction
       const [lat, lng] = cellToLatLng(hex.h3_index);
-
-      // Add click event to show detailed popup
-      polygon.on('click', async function () {
+      fillPolygon.on('click', async function () {
         await showCellDetailsPopup(hex.h3_index, [lat, lng]);
       });
 
-      // Add to layer group
-      polygon.addTo(hexagonLayer);
+      fillPolygon.addTo(hexagonLayer);
 
-      // Log progress every 500 hexagons
-      if ((index + 1) % 500 === 0) {
-        console.log(`Rendered ${index + 1} hexagons...`);
+
+      // --- LAYER 2: BORDER (borderPane) ---
+      // "B) El BORDE: L.polygon con fill: false, color: '#d32f2f', weight: 3, y pane: 'borderPane'."
+      const borderPolygon = L.polygon(boundary, {
+        pane: 'borderPane',
+        fill: false,
+        color: borderColor,
+        weight: borderWeight,
+        opacity: 1.0, // Assuming solid borders unless specified
+        interactive: false, // Click-through to fill
+        className: isCapital ? 'capital-hexagon' : '' // Keep class for possible CSS overrides
+      });
+
+      borderPolygon.addTo(hexagonLayer);
+
+
+      // --- LAYER 3: STAR MARKER (starPane) ---
+      if (isCapital) {
+        // "3. ICONO DE LA ESTRELLA (⭐)" - REFACTORIZADO A SVG STRICTO - MOVED TO RENDER HEXAGONS
+        const [lat, lng] = cellToLatLng(hex.h3_index);
+        
+        console.warn('RENDER ESTRELLA:', [lat, lng]); // Verification log requested
+        
+        const capitalIcon = L.divIcon({
+            className: 'capital-star-marker',
+            html: `
+              <svg viewBox="0 0 24 24" width="32" height="32" style="filter: drop-shadow(0 0 3px rgba(0,0,0,0.8));">
+                <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.4 8.168L12 18.896l-7.335 3.869 1.4-8.168-5.934-5.787 8.2-1.192z" 
+                      fill="#FFD700" stroke="#8B4513" stroke-width="1.5"/>
+              </svg>`,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
+        });
+
+        L.marker([lat, lng], {
+            icon: capitalIcon,
+            pane: 'starPane',
+            interactive: false,
+            zIndexOffset: 1000 // Ultra high priority
+        }).addTo(hexagonLayer);
+        
+        console.log(`✓ Rendered capital star at ${hex.h3_index}`);
       }
+
     } catch (err) {
       console.error(`Error rendering hexagon ${hex.h3_index}:`, err);
     }
   });
 
   console.log(`✓ Finished rendering ${hexagons.length} hexagons at resolution ${currentResolution.value}`);
-
-  // Render capital star markers (high priority - rendered AFTER hexagons)
-  hexagons.forEach(hex => {
-    if (hex.is_capital === true) {
-      try {
-        // Calculate center of hexagon
-        const [lat, lng] = cellToLatLng(hex.h3_index);
-
-        // Create star icon using divIcon with enhanced visibility
-        const starIcon = L.divIcon({
-          className: 'capital-star-marker',
-          html: '⭐',
-          iconSize: [30, 30],
-          iconAnchor: [15, 15] // Center the icon perfectly
-        });
-
-        // Add marker to map with VERY high z-index and explicit pane to be on top of everything
-        L.marker([lat, lng], {
-          icon: starIcon,
-          interactive: false, // Don't block clicks to hexagon below
-          zIndexOffset: 3000, // Extremely high value to ensure it's on top
-          pane: 'markerPane' // Explicit pane for maximum visibility
-        }).addTo(hexagonLayer);
-
-        console.log(`✓ Rendered capital star at ${hex.h3_index}`);
-      } catch (err) {
-        console.error(`Error rendering capital marker for ${hex.h3_index}:`, err);
-      }
-    }
-  });
 
   // Render building and settlement markers if zoom is sufficient
   if (currentZoom.value >= MIN_ZOOM_SETTLEMENTS) {
@@ -944,40 +1572,8 @@ const renderBuildingMarkers = (hexagons) => {
     }
   });
 
-  // Render CAPITAL markers (crown icon)
-  capitalsToRender.forEach((hex) => {
-    try {
-      // Get center coordinates
-      const [lat, lng] = cellToLatLng(hex.h3_index);
-
-      // Create crown divIcon (larger and more prominent)
-      const crownIcon = L.divIcon({
-        className: 'capital-marker',
-        html: `<div class="capital-icon-emoji">👑</div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      });
-
-      // Create marker
-      const marker = L.marker([lat, lng], {
-        icon: crownIcon,
-        zIndexOffset: 600, // Above regular buildings (500)
-      });
-
-      // Add tooltip
-      marker.bindTooltip('Capital', {
-        permanent: false,
-        direction: 'top',
-        className: 'capital-tooltip',
-        offset: [0, -15],
-      });
-
-      // Add to layer
-      marker.addTo(buildingMarkersLayer);
-    } catch (err) {
-      console.error(`Error rendering capital marker for ${hex.h3_index}:`, err);
-    }
-  });
+      // --- LAYER 3: STAR MARKER (starPane) ---
+      // Capital markers handled in renderHexagons now
 
   console.log(`✓ Rendered ${buildingsToRender.length} building markers and ${capitalsToRender.length} capital markers`);
 };
@@ -1048,7 +1644,6 @@ const colonizeTerritory = async () => {
 
     // Call API
     const response = await axios.post(`${API_URL}/api/game/claim`, {
-      player_id: playerId.value,
       h3_index: hexToColonize
     });
 
@@ -1204,9 +1799,7 @@ const goToCapital = async () => {
     }
 
     // Fetch capital from game/capital endpoint (uses is_capital flag in h3_map)
-    const response = await axios.get(`${API_URL}/api/game/capital`, {
-      params: { player_id: playerId.value }
-    });
+    const response = await axios.get(`${API_URL}/api/game/capital`);
 
     if (!response.data.success) {
       showToast(response.data.message, 'warning');
@@ -1289,7 +1882,7 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
 
     // CAPITAL BADGE - Show if this is the capital
     if (cell.is_capital) {
-      popupContent += '<div class="capital-badge">⭐ CAPITAL DEL REINO ⭐</div>';
+      popupContent += '<div class="capital-header">🏰 SEDE DEL REINO</div>';
     }
 
     // TITLE - Settlement name or "Territorio Salvaje"
@@ -1428,7 +2021,6 @@ const colonizeFromPopup = async (h3_index) => {
 
     // Call API
     const response = await axios.post(`${API_URL}/api/game/claim`, {
-      player_id: playerId.value,
       h3_index: h3_index
     });
 
@@ -1445,6 +2037,9 @@ const colonizeFromPopup = async (h3_index) => {
 
       // Refresh the map to show the new territory
       await fetchHexagonData();
+
+      // Update fiefs list to include new territory
+      await updateFiefsUI();
 
       // Show success toast (including iron vein message if found)
       let message = response.data.is_capital
@@ -1466,16 +2061,108 @@ const colonizeFromPopup = async (h3_index) => {
   }
 };
 
+/**
+ * Check authentication status
+ * Loads user session from server
+ */
+const checkAuth = async () => {
+  try {
+    console.log('[Auth] Checking authentication...');
+
+    // Try to get user from localStorage first (faster)
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      currentUser.value = JSON.parse(storedUser);
+      console.log(`[Auth] ✓ User loaded from localStorage: ${currentUser.value.username} (${currentUser.value.role})`);
+    }
+
+    // Verify session with server
+    const response = await axios.get(`${API_URL}/api/auth/me`, {
+      withCredentials: true
+    });
+
+    if (response.data.success) {
+      currentUser.value = response.data.user;
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      console.log(`[Auth] ✓ Session verified: ${currentUser.value.username} (${currentUser.value.role})`);
+    } else {
+      // No session, clear user data
+      currentUser.value = null;
+      localStorage.removeItem('user');
+      console.log('[Auth] ⚠️ No active session');
+
+      // Redirect to login
+      showToast('Por favor inicia sesión', 'error');
+      setTimeout(() => {
+        window.location.href = '/login.html';
+      }, 2000);
+    }
+  } catch (err) {
+    console.error('[Auth] Error checking authentication:', err);
+    currentUser.value = null;
+    localStorage.removeItem('user');
+
+    // Redirect to login
+    setTimeout(() => {
+      window.location.href = '/login.html';
+    }, 2000);
+  }
+};
+
+/**
+ * Handle user logout
+ * Calls logout API, clears local storage, and redirects to login
+ */
+const handleLogout = async () => {
+  try {
+    console.log('[Auth] Logging out...');
+
+    // Call logout endpoint to destroy session
+    const response = await axios.post(`${API_URL}/api/auth/logout`, {}, {
+      withCredentials: true
+    });
+
+    if (response.data.success) {
+      console.log('[Auth] ✓ Logout successful');
+    }
+  } catch (err) {
+    console.error('[Auth] Error during logout:', err);
+    // Continue with logout even if API call fails
+  } finally {
+    // Clear all local storage data
+    localStorage.removeItem('user');
+    localStorage.removeItem('capitalH3');
+    console.log('[Auth] ✓ Local storage cleared');
+
+    // Clear current user state
+    currentUser.value = null;
+
+    // Show toast notification
+    showToast('Sesión cerrada. ¡Hasta pronto!', 'success');
+
+    // Redirect to login page
+    setTimeout(() => {
+      window.location.href = '/login.html';
+    }, 1000);
+  }
+};
+
 // Lifecycle hooks
 onMounted(() => {
+  checkAuth(); // Check authentication first
   initMap();
   fetchTerrainTypes();
+  fetchWorldState();
+  updateFiefsUI(); // Load initial fiefs list
+  loadMessages(); // Load initial messages
+  startSync(); // Start server synchronization (polls every 30 seconds)
 });
 
 onBeforeUnmount(() => {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }
+  stopSync(); // Stop server synchronization
   if (map) {
     map.remove();
   }
@@ -2084,8 +2771,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* Import Google Font - Cinzel (Medieval/Roman Style) */
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
+/* Import Google Font - Moved to style.css */
 
 /* Responsive Design */
 @media (max-width: 768px) {
@@ -2116,11 +2802,11 @@ onBeforeUnmount(() => {
 
 }
 
-/* Player Gold Indicator - Top Right Corner */
+/* Player Gold Indicator - Top Left Corner */
 .player-gold-indicator {
   position: fixed;
   top: 20px;
-  right: 20px; /* Aligned to right edge */
+  left: 20px; /* Moved to left edge */
   background: linear-gradient(135deg, #f4e4bc 0%, #e8d4a8 100%);
   border: 3px solid #8b7355;
   border-radius: 12px;
@@ -2152,6 +2838,688 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   letter-spacing: 1px;
   font-weight: 600;
+}
+
+/* Time Control Panel - Medieval Stone Style */
+.time-control {
+  position: fixed;
+  top: 20px;
+  right: 200px; /* Positioned left of gold indicator */
+  background: linear-gradient(135deg, #3e3e3e 0%, #2a2a2a 100%);
+  border: 3px solid #5d5d5d;
+  border-radius: 8px;
+  padding: 12px 15px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  z-index: 1001;
+  font-family: 'Cinzel', 'Georgia', serif;
+  min-width: 200px;
+}
+
+.time-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #f4e4bc;
+}
+
+.time-icon {
+  font-size: 16px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.time-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b8a882;
+  min-width: 45px;
+}
+
+.time-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f4e4bc;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.date-display {
+  font-size: 14px;
+  font-weight: 700;
+  color: #FFD700;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.3px;
+}
+
+/* Harvest Info Row */
+.harvest-info {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.harvest-label {
+  font-size: 11px;
+  font-style: italic;
+  color: #c9a668;
+  line-height: 1.4;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  font-family: 'Georgia', serif;
+}
+
+/* Server Sync Info */
+.server-time-info {
+  padding: 8px 12px;
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  border-radius: 4px;
+  margin-top: 10px;
+}
+
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #4CAF50;
+}
+
+.sync-icon {
+  font-size: 14px;
+  animation: rotate-sync 2s linear infinite;
+}
+
+@keyframes rotate-sync {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.sync-text {
+  font-weight: 500;
+  font-family: 'Cinzel', 'Georgia', serif;
+}
+
+/* Fiefs Monitoring Panel */
+.fiefs-panel {
+  position: fixed;
+  top: 100px; /* Moved below gold indicator */
+  left: 20px; /* Aligned with gold indicator on left side */
+  background: linear-gradient(135deg, #3e3e3e 0%, #2a2a2a 100%);
+  border: 3px solid #5d5d5d;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  z-index: 1001;
+  font-family: 'Cinzel', 'Georgia', serif;
+  width: 240px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.fiefs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #5d5d5d;
+}
+
+.fiefs-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #f4e4bc;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.fiefs-count {
+  background: #8B0000;
+  color: #f4e4bc;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.fiefs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 50px; /* Ensure list is visible even when empty */
+}
+
+.fiefs-empty {
+  text-align: center;
+  color: #b8a882;
+  font-size: 11px;
+  padding: 20px 10px;
+  font-style: italic;
+}
+
+.fief-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid #4a4a4a;
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.fief-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #7d7d7d;
+  transform: translateX(-3px);
+  box-shadow: 3px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.fief-name {
+  font-size: 12px;
+  font-weight: bold;
+  color: #f4e4bc;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fief-terrain {
+  font-size: 10px;
+  color: #b8a882;
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.fief-stats {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.fief-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fief-icon {
+  font-size: 14px;
+}
+
+.fief-value {
+  font-size: 11px;
+  font-weight: bold;
+  color: #f4e4bc;
+}
+
+/* Food alert - red text when low */
+.fief-low-food .fief-food {
+  color: #ff4444 !important;
+  animation: pulse-warning 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Food increase highlight */
+.fief-food.food-increased {
+  color: #7FFF00 !important;
+  animation: glow-green 2s ease-out;
+}
+
+@keyframes glow-green {
+  0% {
+    text-shadow: 0 0 10px rgba(127, 255, 0, 1);
+    transform: scale(1.2);
+  }
+  100% {
+    text-shadow: 0 0 0 rgba(127, 255, 0, 0);
+    transform: scale(1);
+  }
+}
+
+/* Messages Panel */
+.messages-panel {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 350px;
+  max-height: 400px;
+  background: rgba(30, 30, 40, 0.95);
+  border: 2px solid rgba(200, 180, 130, 0.6);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.messages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(200, 180, 130, 0.3);
+}
+
+.messages-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #f4e4bc;
+  font-weight: bold;
+}
+
+.messages-count {
+  background: #e74c3c;
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 12px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.messages-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.messages-empty {
+  text-align: center;
+  color: #b8a882;
+  font-size: 12px;
+  padding: 20px 10px;
+  font-style: italic;
+}
+
+.message-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(200, 180, 130, 0.3);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.message-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(200, 180, 130, 0.6);
+  transform: translateX(-3px);
+  box-shadow: 3px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.message-unread {
+  border-left: 3px solid #3498db;
+  background: rgba(52, 152, 219, 0.1);
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.message-sender {
+  font-size: 11px;
+  font-weight: bold;
+  color: #f39c12;
+}
+
+.message-date {
+  font-size: 10px;
+  color: #95a5a6;
+}
+
+.message-subject {
+  font-size: 12px;
+  font-weight: bold;
+  color: #f4e4bc;
+  margin-bottom: 4px;
+}
+
+.message-preview {
+  font-size: 11px;
+  color: #b8a882;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Scrollbar styling for messages list */
+.messages-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.messages-list::-webkit-scrollbar-thumb {
+  background: rgba(200, 180, 130, 0.4);
+  border-radius: 3px;
+}
+
+.messages-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(200, 180, 130, 0.6);
+}
+
+/* Admin Link Container */
+.admin-link-container {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 999;
+}
+
+.admin-link {
+  display: inline-block;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  border: 2px solid rgba(231, 76, 60, 0.6);
+  border-radius: 8px;
+  color: white;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: bold;
+  font-family: 'Cinzel', 'Georgia', serif;
+  box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+  transition: all 0.3s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.admin-link:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(231, 76, 60, 0.6);
+  background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+}
+
+.admin-link:active {
+  transform: translateY(-1px);
+}
+
+/* Logout Container */
+.logout-container {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* If admin link exists, position logout below it */
+.admin-link-container + .logout-container {
+  bottom: 80px; /* Position above admin link */
+}
+
+.logout-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: rgba(44, 62, 80, 0.85);
+  border: 2px solid rgba(149, 165, 166, 0.4);
+  border-radius: 8px;
+  color: #ecf0f1;
+  font-size: 13px;
+  font-weight: bold;
+  font-family: 'Cinzel', 'Georgia', serif;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+.logout-button:hover {
+  background: rgba(192, 57, 43, 0.85);
+  border-color: rgba(231, 76, 60, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+}
+
+.logout-button:active {
+  transform: translateY(0);
+}
+
+.logout-icon {
+  font-size: 16px;
+}
+
+.logout-text {
+  letter-spacing: 0.5px;
+}
+
+.user-info {
+  font-size: 11px;
+  color: #95a5a6;
+  text-align: center;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-family: 'Georgia', serif;
+}
+
+/* Message Detail Panel */
+.message-detail-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: rgba(30, 30, 40, 0.98);
+  border: 3px solid rgba(200, 180, 130, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(15px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideInScale 0.3s ease-out;
+}
+
+@keyframes slideInScale {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.message-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background: rgba(0, 0, 0, 0.4);
+  border-bottom: 2px solid rgba(200, 180, 130, 0.4);
+}
+
+.message-detail-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #f39c12;
+  font-weight: bold;
+}
+
+.message-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.message-detail-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(200, 180, 130, 0.2);
+}
+
+.message-detail-sender {
+  font-size: 13px;
+  font-weight: bold;
+  color: #f39c12;
+}
+
+.message-detail-date {
+  font-size: 12px;
+  color: #95a5a6;
+}
+
+.message-detail-subject {
+  font-size: 18px;
+  color: #f4e4bc;
+  margin: 0 0 15px 0;
+  font-weight: bold;
+}
+
+.message-detail-content {
+  font-size: 14px;
+  color: #d4c4a4;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin-bottom: 20px;
+}
+
+.message-detail-map-button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-family: 'Cinzel', 'Georgia', serif;
+}
+
+.message-detail-map-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+}
+
+.close-button {
+  background: rgba(231, 76, 60, 0.8);
+  border: none;
+  color: white;
+  font-size: 18px;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.close-button:hover {
+  background: rgba(231, 76, 60, 1);
+  transform: scale(1.1);
+}
+
+/* Scrollbar for message detail */
+.message-detail-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.message-detail-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.message-detail-body::-webkit-scrollbar-thumb {
+  background: rgba(200, 180, 130, 0.5);
+  border-radius: 4px;
+}
+
+.message-detail-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(200, 180, 130, 0.7);
+}
+
+/* Harvest Banner - Central Floating Message */
+.harvest-banner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.5);
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  border: 4px solid #8B4513;
+  border-radius: 12px;
+  padding: 30px 40px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  z-index: 10000;
+  opacity: 0;
+  transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.harvest-banner-show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.harvest-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.harvest-wheat {
+  font-size: 48px;
+  animation: wheat-bounce 0.8s ease-in-out infinite;
+}
+
+@keyframes wheat-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.harvest-text {
+  font-family: 'Cinzel', 'Georgia', serif;
+  font-size: 24px;
+  font-weight: bold;
+  color: #5d4e37;
+  text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.5);
+  text-align: center;
+}
+
+.harvest-subtext {
+  font-size: 14px;
+  font-weight: normal;
+  margin-top: 8px;
+  color: #6d5a47;
 }
 
 /* Action Panel - Medieval Floating Panel */
@@ -2287,7 +3655,7 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .player-gold-indicator {
     top: 10px;
-    right: 10px;
+    left: 10px; /* Keep on left side for mobile */
     padding: 8px 15px;
     min-width: 120px;
   }
@@ -2302,6 +3670,37 @@ onBeforeUnmount(() => {
 
   .gold-label {
     font-size: 10px;
+  }
+
+  .time-control {
+    top: auto;
+    bottom: 20px;
+    right: 10px;
+    left: 10px;
+    padding: 10px 12px;
+    min-width: auto;
+  }
+
+  .time-row {
+    gap: 4px;
+  }
+
+  .time-icon {
+    font-size: 14px;
+  }
+
+  .time-label {
+    font-size: 11px;
+    min-width: 40px;
+  }
+
+  .time-value {
+    font-size: 12px;
+  }
+
+  .btn-next-turn {
+    font-size: 11px;
+    padding: 6px 10px;
   }
 
   .action-panel {
@@ -2462,18 +3861,7 @@ onBeforeUnmount(() => {
   filter: drop-shadow(0 0 8px rgba(255, 0, 0, 0.6));
 }
 
-/* Capital star marker styling - Enhanced visibility */
-:deep(.capital-star-marker) {
-  font-size: 24px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  line-height: 30px;
-  filter: drop-shadow(0 0 3px gold) drop-shadow(0 0 6px rgba(255, 215, 0, 0.8));
-  pointer-events: none; /* Allow clicks to pass through to hexagon below */
-  z-index: 10000 !important;
-}
+/* Capital star marker styling - Moved to style.css */
 
 /* Legacy support for old class name */
 :deep(.capital-star-label) {

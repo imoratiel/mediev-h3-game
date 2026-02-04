@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Administración - Reino Medieval</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Cinzel', 'Georgia', serif;
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+      color: #ecf0f1;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      padding: 30px 0;
+      border-bottom: 3px solid #f39c12;
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      color: #f39c12;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .subtitle {
+      font-size: 1.1em;
+      color: #bdc3c7;
+      margin-top: 10px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(243, 156, 18, 0.3);
+      border-radius: 10px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .card h2 {
+      color: #f39c12;
+      font-size: 1.5em;
+      margin-bottom: 15px;
+      border-bottom: 1px solid rgba(243, 156, 18, 0.3);
+      padding-bottom: 10px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      margin: 20px 0;
+    }
+
+    .stat-item {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+      border-left: 3px solid #3498db;
+    }
+
+    .stat-label {
+      font-size: 0.85em;
+      color: #95a5a6;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stat-value {
+      font-size: 1.8em;
+      color: #ecf0f1;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #bdc3c7;
+      font-size: 0.95em;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 2px solid rgba(243, 156, 18, 0.3);
+      border-radius: 6px;
+      color: #ecf0f1;
+      font-size: 1em;
+      transition: all 0.3s;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #f39c12;
+      box-shadow: 0 0 10px rgba(243, 156, 18, 0.3);
+    }
+
+    button {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-size: 1em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      width: 100%;
+      font-family: 'Cinzel', 'Georgia', serif;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 10px rgba(231, 76, 60, 0.3);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 15px rgba(231, 76, 60, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+      box-shadow: 0 4px 10px rgba(52, 152, 219, 0.3);
+    }
+
+    button.success {
+      background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+      box-shadow: 0 4px 10px rgba(39, 174, 96, 0.3);
+    }
+
+    .alert {
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 15px;
+      display: none;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .alert.success {
+      background: rgba(39, 174, 96, 0.2);
+      border: 1px solid #27ae60;
+      color: #2ecc71;
+    }
+
+    .alert.error {
+      background: rgba(231, 76, 60, 0.2);
+      border: 1px solid #e74c3c;
+      color: #e74c3c;
+    }
+
+    .alert.show {
+      display: block;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 30px;
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(243, 156, 18, 0.3);
+      border-radius: 6px;
+      color: #f39c12;
+      text-decoration: none;
+      transition: all 0.3s;
+    }
+
+    .back-link:hover {
+      background: rgba(243, 156, 18, 0.2);
+      transform: translateX(-5px);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>👑 Panel de Administración</h1>
+      <p class="subtitle">Control total del Reino Medieval</p>
+    </header>
+
+    <div class="grid">
+      <!-- Statistics Card -->
+      <div class="card">
+        <h2>📊 Estadísticas del Mundo</h2>
+        <div class="stats">
+          <div class="stat-item">
+            <div class="stat-label">Turno Actual</div>
+            <div class="stat-value" id="stat-turn">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Fecha del Juego</div>
+            <div class="stat-value" id="stat-date" style="font-size: 1.2em;">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Jugadores</div>
+            <div class="stat-value" id="stat-players">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Territorios</div>
+            <div class="stat-value" id="stat-territories">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Mensajes</div>
+            <div class="stat-value" id="stat-messages">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Intervalo Turno</div>
+            <div class="stat-value" id="stat-interval">-</div>
+          </div>
+        </div>
+        <button class="primary" onclick="loadStats()">🔄 Actualizar Estadísticas</button>
+      </div>
+
+      <!-- Reset Game Card -->
+      <div class="card">
+        <h2>🔄 Resetear Mundo</h2>
+        <p style="color: #95a5a6; margin-bottom: 20px;">
+          Resetea el mundo del juego al turno 0 (1 de Marzo, 1039).
+          Esta acción no elimina jugadores ni territorios, solo reinicia el tiempo.
+        </p>
+        <button onclick="resetGame()">⚠️ Resetear Mundo</button>
+        <div id="reset-alert" class="alert"></div>
+      </div>
+
+      <!-- Configure Turn Interval Card -->
+      <div class="card">
+        <h2>⚙️ Configurar Intervalo</h2>
+        <p style="color: #95a5a6; margin-bottom: 20px;">
+          Cambia el intervalo de tiempo entre turnos automáticos.
+        </p>
+        <div class="form-group">
+          <label for="turn-interval">Intervalo de Turno (segundos)</label>
+          <input
+            type="number"
+            id="turn-interval"
+            placeholder="Ej: 300 (5 minutos)"
+            min="5"
+            value="15"
+          />
+        </div>
+        <button class="success" onclick="updateConfig()">💾 Guardar Configuración</button>
+        <div id="config-alert" class="alert"></div>
+      </div>
+    </div>
+
+    <a href="/" class="back-link">← Volver al Mapa</a>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:3000';
+
+    // Check authentication and admin role on page load
+    window.addEventListener('load', async () => {
+      await checkAuth();
+      loadStats();
+    });
+
+    // Check if user is authenticated and is admin
+    async function checkAuth() {
+      try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (!data.success) {
+          // Not logged in
+          alert('Debes iniciar sesión para acceder al panel de administración');
+          window.location.href = '/login.html';
+          return;
+        }
+
+        if (data.user.role !== 'admin') {
+          // Not admin
+          alert('Acceso denegado. Se requieren permisos de administrador.');
+          window.location.href = '/';
+          return;
+        }
+
+        console.log('✓ Admin authenticated:', data.user.username);
+      } catch (error) {
+        console.error('Auth error:', error);
+        alert('Error de autenticación');
+        window.location.href = '/login.html';
+      }
+    }
+
+    async function loadStats() {
+      try {
+        const response = await fetch(`${API_URL}/api/admin/stats`, {
+          credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+          document.getElementById('stat-turn').textContent = data.stats.current_turn;
+          document.getElementById('stat-date').textContent = formatDate(new Date(data.stats.game_date));
+          document.getElementById('stat-players').textContent = data.stats.players;
+          document.getElementById('stat-territories').textContent = data.stats.territories;
+          document.getElementById('stat-messages').textContent = data.stats.messages;
+          document.getElementById('stat-interval').textContent = `${data.stats.turn_interval_seconds}s`;
+
+          // Update input field
+          document.getElementById('turn-interval').value = data.stats.turn_interval_seconds;
+        }
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    }
+
+    async function resetGame() {
+      if (!confirm('¿Estás seguro de que quieres resetear el mundo al turno 0?')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/api/admin/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+        const alert = document.getElementById('reset-alert');
+
+        if (data.success) {
+          showAlert(alert, 'success', data.message);
+          loadStats();
+        } else {
+          showAlert(alert, 'error', data.message);
+        }
+      } catch (error) {
+        showAlert(document.getElementById('reset-alert'), 'error', 'Error al conectar con el servidor');
+      }
+    }
+
+    async function updateConfig() {
+      const interval = parseInt(document.getElementById('turn-interval').value);
+
+      if (interval < 5) {
+        showAlert(document.getElementById('config-alert'), 'error', 'El intervalo debe ser al menos 5 segundos');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/api/admin/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            turn_interval_seconds: interval
+          })
+        });
+
+        const data = await response.json();
+        const alert = document.getElementById('config-alert');
+
+        if (data.success) {
+          showAlert(alert, 'success', data.message);
+          loadStats();
+        } else {
+          showAlert(alert, 'error', data.message);
+        }
+      } catch (error) {
+        showAlert(document.getElementById('config-alert'), 'error', 'Error al conectar con el servidor');
+      }
+    }
+
+    function showAlert(element, type, message) {
+      element.className = `alert ${type} show`;
+      element.textContent = message;
+
+      setTimeout(() => {
+        element.classList.remove('show');
+      }, 5000);
+    }
+
+    function formatDate(date) {
+      const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      return `${date.getDate()} ${months[date.getMonth()]}, ${date.getFullYear()}`;
+    }
+  </script>
+</body>
+</html>

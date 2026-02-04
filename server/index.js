@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const session = require('express-session');
 const pool = require('./db');
 const h3 = require('h3-js');
 
@@ -7,8 +8,61 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // Vite dev server
+  credentials: true
+}));
 app.use(express.json());
+
+// Session configuration
+app.use(session({
+  secret: 'medieval-game-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false, // Set to true in production with HTTPS
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Authentication middleware - checks if user is logged in
+const requireAuth = (req, res, next) => {
+  if (!req.session || !req.session.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Autenticación requerida. Por favor, inicia sesión.'
+    });
+  }
+  next();
+};
+
+// Admin authentication middleware - checks if user is admin
+const requireAdmin = async (req, res, next) => {
+  try {
+    if (!req.session || !req.session.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Autenticación requerida. Por favor, inicia sesión.'
+      });
+    }
+
+    if (req.session.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado. Se requieren permisos de administrador.'
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Error in admin middleware:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
 
 // Terrain type colors fallback (si la BD no tiene color)
 const TERRAIN_COLORS = {
@@ -49,6 +103,120 @@ const TERRAIN_COLORS = {
  *   settlement_type: string | null   // city, town, village, etc.
  * }
  */
+
+// ============================================
+// AUTHENTICATION ENDPOINTS
+// ============================================
+
+/**
+ * POST /api/auth/login
+ * Login endpoint - validates credentials and creates session
+ * Body: { username: string, password: string }
+ * Returns: { success: boolean, user: { player_id, username, role } }
+ */
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Usuario y contraseña requeridos'
+      });
+    }
+
+    // Query user from database
+    const result = await pool.query(
+      'SELECT player_id, username, password, role FROM players WHERE username = $1',
+      [username]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Usuario o contraseña incorrectos'
+      });
+    }
+
+    const user = result.rows[0];
+
+    // Simple password comparison (in production, use bcrypt)
+    if (password !== user.password) {
+      return res.status(401).json({
+        success: false,
+        message: 'Usuario o contraseña incorrectos'
+      });
+    }
+
+    // Create session
+    req.session.user = {
+      player_id: user.player_id,
+      username: user.username,
+      role: user.role || 'player'
+    };
+
+    console.log(`✓ User logged in: ${user.username} (${user.role})`);
+
+    res.json({
+      success: true,
+      user: {
+        player_id: user.player_id,
+        username: user.username,
+        role: user.role || 'player'
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+/**
+ * POST /api/auth/logout
+ * Logout endpoint - destroys session
+ */
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).json({
+        success: false,
+        message: 'Error al cerrar sesión'
+      });
+    }
+    res.json({
+      success: true,
+      message: 'Sesión cerrada exitosamente'
+    });
+  });
+});
+
+/**
+ * GET /api/auth/me
+ * Get current user session
+ * Returns: { success: boolean, user: { player_id, username, role } }
+ */
+app.get('/api/auth/me', (req, res) => {
+  if (!req.session || !req.session.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'No hay sesión activa'
+    });
+  }
+
+  res.json({
+    success: true,
+    user: req.session.user
+  });
+});
+
+// ============================================
+// MAP AND GAME ENDPOINTS
+// ============================================
+
 app.get('/api/map/region', async (req, res) => {
   try {
     const { minLat, maxLat, minLng, maxLng, res: resolution } = req.query;
@@ -314,17 +482,18 @@ function getRandomInt(min, max) {
  *   message: string
  * }
  */
-app.post('/api/game/claim', async (req, res) => {
+app.post('/api/game/claim', requireAuth, async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const { player_id, h3_index } = req.body;
+    const player_id = req.session.user.player_id; // Get from session
+    const { h3_index } = req.body;
 
     // Validar parámetros
-    if (!player_id || !h3_index) {
+    if (!h3_index) {
       return res.status(400).json({
         success: false,
-        message: 'Faltan parámetros: player_id, h3_index'
+        message: 'Falta parámetro: h3_index'
       });
     }
 
@@ -564,16 +733,9 @@ app.post('/api/game/claim', async (req, res) => {
  *   message: string
  * }
  */
-app.get('/api/game/capital', async (req, res) => {
+app.get('/api/game/capital', requireAuth, async (req, res) => {
   try {
-    const player_id = parseInt(req.query.player_id);
-
-    if (!player_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Falta el parámetro player_id'
-      });
-    }
+    const player_id = req.session.user.player_id; // Get from session
 
     const query = `
       SELECT h3_index
@@ -746,6 +908,651 @@ app.get('/api/players/:id', async (req, res) => {
 });
 
 /**
+ * GET /api/game/world-state
+ * Returns current world state (turn and date)
+ *
+ * Response: {
+ *   success: boolean,
+ *   turn: number,
+ *   date: string,
+ *   is_paused: boolean
+ * }
+ */
+app.get('/api/game/world-state', async (req, res) => {
+  try {
+    const query = `
+      SELECT current_turn, game_date, is_paused
+      FROM world_state
+      WHERE id = 1
+    `;
+    const result = await pool.query(query);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'World state not found'
+      });
+    }
+
+    const { current_turn, game_date, is_paused } = result.rows[0];
+
+    res.json({
+      success: true,
+      turn: current_turn,
+      date: game_date,
+      is_paused: is_paused
+    });
+
+  } catch (error) {
+    console.error('Error fetching world state:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/game/my-fiefs
+ * Returns all territories (fiefs) owned by a specific player
+ *
+ * Query params:
+ *   - player_id (required): The player ID to filter territories
+ *
+ * Response: {
+ *   success: boolean,
+ *   fiefs: Array<{
+ *     h3_index: string,
+ *     location_name: string | null,
+ *     population: number,
+ *     food_stored: number,
+ *     terrain_name: string
+ *   }>
+ * }
+ */
+app.get('/api/game/my-fiefs', requireAuth, async (req, res) => {
+  try {
+    const player_id = req.session.user.player_id; // Get from session
+
+    console.log(`[My Fiefs] Request received for player_id: ${player_id}`);
+
+    const query = `
+      SELECT
+        m.h3_index,
+        COALESCE(td.custom_name, s.name, 'Territorio sin nombre') AS location_name,
+        CAST(td.population AS INTEGER) AS population,
+        CAST(td.food_stored AS DOUBLE PRECISION) AS food_stored,
+        t.name AS terrain_name
+      FROM h3_map m
+      JOIN territory_details td ON m.h3_index = td.h3_index
+      JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
+      LEFT JOIN settlements s ON m.h3_index = s.h3_index
+      WHERE m.player_id = $1
+      ORDER BY td.population DESC, td.food_stored DESC
+    `;
+
+    const result = await pool.query(query, [player_id]);
+
+    console.log(`[My Fiefs] Found ${result.rows.length} fiefs for player ${player_id}`);
+
+    // Debug: Log first result structure if exists
+    if (result.rows.length > 0) {
+      console.log('[My Fiefs] First fief sample:', JSON.stringify(result.rows[0], null, 2));
+      console.log('[My Fiefs] Fields returned:', Object.keys(result.rows[0]));
+    } else {
+      console.log('[My Fiefs] No territories found for this player - they may not have colonized any yet');
+    }
+
+    res.json({
+      success: true,
+      fiefs: result.rows
+    });
+
+  } catch (error) {
+    console.error('Error fetching player fiefs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Core game turn processing function
+ * Handles all turn advancement logic including food consumption and harvests
+ * Can be called by both the time engine and manual endpoints
+ *
+ * @returns {Object} Turn result data
+ */
+async function processGameTurn() {
+  const client = await pool.connect();
+
+  try {
+    console.log('[Game Engine] Processing turn advancement...');
+
+    // Begin transaction
+    await client.query('BEGIN');
+
+    // Step 1: Get current world state
+    const currentStateQuery = `
+      SELECT current_turn, game_date, days_per_year
+      FROM world_state
+      WHERE id = 1
+    `;
+    const currentState = await client.query(currentStateQuery);
+
+    if (currentState.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(500).json({
+        success: false,
+        message: 'World state not found'
+      });
+    }
+
+    const { current_turn, game_date, days_per_year } = currentState.rows[0];
+    const newTurn = current_turn + 1;
+    const dayOfYear = newTurn % (days_per_year || 365);
+
+    console.log(`[Next Turn] Current: ${current_turn}, Date: ${game_date}, Day of Year: ${dayOfYear}`);
+
+    // Step 2: Update world state (increment turn, advance date by 1 day)
+    const updateWorldQuery = `
+      UPDATE world_state
+      SET
+        current_turn = current_turn + 1,
+        game_date = game_date + INTERVAL '1 day',
+        last_updated = CURRENT_TIMESTAMP
+      WHERE id = 1
+      RETURNING current_turn, game_date
+    `;
+    const newState = await client.query(updateWorldQuery);
+    const { current_turn: newCurrentTurn, game_date: newGameDate } = newState.rows[0];
+
+    console.log(`[Next Turn] New: ${newCurrentTurn}, Date: ${newGameDate}`);
+
+    // Step 3: Process daily food consumption for all territories
+    // NEW FORMULA: food_stored = food_stored - (floor(population / 100) * 0.01)
+    const foodConsumptionQuery = `
+      UPDATE territory_details
+      SET food_stored = GREATEST(
+        0,
+        food_stored - (FLOOR(population / 100.0) * 0.01)
+      )
+      WHERE h3_index IN (
+        SELECT h3_index FROM h3_map WHERE player_id IS NOT NULL
+      )
+    `;
+    const consumptionResult = await client.query(foodConsumptionQuery);
+    const territoriesProcessed = consumptionResult.rowCount;
+
+    console.log(`[Next Turn] Food consumption processed for ${territoriesProcessed} territories`);
+
+    // Step 4: Check if today is a harvest day (Day 75 = Spring, Day 180 = Summer)
+    const isHarvestDay = dayOfYear === 75 || dayOfYear === 180;
+    let harvestResults = null;
+    let harvestMessage = '';
+
+    if (isHarvestDay) {
+      const harvestSeason = dayOfYear === 75 ? 'PRIMAVERA' : 'VERANO';
+      console.log(`[Harvest] 🌾 ${harvestSeason} HARVEST DAY - Processing yields...`);
+
+      // Get all player territories with fertility data
+      const territoriesQuery = `
+        SELECT
+          td.h3_index,
+          td.population,
+          t.fertility
+        FROM territory_details td
+        JOIN h3_map m ON td.h3_index = m.h3_index
+        JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
+        WHERE m.player_id IS NOT NULL
+      `;
+      const territories = await client.query(territoriesQuery);
+
+      // Statistics counters
+      const stats = { disastrous: 0, poor: 0, normal: 0, good: 0, excellent: 0 };
+
+      // Track harvest yield per player (for detailed messages)
+      const playerHarvestData = new Map();
+
+      // Process each territory
+      for (const territory of territories.rows) {
+        const { h3_index, population, fertility } = territory;
+
+        // Get player_id for this territory
+        const ownerQuery = await client.query(
+          'SELECT player_id FROM h3_map WHERE h3_index = $1',
+          [h3_index]
+        );
+        const player_id = ownerQuery.rows[0]?.player_id;
+
+        // Calculate Annual Need (NA)
+        const annualNeed = (population / 100.0) * 0.01 * 365;
+
+        // Roll dice (1-100)
+        let roll = Math.floor(Math.random() * 100) + 1;
+
+        // Fertility bonus: +10 if fertility > 80
+        if (fertility > 80) {
+          roll += 10;
+          console.log(`[Harvest] ${h3_index}: Fertility bonus applied (+10)`);
+        }
+
+        // Determine yield multiplier based on probabilities
+        let multiplier;
+        let resultType;
+
+        if (roll <= 5) {
+          multiplier = 0.3;
+          resultType = 'disastrous';
+          stats.disastrous++;
+        } else if (roll <= 25) {
+          multiplier = 0.6;
+          resultType = 'poor';
+          stats.poor++;
+        } else if (roll <= 45) {
+          multiplier = 1.0;
+          resultType = 'normal';
+          stats.normal++;
+        } else if (roll <= 80) {
+          multiplier = 1.4;
+          resultType = 'good';
+          stats.good++;
+        } else {
+          multiplier = 1.8;
+          resultType = 'excellent';
+          stats.excellent++;
+        }
+
+        // Apply organic variation (±5%)
+        const variation = 0.95 + Math.random() * 0.1; // Between 0.95 and 1.05
+        const baseYield = annualNeed * multiplier;
+        const finalYield = Math.floor(baseYield * variation);
+
+        console.log(`[Harvest] ${h3_index}: Roll=${roll}, Fertility=${fertility}, Type=${resultType}, Yield=${finalYield}`);
+
+        // Track yield per player
+        if (player_id) {
+          if (!playerHarvestData.has(player_id)) {
+            playerHarvestData.set(player_id, 0);
+          }
+          playerHarvestData.set(player_id, playerHarvestData.get(player_id) + finalYield);
+        }
+
+        // Update territory food storage
+        await client.query(
+          `UPDATE territory_details
+           SET food_stored = food_stored + $1
+           WHERE h3_index = $2`,
+          [finalYield, h3_index]
+        );
+      }
+
+      harvestResults = stats;
+      harvestMessage = ` 🌾 ¡Cosecha de ${harvestSeason}! (Desastrosa: ${stats.disastrous}, Mala: ${stats.poor}, Normal: ${stats.normal}, Buena: ${stats.good}, Excelente: ${stats.excellent})`;
+      console.log(`[Harvest] Results: ${JSON.stringify(stats)}`);
+
+      // Step 5: Send detailed harvest messages to all players
+      console.log('[Harvest] Sending detailed harvest messages to players...');
+
+      // Get all players with territories
+      const playersQuery = `
+        SELECT DISTINCT m.player_id
+        FROM h3_map m
+        WHERE m.player_id IS NOT NULL
+      `;
+      const players = await client.query(playersQuery);
+
+      // Send personalized messages to each player
+      for (const player of players.rows) {
+        const { player_id } = player;
+
+        // Get player's economic data
+        const economyQuery = `
+          SELECT
+            COUNT(td.h3_index) as territory_count,
+            COALESCE(SUM(td.food_stored), 0) as total_reserves,
+            COALESCE(SUM(td.population), 0) as total_population
+          FROM territory_details td
+          JOIN h3_map m ON td.h3_index = m.h3_index
+          WHERE m.player_id = $1
+        `;
+        const economyData = await client.query(economyQuery, [player_id]);
+        const { territory_count, total_reserves, total_population } = economyData.rows[0];
+
+        // Calculate daily consumption and autonomy
+        const dailyConsumption = (total_population / 100.0) * 0.01;
+        const daysOfProvisions = dailyConsumption > 0 ? Math.floor(total_reserves / dailyConsumption) : 999999;
+
+        // Get total harvested for this player
+        const totalHarvested = playerHarvestData.get(player_id) || 0;
+
+        const messageSubject = `🌾 Informe de Cosecha de ${harvestSeason}`;
+        const messageBody = `
+La cosecha de ${harvestSeason} ha finalizado.
+
+📦 PRODUCCIÓN:
+Se han recolectado ${totalHarvested.toFixed(1)} unidades de alimento en tus ${territory_count} territorios.
+
+🏛️ RESERVAS TOTALES:
+Tus graneros almacenan ${total_reserves.toFixed(1)} unidades tras la cosecha.
+
+⏳ AUTONOMÍA:
+Con un consumo diario de ${dailyConsumption.toFixed(2)} unidades (${total_population} habitantes), tus provisiones garantizan suministros para ${daysOfProvisions} días al ritmo actual.
+
+Resumen de calidad de cosechas:
+- Desastrosas: ${stats.disastrous}
+- Malas: ${stats.poor}
+- Normales: ${stats.normal}
+- Buenas: ${stats.good}
+- Excelentes: ${stats.excellent}
+
+¡Que tus graneros estén llenos!
+        `.trim();
+
+        await client.query(
+          `INSERT INTO messages (sender_id, receiver_id, subject, body)
+           VALUES (NULL, $1, $2, $3)`,
+          [player_id, messageSubject, messageBody]
+        );
+
+        console.log(`[Harvest] ✓ Sent detailed harvest message to player ${player_id} (Harvested: ${totalHarvested.toFixed(1)}, Reserves: ${total_reserves.toFixed(1)}, Days: ${daysOfProvisions})`);
+      }
+
+      console.log(`[Harvest] ✓ Sent ${players.rows.length} detailed harvest messages`);
+    }
+
+    // Commit transaction
+    await client.query('COMMIT');
+
+    const baseMessage = `Turno ${newCurrentTurn} procesado. Día ${dayOfYear} de 365.`;
+    const finalMessage = isHarvestDay ? baseMessage + harvestMessage : baseMessage;
+
+    const result = {
+      success: true,
+      turn: newCurrentTurn,
+      date: newGameDate,
+      dayOfYear: dayOfYear,
+      territories_processed: territoriesProcessed,
+      isHarvestDay: isHarvestDay,
+      harvestResults: harvestResults,
+      message: finalMessage
+    };
+
+    client.release();
+    return result;
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[Game Engine] Error processing turn:', error);
+    client.release();
+    throw error;
+  }
+}
+
+/**
+ * POST /api/game/next-turn
+ * Manual turn advancement endpoint (optional - can be disabled in production)
+ *
+ * Response: {
+ *   success: boolean,
+ *   turn: number,
+ *   date: string,
+ *   dayOfYear: number,
+ *   territories_processed: number,
+ *   isHarvestDay: boolean,
+ *   harvestResults?: object,
+ *   message: string
+ * }
+ */
+app.post('/api/game/next-turn', async (req, res) => {
+  try {
+    console.log('[API] Manual turn advancement requested');
+    const result = await processGameTurn();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+});
+
+// ============================================================================
+// ADMIN ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /api/admin/reset
+ * Resets the game world to initial state
+ * Requires admin role
+ */
+app.post('/api/admin/reset', requireAdmin, async (req, res) => {
+  try {
+    console.log('[Admin] Resetting game world...');
+
+    await pool.query(`
+      UPDATE world_state
+      SET
+        current_turn = 0,
+        game_date = '1039-03-01',
+        last_updated = CURRENT_TIMESTAMP
+      WHERE id = 1
+    `);
+
+    console.log('[Admin] ✓ Game world reset successfully');
+
+    res.json({
+      success: true,
+      message: 'Mundo del juego reseteado al turno 0 (1 de Marzo, 1039)'
+    });
+  } catch (error) {
+    console.error('[Admin] Error resetting game:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al resetear el mundo',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/admin/config
+ * Updates game configuration (turn interval)
+ * Requires admin role
+ */
+app.post('/api/admin/config', requireAdmin, async (req, res) => {
+  try {
+    const { turn_interval_seconds } = req.body;
+
+    if (!turn_interval_seconds || turn_interval_seconds < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'El intervalo debe ser al menos 5 segundos'
+      });
+    }
+
+    console.log(`[Admin] Changing turn interval to ${turn_interval_seconds} seconds`);
+
+    // Note: This would require restarting the time engine
+    // For now, we'll just log the change
+    const newInterval = turn_interval_seconds * 1000;
+
+    // Restart time engine with new interval
+    stopTimeEngine();
+    TURN_INTERVAL = newInterval;
+    startTimeEngine();
+
+    console.log(`[Admin] ✓ Turn interval updated to ${turn_interval_seconds}s`);
+
+    res.json({
+      success: true,
+      message: `Intervalo de turno actualizado a ${turn_interval_seconds} segundos`,
+      turn_interval_seconds: turn_interval_seconds
+    });
+  } catch (error) {
+    console.error('[Admin] Error updating config:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar configuración',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/admin/stats
+ * Returns game statistics
+ * Requires admin role
+ */
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
+  try {
+    const worldState = await pool.query('SELECT * FROM world_state WHERE id = 1');
+    const playerCount = await pool.query('SELECT COUNT(*) FROM players');
+    const territoryCount = await pool.query('SELECT COUNT(*) FROM h3_map WHERE player_id IS NOT NULL');
+    const messageCount = await pool.query('SELECT COUNT(*) FROM messages');
+
+    res.json({
+      success: true,
+      stats: {
+        current_turn: worldState.rows[0].current_turn,
+        game_date: worldState.rows[0].game_date,
+        players: parseInt(playerCount.rows[0].count),
+        territories: parseInt(territoryCount.rows[0].count),
+        messages: parseInt(messageCount.rows[0].count),
+        turn_interval_seconds: Math.floor(TURN_INTERVAL / 1000)
+      }
+    });
+  } catch (error) {
+    console.error('[Admin] Error fetching stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener estadísticas'
+    });
+  }
+});
+
+// ============================================================================
+// MESSAGING SYSTEM
+// ============================================================================
+
+/**
+ * GET /api/messages
+ * Get messages for a specific player
+ */
+app.get('/api/messages', requireAuth, async (req, res) => {
+  try {
+    const player_id = req.session.user.player_id; // Get from session
+    const { unread_only } = req.query;
+
+    let query = `
+      SELECT
+        m.*,
+        p.username AS sender_name
+      FROM messages m
+      LEFT JOIN players p ON m.sender_id = p.player_id
+      WHERE m.receiver_id = $1
+    `;
+
+    if (unread_only === 'true') {
+      query += ' AND m.is_read = FALSE';
+    }
+
+    query += ' ORDER BY m.sent_at DESC LIMIT 50';
+
+    const result = await pool.query(query, [player_id]);
+
+    res.json({
+      success: true,
+      messages: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener mensajes'
+    });
+  }
+});
+
+/**
+ * POST /api/messages
+ * Send a message to another player
+ */
+app.post('/api/messages', requireAuth, async (req, res) => {
+  try {
+    const sender_id = req.session.user.player_id; // Get from session
+    const { receiver_id, subject, body, h3_index } = req.body;
+
+    if (!receiver_id || !subject || !body) {
+      return res.status(400).json({
+        success: false,
+        message: 'Faltan campos requeridos: receiver_id, subject, body'
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO messages (sender_id, receiver_id, subject, body, h3_index)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [sender_id, receiver_id, subject, body, h3_index || null]
+    );
+
+    res.json({
+      success: true,
+      message: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al enviar mensaje'
+    });
+  }
+});
+
+/**
+ * PUT /api/messages/:id/read
+ * Mark a message as read
+ */
+app.put('/api/messages/:id/read', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const player_id = req.session.user.player_id; // Get from session
+
+    // Verify message belongs to player
+    const result = await pool.query(
+      `UPDATE messages
+       SET is_read = TRUE
+       WHERE id = $1 AND receiver_id = $2
+       RETURNING *`,
+      [id, player_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Mensaje no encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error marking message as read:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al marcar mensaje como leído'
+    });
+  }
+});
+
+/**
  * GET /health
  * Health check endpoint
  */
@@ -755,6 +1562,70 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     database: 'connected'
   });
+});
+
+// ============================================================================
+// GAME TIME ENGINE - Autonomous Turn Processing
+// ============================================================================
+
+// Configuration
+let TURN_INTERVAL = 15 * 1000; // 15 seconds for testing (use 300000 for 5 minutes in production)
+let timeEngineIntervalId = null;
+
+/**
+ * Initialize and start the game time engine
+ * Processes turns automatically at regular intervals
+ */
+function startTimeEngine() {
+  console.log('⏰ [Time Engine] Starting autonomous time engine...');
+  console.log(`⏰ [Time Engine] Turn interval: ${TURN_INTERVAL / 1000} seconds`);
+
+  // Clear any existing interval
+  if (timeEngineIntervalId) {
+    clearInterval(timeEngineIntervalId);
+  }
+
+  // Start processing turns at regular intervals
+  timeEngineIntervalId = setInterval(async () => {
+    try {
+      console.log('\n⏰ [Time Engine] ========== AUTO TURN TRIGGER ==========');
+      const result = await processGameTurn();
+      console.log(`⏰ [Time Engine] ✓ Turn ${result.turn} completed successfully`);
+      console.log(`⏰ [Time Engine] Date: ${result.date}, Day ${result.dayOfYear}/365`);
+
+      if (result.isHarvestDay) {
+        console.log(`⏰ [Time Engine] 🌾 HARVEST DAY! Results:`, result.harvestResults);
+      }
+    } catch (error) {
+      console.error('⏰ [Time Engine] ❌ Error processing automated turn:', error.message);
+    }
+  }, TURN_INTERVAL);
+
+  console.log('⏰ [Time Engine] ✓ Time engine started successfully');
+}
+
+/**
+ * Stop the game time engine
+ */
+function stopTimeEngine() {
+  if (timeEngineIntervalId) {
+    clearInterval(timeEngineIntervalId);
+    timeEngineIntervalId = null;
+    console.log('⏰ [Time Engine] Time engine stopped');
+  }
+}
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n⏰ [Time Engine] Received SIGINT, stopping time engine...');
+  stopTimeEngine();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n⏰ [Time Engine] Received SIGTERM, stopping time engine...');
+  stopTimeEngine();
+  process.exit(0);
 });
 
 // Start server only if this file is run directly (not imported by tests)
@@ -771,6 +1642,10 @@ if (require.main === module) {
     console.log(`   1. Cannot colonize Sea or Water`);
     console.log(`   2. Must have 100 gold`);
     console.log(`   3. Must be adjacent to owned territory (except first territory)`);
+
+    // Start the autonomous time engine
+    console.log('');
+    startTimeEngine();
   });
 }
 

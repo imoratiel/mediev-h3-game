@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar Sesión - Reino Medieval</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Cinzel', 'Georgia', serif;
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+      color: #ecf0f1;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .login-container {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .login-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(243, 156, 18, 0.3);
+      border-radius: 10px;
+      padding: 40px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      font-size: 2em;
+      color: #f39c12;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      font-size: 0.95em;
+      color: #bdc3c7;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #bdc3c7;
+      font-size: 0.95em;
+      font-weight: bold;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 2px solid rgba(243, 156, 18, 0.3);
+      border-radius: 6px;
+      color: #ecf0f1;
+      font-size: 1em;
+      transition: all 0.3s;
+      font-family: 'Georgia', serif;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #f39c12;
+      box-shadow: 0 0 10px rgba(243, 156, 18, 0.3);
+    }
+
+    button {
+      padding: 14px 24px;
+      background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-size: 1em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      width: 100%;
+      font-family: 'Cinzel', 'Georgia', serif;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 10px rgba(243, 156, 18, 0.3);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 15px rgba(243, 156, 18, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .alert {
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 15px;
+      display: none;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .alert.success {
+      background: rgba(39, 174, 96, 0.2);
+      border: 1px solid #27ae60;
+      color: #2ecc71;
+    }
+
+    .alert.error {
+      background: rgba(231, 76, 60, 0.2);
+      border: 1px solid #e74c3c;
+      color: #e74c3c;
+    }
+
+    .alert.show {
+      display: block;
+    }
+
+    .footer-links {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .footer-links a {
+      color: #f39c12;
+      text-decoration: none;
+      font-size: 0.9em;
+      transition: color 0.3s;
+    }
+
+    .footer-links a:hover {
+      color: #e67e22;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <header>
+        <h1>👑 Reino Medieval</h1>
+        <p class="subtitle">Inicia sesión para continuar</p>
+      </header>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">Usuario</label>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            placeholder="Ingresa tu usuario"
+            required
+            autocomplete="username"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="password">Contraseña</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Ingresa tu contraseña"
+            required
+            autocomplete="current-password"
+          />
+        </div>
+
+        <button type="submit" id="login-button">
+          🔐 Iniciar Sesión
+        </button>
+
+        <div id="alert" class="alert"></div>
+      </form>
+
+      <div class="footer-links">
+        <a href="/">← Volver al mapa</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:3000';
+    const form = document.getElementById('login-form');
+    const loginButton = document.getElementById('login-button');
+    const alert = document.getElementById('alert');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        showAlert('error', 'Por favor completa todos los campos');
+        return;
+      }
+
+      try {
+        loginButton.disabled = true;
+        loginButton.textContent = '⏳ Iniciando sesión...';
+
+        const response = await fetch(`${API_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', // Important for cookies/sessions
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Store user data in localStorage for quick access
+          localStorage.setItem('user', JSON.stringify(data.user));
+
+          showAlert('success', `¡Bienvenido, ${data.user.username}!`);
+
+          // Fetch player's capital to center map on login
+          try {
+            const capitalResponse = await fetch(`${API_URL}/api/game/capital`, {
+              credentials: 'include'
+            });
+            const capitalData = await capitalResponse.json();
+
+            if (capitalData.success && capitalData.h3_index) {
+              // Store capital h3_index for initial map focus
+              localStorage.setItem('capitalH3', capitalData.h3_index);
+              console.log('✓ Capital loaded:', capitalData.h3_index);
+            }
+          } catch (error) {
+            console.warn('Could not fetch capital (player may not have territories yet):', error);
+          }
+
+          // Redirect after short delay
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1000);
+        } else {
+          showAlert('error', data.message || 'Error al iniciar sesión');
+          loginButton.disabled = false;
+          loginButton.textContent = '🔐 Iniciar Sesión';
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        showAlert('error', 'Error de conexión con el servidor');
+        loginButton.disabled = false;
+        loginButton.textContent = '🔐 Iniciar Sesión';
+      }
+    });
+
+    function showAlert(type, message) {
+      alert.className = `alert ${type} show`;
+      alert.textContent = message;
+
+      if (type === 'success') {
+        setTimeout(() => {
+          alert.classList.remove('show');
+        }, 3000);
+      } else {
+        setTimeout(() => {
+          alert.classList.remove('show');
+        }, 5000);
+      }
+    }
+
+    // Check if already logged in
+    window.addEventListener('load', async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+          // Already logged in, redirect
+          showAlert('success', 'Ya tienes una sesión activa. Redirigiendo...');
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1000);
+        }
+      } catch (error) {
+        // Not logged in, stay on login page
+        console.log('No active session');
+      }
+    });
+  </script>
+</body>
+</html>

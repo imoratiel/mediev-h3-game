@@ -11,9 +11,16 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "coveragePathIgnorePatterns": ["/node_modules/"],
-    "testMatch": ["**/tests/**/*.test.js"],
-    "collectCoverageFrom": ["index.js", "!**/node_modules/**"]
+    "coveragePathIgnorePatterns": [
+      "/node_modules/"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "index.js",
+      "!**/node_modules/**"
+    ]
   },
   "keywords": [],
   "author": "",
@@ -23,6 +30,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "express-session": "^1.19.0",
     "h3-js": "^4.4.0",
     "pg": "^8.17.2"
   },

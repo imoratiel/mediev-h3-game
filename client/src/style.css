@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -18,6 +20,7 @@ a {
   color: #646cff;
   text-decoration: inherit;
 }
+
 a:hover {
   color: #535bf2;
 }
@@ -46,9 +49,11 @@ button {
   cursor: pointer;
   transition: border-color 0.25s;
 }
+
 button:hover {
   border-color: #646cff;
 }
+
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
@@ -65,14 +70,71 @@ button:focus-visible {
   text-align: center;
 }
 
+/* Critical CSS for Capital Marker and Search Input Refactor */
+
+.capital-star-marker {
+  background: none !important;
+  border: none !important;
+  pointer-events: none !important;
+  display: block !important;
+  z-index: 9999 !important;
+  /* Ensure centering logic from previous is kept if needed, but display block !important might override flex. 
+     The prompt says to use the provided CSS block strictly. */
+}
+
+/* Capital Header in Popup */
+.capital-header {
+  background: linear-gradient(to right, #FFD700, #FFC107);
+  color: black;
+  font-weight: bold;
+  text-align: center;
+  padding: 5px;
+  margin-bottom: 8px;
+  border-bottom: 2px solid #B8860B;
+  font-size: 14px;
+  font-family: 'Cinzel', serif;
+}
+
+/* Search Input Adjustments */
+#search-h3-input {
+  height: 22px;
+  font-size: 11px;
+  padding: 2px 5px;
+}
+
+.search-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.search-button {
+  height: 30px;
+  /* Match input height + padding adjustments */
+  width: 30px;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.capital-link {
+  white-space: nowrap;
+  /* Prevent breaking on small screens */
+  font-size: 0.9em;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
     background-color: #ffffff;
   }
+
   a:hover {
     color: #747bff;
+    background: transparent;
   }
+
   button {
     background-color: #f9f9f9;
   }
