@@ -135,11 +135,11 @@
     <aside
       id="context-panel"
       class="context-panel"
-      :class="{ open: activePanel !== null || activeOverlay === 'layers' || activeOverlay === 'reino' }"
+      :class="{ open: activePanel !== null || activeOverlay === 'layers' }"
     >
       <div class="panel-header">
         <h3 class="panel-title">
-          {{ activeOverlay === 'layers' ? '🗺️ Capas del Mapa' : activeOverlay === 'reino' ? '🏰 Gestión del Reino' : panelTitle }}
+          {{ activeOverlay === 'layers' ? '🗺️ Capas del Mapa' : panelTitle }}
         </h3>
         <button class="panel-close" @click="activeOverlay ? activeOverlay = null : closePanel()">✕</button>
       </div>
@@ -278,91 +278,7 @@
           </div>
         </div>
 
-        <!-- Kingdom Management Panel -->
-        <div v-if="activeOverlay === 'reino'" class="panel-section kingdom-management-panel">
-          <!-- Action Buttons -->
-          <div class="kingdom-actions">
-            <button class="kingdom-action-btn" disabled>
-              🔨 Construir
-            </button>
-            <button class="kingdom-action-btn" disabled>
-              ⚔️ Reclutar
-            </button>
-          </div>
-
-          <!-- Filters -->
-          <div class="kingdom-filters">
-            <input
-              v-model="kingdomFilters.name"
-              type="text"
-              placeholder="🔍 Buscar por nombre..."
-              class="kingdom-filter-input"
-            />
-            <input
-              v-model.number="kingdomFilters.maxPopulation"
-              type="number"
-              placeholder="👥 Población máx..."
-              class="kingdom-filter-input"
-            />
-          </div>
-
-          <!-- Territories Table -->
-          <div class="kingdom-table-container">
-            <table class="kingdom-table">
-              <thead>
-                <tr>
-                  <th @click="sortKingdomBy('name')">
-                    Nombre {{ kingdomSort.field === 'name' ? (kingdomSort.asc ? '▲' : '▼') : '' }}
-                  </th>
-                  <th @click="sortKingdomBy('terrain')">
-                    Terreno {{ kingdomSort.field === 'terrain' ? (kingdomSort.asc ? '▲' : '▼') : '' }}
-                  </th>
-                  <th @click="sortKingdomBy('population')">
-                    Población {{ kingdomSort.field === 'population' ? (kingdomSort.asc ? '▲' : '▼') : '' }}
-                  </th>
-                  <th @click="sortKingdomBy('food')">
-                    Comida {{ kingdomSort.field === 'food' ? (kingdomSort.asc ? '▲' : '▼') : '' }}
-                  </th>
-                  <th @click="sortKingdomBy('consumption')">
-                    Consumo {{ kingdomSort.field === 'consumption' ? (kingdomSort.asc ? '▲' : '▼') : '' }}
-                  </th>
-                  <th @click="sortKingdomBy('autonomy')">
-                    Autonomía {{ kingdomSort.field === 'autonomy' ? (kingdomSort.asc ? '▲' : '▼') : '' }}
-                  </th>
-                  <th @click="sortKingdomBy('distance')">
-                    Distancia {{ kingdomSort.field === 'distance' ? (kingdomSort.asc ? '▲' : '▼') : '' }}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="fief in filteredAndSortedFiefs"
-                  :key="fief.h3_index"
-                  class="kingdom-row"
-                  @click="focusOnFiefAndClose(fief.h3_index)"
-                >
-                  <td class="kingdom-cell-name">{{ fief.name }}</td>
-                  <td>{{ fief.terrain }}</td>
-                  <td :class="{ 'alert-low': fief.population < 400 }">
-                    {{ Math.floor(fief.population) }}
-                  </td>
-                  <td>{{ fief.food.toFixed(1) }}</td>
-                  <td>{{ fief.consumption.toFixed(2) }}</td>
-                  <td :class="{
-                    'alert-low': fief.autonomy < 30,
-                    'alert-high': fief.autonomy > 365
-                  }">
-                    {{ fief.autonomy === Infinity ? '∞' : fief.autonomy }}
-                  </td>
-                  <td>{{ fief.distance }} hex</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-if="filteredAndSortedFiefs.length === 0" class="kingdom-empty">
-              No se encontraron feudos con los filtros aplicados.
-            </div>
-          </div>
-        </div>
+        <!-- Kingdom Management Panel - MOVED TO FULLSCREEN OVERLAY -->
 
         <!-- Troops Panel -->
         <div v-if="activePanel === 'troops'" class="panel-section troops-panel">
@@ -661,6 +577,92 @@
                 {{ sendingMessage ? '📤 Enviando...' : '📨 Enviar Mensaje' }}
               </button>
             </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full-Screen Kingdom Overlay -->
+    <div v-if="activeOverlay === 'reino'" class="game-overlay title-overlay">
+      <div class="overlay-container">
+        <!-- Header -->
+        <div class="overlay-header">
+          <h1 class="overlay-title">🏰 Gestión del Reino</h1>
+          <button class="overlay-close" @click="closeOverlay" title="Cerrar">✕</button>
+        </div>
+
+        <!-- Kingdom Content -->
+        <div class="overlay-content kingdom-content">
+          <!-- Top Controls -->
+          <div class="kingdom-controls">
+            <div class="kingdom-actions">
+              <button class="kingdom-action-btn" title="Próximamente">🔨 Construir</button>
+              <button class="kingdom-action-btn" title="Próximamente">⚔️ Reclutar</button>
+              <button class="kingdom-action-btn" title="Próximamente">📜 Leyes</button>
+            </div>
+            
+            <div class="kingdom-filters">
+               <input
+                v-model="kingdomFilters.name"
+                type="text"
+                placeholder="🔍 Buscar feudo..."
+                class="kingdom-filter-input"
+              />
+              <input
+                v-model.number="kingdomFilters.maxPopulation"
+                type="number"
+                placeholder="👥 Max Pob..."
+                class="kingdom-filter-input"
+              />
+            </div>
+          </div>
+
+          <!-- Territories Table (Enhanced for Fullscreen) -->
+          <div class="kingdom-table-wrapper">
+            <table class="kingdom-table full-width">
+              <thead>
+                <tr>
+                  <th @click="sortKingdomBy('name')">Nombre {{ kingdomSort.field === 'name' ? (kingdomSort.asc ? '▲' : '▼') : '' }}</th>
+                  <th @click="sortKingdomBy('terrain')">Terreno</th>
+                  <th @click="sortKingdomBy('population')">Población</th>
+                  <th @click="sortKingdomBy('food')">Comida</th>
+                  <th @click="sortKingdomBy('autonomy')">Autonomía (Días)</th>
+                  <th @click="sortKingdomBy('distance')">Distancia a Capital</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="fief in filteredAndSortedFiefs"
+                  :key="fief.h3_index"
+                  class="kingdom-row"
+                  @click="focusOnFiefAndClose(fief.h3_index)"
+                >
+                  <td class="kingdom-cell-name">
+                     <span class="cell-icon">🏰</span> {{ fief.name }}
+                  </td>
+                  <td>{{ fief.terrain }}</td>
+                  <td :class="{ 'text-danger': fief.population < 400 }">
+                    {{ Math.floor(fief.population) }}
+                    <span v-if="fief.population < 400" class="warning-icon" title="Población baja">⚠️</span>
+                  </td>
+                  <td>{{ fief.food.toFixed(1) }}</td>
+                  <td :class="{
+                    'text-danger': fief.autonomy < 30,
+                    'text-success': fief.autonomy > 365
+                  }">
+                    {{ fief.autonomy === Infinity ? '∞' : fief.autonomy }}
+                  </td>
+                  <td>{{ fief.distance }} km ({{ Math.round(fief.distance / 5) }} días)</td> <!-- Mock conversion -->
+                  <td>
+                    <button class="btn-micro" @click.stop="focusOnFiefAndClose(fief.h3_index)">🗺️ Ir</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-if="filteredAndSortedFiefs.length === 0" class="empty-state">
+              <p>No se encontraron feudos que coincidan con los filtros.</p>
+            </div>
           </div>
         </div>
       </div>

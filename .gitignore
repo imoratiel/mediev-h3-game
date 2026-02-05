@@ -3,8 +3,8 @@ config.php
 config.pro.php
 config.json
 .env
-php_errors.log
 logs/*.log
+server/*.log
 
 # Carpetas de Dependencias
 vendor/

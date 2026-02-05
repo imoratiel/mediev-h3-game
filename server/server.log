@@ -149,3 +149,33 @@
 [2026-02-05T08:11:10.261Z] [CENSO] 88392c11c1fffff (Bosque): 487 → 524 (+37) | MUY PRÓSPERO | 26118 días autonomía | 📈
 [2026-02-05T08:11:10.308Z] [CENSO] 88392c11cbfffff (Estepas): 452 → 483 (+31) | MUY PRÓSPERO | 27505 días autonomía | 📈
 [2026-02-05T08:11:10.349Z] [CENSO COMPLETADO] Crecimiento total: 520 | Pestes: 3 | Hambrunas: 0
+[2026-02-05T08:18:39.101Z] [CENSO] Inicio del censo mensual de población
+[2026-02-05T08:18:39.192Z] [CENSO] 88392c1029fffff (Estepas): 868 → 899 (+31) | MUY PRÓSPERO | 1055 días autonomía | 📈
+[2026-02-05T08:18:39.234Z] [CENSO] 88392c1005fffff (Estepas): 963 → 992 (+29) | MUY PRÓSPERO | 1455 días autonomía | 📈
+[2026-02-05T08:18:39.234Z] [PESTE] Epidemia en 88392c1067fffff (Estepas) por superar los 1000 habitantes (población: 1009)
+[2026-02-05T08:18:39.276Z] [CENSO] 88392c1067fffff (Estepas): 1009 → 939 (-70) | MUY PRÓSPERO | 975 días autonomía | ☠️
+[2026-02-05T08:18:39.318Z] [CENSO] 88392c1021fffff (Estepas): 946 → 985 (+39) | MUY PRÓSPERO | 1275 días autonomía | 📈
+[2026-02-05T08:18:39.360Z] [CENSO] 88392c102dfffff (Estepas): 939 → 972 (+33) | MUY PRÓSPERO | 2069 días autonomía | 📈
+[2026-02-05T08:18:39.401Z] [CENSO] 88392c1063fffff (Estepas): 974 → 1004 (+30) | MUY PRÓSPERO | 1468 días autonomía | 📈
+[2026-02-05T08:18:39.441Z] [CENSO] 88392c1025fffff (Bosque): 709 → 762 (+53) | MUY PRÓSPERO | 905 días autonomía | 📈
+[2026-02-05T08:18:39.547Z] [CENSO] 88392c1027fffff (Bosque): 943 → 986 (+43) | MUY PRÓSPERO | 1900 días autonomía | 📈
+[2026-02-05T08:18:39.589Z] [CENSO] 88392c1065fffff (Estepas): 955 → 984 (+29) | MUY PRÓSPERO | 1178 días autonomía | 📈
+[2026-02-05T08:18:39.589Z] [PESTE] Epidemia en 88392c103dfffff (Bosque) por superar los 1000 habitantes (población: 1028)
+[2026-02-05T08:18:39.631Z] [CENSO] 88392c103dfffff (Bosque): 1028 → 968 (-60) | MUY PRÓSPERO | 1383 días autonomía | ☠️
+[2026-02-05T08:18:39.673Z] [CENSO] 88392c1061fffff (Estepas): 915 → 948 (+33) | MUY PRÓSPERO | 2596 días autonomía | 📈
+[2026-02-05T08:18:39.673Z] [PESTE] Epidemia en 88392c1035fffff (Bosque) por superar los 1000 habitantes (población: 1023)
+[2026-02-05T08:18:39.715Z] [CENSO] 88392c1035fffff (Bosque): 1023 → 874 (-149) | MUY PRÓSPERO | 1281 días autonomía | ☠️
+[2026-02-05T08:18:39.757Z] [CENSO] 88392c102bfffff (Bosque): 998 → 1029 (+31) | MUY PRÓSPERO | 1456 días autonomía | 📈
+[2026-02-05T08:18:39.799Z] [CENSO] 88392c1023fffff (Estepas): 847 → 880 (+33) | MUY PRÓSPERO | 887 días autonomía | 📈
+[2026-02-05T08:18:39.841Z] [CENSO] 88392c115bfffff (Estepas): 982 → 1011 (+29) | MUY PRÓSPERO | 1242 días autonomía | 📈
+[2026-02-05T08:18:39.882Z] [CENSO] 88392c1153fffff (Estepas): 967 → 1003 (+36) | MUY PRÓSPERO | 1484 días autonomía | 📈
+[2026-02-05T08:18:39.882Z] [PESTE] Epidemia en 88392c55d7fffff (Estepas) por superar los 1000 habitantes (población: 1031)
+[2026-02-05T08:18:39.924Z] [CENSO] 88392c55d7fffff (Estepas): 1031 → 940 (-91) | MUY PRÓSPERO | 1331 días autonomía | ☠️
+[2026-02-05T08:18:39.965Z] [CENSO] 88392c111bfffff (Estepas): 950 → 984 (+34) | MUY PRÓSPERO | 1582 días autonomía | 📈
+[2026-02-05T08:18:40.006Z] [CENSO] 88392c11cdfffff (Estepas): 449 → 471 (+22) | PRÓSPERO | 711 días autonomía | 📈
+[2026-02-05T08:18:40.047Z] [CENSO] 88392c1119fffff (Bosque): 942 → 983 (+41) | MUY PRÓSPERO | 1307 días autonomía | 📈
+[2026-02-05T08:18:40.047Z] [PESTE] Epidemia en 88392c11c5fffff (Estepas) por superar los 1000 habitantes (población: 1027)
+[2026-02-05T08:18:40.089Z] [CENSO] 88392c11c5fffff (Estepas): 1027 → 928 (-99) | MUY PRÓSPERO | 2014 días autonomía | ☠️
+[2026-02-05T08:18:40.130Z] [CENSO] 88392c11c1fffff (Bosque): 524 → 571 (+47) | MUY PRÓSPERO | 24245 días autonomía | 📈
+[2026-02-05T08:18:40.172Z] [CENSO] 88392c11cbfffff (Estepas): 483 → 528 (+45) | MUY PRÓSPERO | 25715 días autonomía | 📈
+[2026-02-05T08:18:40.334Z] [CENSO COMPLETADO] Crecimiento total: 169 | Pestes: 5 | Hambrunas: 0
