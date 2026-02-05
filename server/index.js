@@ -474,6 +474,7 @@ app.get('/api/settlements', async (req, res) => {
  * }
  */
 app.get('/api/terrain-types', async (req, res) => {
+  console.log('[API] Fetching terrain types...');
   try {
     const query = `
       SELECT
