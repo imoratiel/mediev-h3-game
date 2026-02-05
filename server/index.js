@@ -1114,8 +1114,11 @@ app.get('/api/game/my-fiefs', requireAuth, async (req, res) => {
         m.h3_index,
         COALESCE(td.custom_name, s.name, 'Territorio sin nombre') AS location_name,
         CAST(td.population AS INTEGER) AS population,
+        CAST(td.happiness AS INTEGER) AS happiness,
         CAST(td.food_stored AS DOUBLE PRECISION) AS food_stored,
+        CAST(td.wood_stored AS DOUBLE PRECISION) AS wood_stored,
         t.name AS terrain_name,
+        t.fertility,
         -- Only show mining resources if explored (discovered_resource is not NULL)
         CASE WHEN td.discovered_resource IS NOT NULL THEN CAST(td.stone_stored AS DOUBLE PRECISION) ELSE 0 END AS stone_stored,
         CASE WHEN td.discovered_resource IS NOT NULL THEN CAST(td.iron_stored AS DOUBLE PRECISION) ELSE 0 END AS iron_stored,
@@ -1659,7 +1662,7 @@ Resumen de calidad de cosechas:
           messageBody = `📜 ¡Informe del Prospector!\n\nEn el feudo "${fiefName}" se han localizado canteras de PIEDRA. Este material será fundamental para la construcción. La producción comenzará en el próximo ciclo.`;
         } else {
           messageSubject = '❌ Exploración Completada';
-          messageBody = `📜 Informe del Prospector\n\nLa exploración en el feudo "${fiefName}" ha concluido sin encontrar recursos mineros explotables. El terreno no contiene depósitos de piedra, hierro o oro.`;
+          messageBody = `📜 Informe del Prospector\n\nLa exploración en el feudo "${fiefName}" ha concluido sin encontrar recursos mineros explotables. El terreno no contiene depósitos de piedra, hierro u oro.`;
         }
 
         await client.query(
@@ -1739,7 +1742,16 @@ app.post('/api/territory/explore', requireAuth, async (req, res) => {
 
   try {
     const { h3_index } = req.body;
-    const player_id = req.session.player.player_id;
+
+    // Safety check for user session
+    if (!req.session || !req.session.user) {
+      return res.status(401).json({ success: false, message: 'Usuario no autenticado' });
+    }
+
+    const player_id = req.session.user.player_id;
+
+    // Debug log as requested
+    console.log("Explorando feudo:", h3_index, "Jugador:", player_id);
 
     if (!h3_index) {
       return res.status(400).json({
@@ -1804,20 +1816,20 @@ app.post('/api/territory/explore', requireAuth, async (req, res) => {
       });
     }
 
-    // Check player has enough gold
+    // Check player has enough gold - using "gold" as requested
     const playerResult = await client.query(
-      'SELECT gold FROM players WHERE player_id = $1',
+      'SELECT "gold" FROM players WHERE player_id = $1',
       [player_id]
     );
 
     const player = playerResult.rows[0];
     const goldCost = CONFIG.exploration.gold_cost;
 
-    if (player.gold < goldCost) {
+    if (player.gold_stored < goldCost) {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
-        message: `Oro insuficiente. Necesitas: ${goldCost}, Tienes: ${player.gold}`
+        message: `Oro insuficiente. Necesitas: ${goldCost}, Tienes: ${player.gold_stored}`
       });
     }
 
@@ -1826,9 +1838,9 @@ app.post('/api/territory/explore', requireAuth, async (req, res) => {
     const currentTurn = worldState.rows[0].current_turn;
     const explorationEndTurn = currentTurn + CONFIG.exploration.turns_required;
 
-    // Deduct gold and start exploration
+    // Deduct gold and start exploration - using "gold" as requested
     await client.query(
-      'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
+      'UPDATE players SET "gold" = "gold" - $1 WHERE player_id = $2',
       [goldCost, player_id]
     );
 

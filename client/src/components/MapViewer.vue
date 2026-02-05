@@ -593,27 +593,45 @@
 
         <!-- Kingdom Content -->
         <div class="overlay-content kingdom-content">
-          <!-- Top Controls -->
-          <div class="kingdom-controls">
-            <div class="kingdom-actions">
-              <button class="kingdom-action-btn" title="Próximamente">🔨 Construir</button>
-              <button class="kingdom-action-btn" title="Próximamente">⚔️ Reclutar</button>
-              <button class="kingdom-action-btn" title="Próximamente">📜 Leyes</button>
+          <!-- Left Sidebar for Controls -->
+          <div class="kingdom-sidebar">
+            <div class="sidebar-section">
+              <h4 class="sidebar-subtitle">🛠️ Acciones</h4>
+              <div class="kingdom-actions-vertical">
+                <button class="kingdom-action-btn-sidebar" title="Próximamente">🔨 Construir</button>
+                <button class="kingdom-action-btn-sidebar" title="Próximamente">⚔️ Reclutar</button>
+                <button class="kingdom-action-btn-sidebar" title="Próximamente">📜 Leyes</button>
+              </div>
             </div>
-            
-            <div class="kingdom-filters">
-               <input
-                v-model="kingdomFilters.name"
-                type="text"
-                placeholder="🔍 Buscar feudo..."
-                class="kingdom-filter-input"
-              />
-              <input
-                v-model.number="kingdomFilters.maxPopulation"
-                type="number"
-                placeholder="👥 Max Pob..."
-                class="kingdom-filter-input"
-              />
+
+            <div class="sidebar-section">
+              <h4 class="sidebar-subtitle">🔍 Filtros</h4>
+              <div class="kingdom-filters-vertical">
+                <div class="filter-group">
+                  <label>Nombre del feudo</label>
+                  <input
+                    v-model="kingdomFilters.name"
+                    type="text"
+                    placeholder="Buscar..."
+                    class="kingdom-filter-input-sidebar"
+                  />
+                </div>
+                <div class="filter-group">
+                  <label>Población Máxima</label>
+                  <input
+                    v-model.number="kingdomFilters.maxPopulation"
+                    type="number"
+                    placeholder="Ejem: 1000"
+                    class="kingdom-filter-input-sidebar"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-section kingdom-summary">
+              <h4 class="sidebar-subtitle">📊 Resumen</h4>
+              <p>Total Feudos: <strong>{{ myFiefs.length }}</strong></p>
+              <p>Pob. Total: <strong>{{ formatNumber(myFiefs.reduce((acc, f) => acc + Number(f.population || 0), 0)) }}</strong></p>
             </div>
           </div>
 
@@ -625,11 +643,16 @@
                   <th @click="sortKingdomBy('name')">Nombre {{ kingdomSort.field === 'name' ? (kingdomSort.asc ? '▲' : '▼') : '' }}</th>
                   <th @click="sortKingdomBy('terrain')">Terreno</th>
                   <th @click="sortKingdomBy('population')">Población</th>
-                  <th @click="sortKingdomBy('food')">Comida</th>
+                  <th @click="sortKingdomBy('happiness')">😊 Fel.</th>
+                  <th @click="sortKingdomBy('food')">🌾 Comida</th>
+                  <th @click="sortKingdomBy('foodBalance')">Δ Alim.</th>
+                  <th @click="sortKingdomBy('wood')">🌲 Mad.</th>
+                  <th @click="sortKingdomBy('stone')">⛰️ Pie.</th>
+                  <th @click="sortKingdomBy('iron')">⛏️ Hie.</th>
                   <th @click="sortKingdomBy('gold')">🪙 Oro</th>
-                  <th @click="sortKingdomBy('explorationStatus')">⛏️ Prospección</th>
-                  <th @click="sortKingdomBy('autonomy')">Autonomía (Días)</th>
-                  <th @click="sortKingdomBy('distance')">Distancia a Capital</th>
+                  <th @click="sortKingdomBy('explorationStatus')">Prosp.</th>
+                  <th @click="sortKingdomBy('autonomy')">Auton.</th>
+                  <th @click="sortKingdomBy('distance')">Dist.</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -641,14 +664,21 @@
                   @click="focusOnFiefAndClose(fief.h3_index)"
                 >
                   <td class="kingdom-cell-name">
-                     <span class="cell-icon">🏰</span> {{ fief.name }}
+                    <span class="cell-icon">🏰</span> {{ fief.name }}
                   </td>
                   <td>{{ fief.terrain }}</td>
                   <td :class="{ 'text-danger': fief.population < 400 }">
                     {{ formatNumber(fief.population) }}
                     <span v-if="fief.population < 400" class="warning-icon" title="Población baja">⚠️</span>
                   </td>
+                  <td :class="fief.happiness < 50 ? 'text-danger' : 'text-success'">{{ fief.happiness }}%</td>
                   <td>{{ formatNumber(fief.food) }}</td>
+                  <td :class="fief.foodBalance < 0 ? 'text-danger' : 'text-success'">
+                    {{ fief.foodBalance > 0 ? '+' : '' }}{{ fief.foodBalance.toFixed(2) }}
+                  </td>
+                  <td>{{ formatNumber(fief.wood) }}</td>
+                  <td>{{ formatNumber(fief.stone) }}</td>
+                  <td>{{ formatNumber(fief.iron) }}</td>
                   <td class="text-gold">{{ formatGold(fief.gold) }}</td>
                   <td>
                     <span
@@ -669,7 +699,7 @@
                       :disabled="playerGold < explorationConfig.gold_cost"
                       :title="`Explorar (${explorationConfig.gold_cost} 💰)`"
                     >
-                      ⛏️
+                      +
                     </button>
                   </td>
                   <td :class="{
@@ -678,9 +708,9 @@
                   }">
                     {{ fief.autonomy === Infinity ? '∞' : fief.autonomy }}
                   </td>
-                  <td>{{ fief.distance }} km ({{ Math.round(fief.distance / 5) }} días)</td> <!-- Mock conversion -->
+                  <td>{{ fief.distance }} casillas</td>
                   <td>
-                    <button class="btn-micro" @click.stop="focusOnFiefAndClose(fief.h3_index)">🗺️ Ir</button>
+                    <button class="btn-micro" @click.stop="focusOnFiefAndClose(fief.h3_index)">🗺️</button>
                   </td>
                 </tr>
               </tbody>
@@ -856,9 +886,21 @@ const filteredAndSortedFiefs = computed(() => {
   // Calculate enriched fief data with distance and autonomy
   let enrichedFiefs = myFiefs.value.map(fief => {
     const population = Number(fief.population || 0);
+    const happiness = Number(fief.happiness || 0);
     const food = Number(fief.food_stored || 0);
+    const wood = Number(fief.wood_stored || 0);
+    const stone = Number(fief.stone_stored || 0);
+    const iron = Number(fief.iron_stored || 0);
+    const gold = Number(fief.gold_stored || 0);
+    const fertility = Number(fief.fertility || 0);
+
     const consumption = (population / 100.0) * 0.01;
     const autonomy = consumption > 0 ? Math.floor(food / consumption) : Infinity;
+    
+    // Food balance estimated: daily production probability (1.185 avg) - consumption
+    // We use a base of 1.185 from the weighted average of harvests
+    const estimatedDailyYield = consumption * 1.185;
+    const foodBalance = estimatedDailyYield - consumption;
 
     // Calculate distance to capital using H3
     let distance = 0;
@@ -905,8 +947,14 @@ const filteredAndSortedFiefs = computed(() => {
       name: fief.location_name || fief.h3_index?.substring(0, 8) || 'Territorio',
       terrain: fief.terrain_name || 'Desconocido',
       population,
+      happiness,
       food,
-      gold: Number(fief.oro || fief.gold_stored || 0),
+      wood,
+      stone,
+      iron,
+      gold,
+      foodBalance,
+      fertility,
       consumption,
       autonomy,
       distance,
@@ -4104,15 +4152,28 @@ onBeforeUnmount(() => {
 .kingdom-management-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0; /* Remove gap to allow sticky header to sit flush */
   padding: 0;
   height: calc(100vh - 100px);
+  position: relative;
+}
+
+.kingdom-controls {
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-dark);
+  z-index: 20;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 2px solid var(--color-accent-gold);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
 }
 
 .kingdom-actions {
   display: flex;
   gap: 12px;
-  padding: 0 4px;
 }
 
 .kingdom-action-btn {
@@ -4131,71 +4192,128 @@ onBeforeUnmount(() => {
   letter-spacing: 0.5px;
 }
 
-.kingdom-action-btn:hover:not(:disabled) {
-  background: rgba(197, 160, 89, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(197, 160, 89, 0.4);
+.kingdom-content {
+  display: flex !important;
+  flex-direction: row !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  height: calc(100% - 70px) !important;
 }
 
-.kingdom-action-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.kingdom-filters {
-  display: flex;
-  gap: 12px;
-  padding: 0 4px;
-}
-
-.kingdom-filter-input {
-  flex: 1;
-  padding: 10px 14px;
+.kingdom-sidebar {
+  width: 250px;
   background: rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  color: var(--color-text-cream);
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  border-right: 2px solid var(--color-accent-gold);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
 }
 
-.kingdom-filter-input::placeholder {
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-subtitle {
+  font-family: var(--font-serif);
+  color: var(--color-accent-gold);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 5px;
+}
+
+.kingdom-actions-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kingdom-action-btn-sidebar {
+  width: 100%;
+  padding: 12px;
+  background: rgba(197, 160, 89, 0.1);
+  border: 1px solid var(--color-accent-gold);
+  border-radius: 4px;
+  color: var(--color-accent-gold);
+  font-family: 'Cinzel', serif;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+}
+
+.kingdom-action-btn-sidebar:hover {
+  background: rgba(197, 160, 89, 0.2);
+  transform: translateX(5px);
+}
+
+.kingdom-filters-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.filter-group label {
+  font-size: 12px;
   color: var(--color-text-dim);
 }
 
-.kingdom-filter-input:focus {
-  outline: none;
-  border-color: var(--color-accent-gold);
-  box-shadow: 0 0 8px rgba(197, 160, 89, 0.3);
+.kingdom-filter-input-sidebar {
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-cream);
+  font-size: 13px;
 }
 
-.kingdom-table-container {
+.kingdom-filter-input-sidebar:focus {
+  border-color: var(--color-accent-gold);
+  outline: none;
+}
+
+.kingdom-summary p {
+  font-size: 13px;
+  margin: 5px 0;
+  color: var(--color-text-cream);
+}
+
+.kingdom-table-wrapper {
   flex: 1;
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
+  padding: 0;
+  position: relative;
 }
 
 .kingdom-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 13px; /* Slightly smaller for density */
 }
 
-.kingdom-table thead {
+.kingdom-table thead th {
   position: sticky;
   top: 0;
-  background: linear-gradient(135deg, #1a1612 0%, #0d0b09 100%);
+  background: #1a1612;
   z-index: 10;
-}
-
-.kingdom-table th {
-  padding: 14px 12px;
+  padding: 12px 6px;
   text-align: left;
-  font-family: 'Cinzel', serif;
-  font-size: 12px;
-  color: var(--color-accent-gold);
   border-bottom: 2px solid var(--color-accent-gold);
+  font-family: 'Cinzel', serif;
+  font-size: 10px; /* Smaller for better fit */
+  color: var(--color-accent-gold);
+  white-space: nowrap;
   cursor: pointer;
   user-select: none;
   text-transform: uppercase;
@@ -4204,7 +4322,7 @@ onBeforeUnmount(() => {
 }
 
 .kingdom-table th:hover {
-  background: rgba(197, 160, 89, 0.1);
+  background: rgba(197, 160, 89, 0.15);
 }
 
 .kingdom-row {
@@ -4217,11 +4335,32 @@ onBeforeUnmount(() => {
   background: rgba(197, 160, 89, 0.1);
 }
 
-.kingdom-table td {
-  padding: 12px;
-  font-size: 13px;
+.kingdom-row td {
+  padding: 10px 6px;
+  font-size: 12px;
   color: var(--color-text-cream);
-  font-family: 'Inter', sans-serif;
+  border-bottom: 1px solid rgba(197, 160, 89, 0.1);
+  white-space: nowrap;
+}
+
+/* Scrollbar specifically for the table wrapper */
+.kingdom-table-wrapper::-webkit-scrollbar {
+  width: 12px;
+}
+
+.kingdom-table-wrapper::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+}
+
+.kingdom-table-wrapper::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #c5a059 0%, #8B6914 100%);
+  border-radius: 6px;
+  border: 2px solid #1a1612;
+}
+
+.kingdom-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #d4b06a 0%, #c5a059 100%);
 }
 
 .kingdom-cell-name {
