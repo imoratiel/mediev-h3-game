@@ -55,24 +55,43 @@ def populate():
             for cell in batch:
                 h3_index, fertility, wood, stone, iron = cell
                 
-                # Cálculos aleatorios
+                # 1. Cálculos base
                 pop = getRandomInt(200, 400)
                 hap = getRandomInt(50, 70)
                 food = calculateLoot(500, 2500, fertility)
                 wood_s = calculateLoot(500, 2500, wood)
                 stone_s = calculateLoot(500, 2500, stone)
                 
-                # Regla del Hierro (1/30)
+                # 2. Nueva lógica de Minería, Oro y Recurso Oculto
+                gold_s = 0
                 iron_s = 0
-                if iron > 0 and random.random() < (1.0 / 30.0):
-                    iron_s = calculateLoot(500, 2500, iron)
-                
-                inserts.append((str(h3_index), pop, hap, food, wood_s, stone_s, iron_s))
+                disc_res = None 
 
-            # Inserción del lote
+                # Si el terreno tiene potencial minero (Montaña/Colinas)
+                if stone > 0 or iron > 0: 
+                    rand_discovery = random.random()
+                    
+                    if rand_discovery < 0.05:   # 5% ORO
+                        disc_res = 'gold'
+                        gold_s = getRandomInt(100, 500) 
+                    elif rand_discovery < 0.30: # 25% HIERRO
+                        disc_res = 'iron'
+                        iron_s = calculateLoot(500, 2500, iron)
+                    else:                       # 70% PIEDRA
+                        disc_res = 'stone'
+                
+                # 3. ÚNICO APPEND con los 9 campos necesarios
+                inserts.append((
+                    str(h3_index), pop, hap, food, 
+                    wood_s, stone_s, iron_s, gold_s, disc_res
+                ))
+
+            # 4. Query actualizada con las nuevas columnas
             insert_query = """
                 INSERT INTO territory_details (
-                    h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored
+                    h3_index, population, happiness, food_stored, 
+                    wood_stored, stone_stored, iron_stored, 
+                    gold_stored, discovered_resource
                 ) VALUES %s
             """
             execute_values(cur, insert_query, inserts)

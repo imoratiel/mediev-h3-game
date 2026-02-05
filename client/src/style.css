@@ -92,7 +92,12 @@ body,
 /* ============================================
    TIPOGRAFÍA MEDIEVAL
    ============================================ */
-h1, h2, h3, h4, h5, h6,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
 .title,
 .section-title,
 .panel-title,
@@ -216,4 +221,219 @@ button {
 .leaflet-control-home a:hover {
   background-color: #2a2218 !important;
   transform: scale(1.1);
+}
+
+/* ============================================
+   POPUPS DE LEAFLET - REDISEÑO TOTAL
+   ============================================ */
+.leaflet-popup-content-wrapper {
+  background: #fdf5e6 !important;
+  /* Crema opaco */
+  color: #2c1e14 !important;
+  /* Tono oscuro sólido */
+  border: 2px solid #c5a059 !important;
+  /* Borde dorado más marcado */
+  border-radius: 4px;
+  padding: 0 !important;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-popup-tip {
+  background: #fdf5e6 !important;
+  border: 1px solid #c5a059;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  width: auto !important;
+  min-width: 280px;
+  font-family: 'Quattrocento', serif !important;
+  color: #2c1e14 !important;
+  line-height: 1.4;
+}
+
+/* Título superior moderno/medieval */
+.popup-title {
+  font-family: 'Cinzel', serif !important;
+  background: #1a1612;
+  color: #c5a059 !important;
+  margin: 0 !important;
+  padding: 12px 15px !important;
+  font-size: 1.1rem !important;
+  font-weight: bold !important;
+  text-align: center;
+  border-bottom: 2px solid #c5a059;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Badge de Capital */
+.capital-header {
+  background: #8B6914;
+  color: #fff;
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  font-weight: bold;
+  text-align: center;
+  padding: 4px 0;
+  letter-spacing: 2px;
+}
+
+/* Contenido Principal */
+.cell-inspector {
+  padding: 0;
+}
+
+.cell-inspector p {
+  margin: 8px 15px !important;
+  color: #2c1e14 !important;
+}
+
+.popup-stat-row {
+  font-size: 14px;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 5px;
+}
+
+.popup-stat-row strong {
+  color: #1a1612 !important;
+  font-weight: bold !important;
+}
+
+/* Caja de detalles (Sección intermedia) */
+.popup-details-box {
+  margin: 10px 15px !important;
+  padding: 10px !important;
+  background: rgba(197, 160, 89, 0.15) !important;
+  /* Toque dorado muy suave */
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  border-radius: 4px;
+}
+
+.popup-details-title {
+  margin: 0 0 8px 0 !important;
+  font-weight: bold !important;
+  color: #1a1612 !important;
+  font-family: 'Cinzel', serif;
+  font-size: 13px !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding-bottom: 4px;
+}
+
+.popup-detail-item {
+  margin: 4px 0 !important;
+  font-size: 13px !important;
+  color: #2c1e14 !important;
+  /* Asegurar color oscuro */
+}
+
+/* Cuadrícula de Recursos */
+.popup-resources-label {
+  margin: 10px 0 5px 0 !important;
+  font-size: 12px !important;
+  font-weight: bold !important;
+  text-transform: uppercase;
+  color: #5d4e37 !important;
+}
+
+.popup-resource-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  font-size: 12px !important;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  font-weight: 600 !important;
+  /* Más grueso para legibilidad */
+  color: #1a1612 !important;
+  /* Tono oscuro sólido */
+}
+
+/* Gold resource styling */
+.resource-gold {
+  color: #ffd700 !important;
+  font-weight: 700 !important;
+  text-shadow: 0 0 2px rgba(255, 215, 0, 0.5);
+}
+
+/* Gold text in tables */
+.text-gold {
+  color: #ffd700 !important;
+  font-weight: 700 !important;
+}
+
+/* Botones de Acción */
+.popup-actions {
+  margin-top: 5px;
+  display: flex;
+  flex-direction: column;
+}
+
+.btn-popup {
+  display: block;
+  width: 100%;
+  padding: 12px !important;
+  font-family: 'Cinzel', serif !important;
+  font-weight: bold !important;
+  font-size: 13px !important;
+  text-align: center;
+  border: none;
+  border-top: 1px solid #c5a059;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-colonize {
+  background: linear-gradient(135deg, #8b6914 0%, #b8860b 100%) !important;
+  color: white !important;
+}
+
+.btn-colonize:hover {
+  filter: brightness(1.2);
+}
+
+.btn-manage {
+  background: #1a1612 !important;
+  color: #c5a059 !important;
+}
+
+.btn-manage:hover:not(:disabled) {
+  background: #2a2218 !important;
+  color: #d4b06a !important;
+}
+
+.btn-disabled {
+  background: #ccc !important;
+  color: #888 !important;
+  cursor: not-allowed;
+}
+
+/* Limpieza de sombras y emborronados */
+.leaflet-popup-content * {
+  text-shadow: none !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Estilo para los dueños con colores dinámicos pero legibles */
+.popup-owner-name {
+  font-weight: bold !important;
+  /* El color lo pone el JS inline para el jugador específico */
+}
+
+.unclaimed-text {
+  color: #5d5d5d !important;
+  font-style: italic;
+}
+
+.espionage-required {
+  font-size: 12px !important;
+  color: #666 !important;
+  font-style: italic;
+  margin: 10px 15px !important;
 }

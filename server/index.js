@@ -699,7 +699,31 @@ app.post('/api/game/claim', requireAuth, async (req, res) => {
       console.log(`[Claim] Terrain has no iron potential (${hex.terrain_name})`);
     }
 
-    console.log(`[Claim] Generated initial economy: pop=${initialPopulation}, happiness=${initialHappiness}, food=${initialFood}, wood=${initialWood}, stone=${initialStone}, iron=${initialIron}`);
+    // GOLD: Precious metal with 1/20 probability in mountains
+    let initialGold = 0;
+    let goldVeinFound = false;
+
+    if (hex.terrain_name === 'Mountains' || hex.terrain_name === 'Hills') {
+      // 1 in 50 chance to find a gold vein (2% - even rarer than iron's 3.33%)
+      const foundGoldVein = Math.random() < (1 / 50);
+
+      if (foundGoldVein) {
+        goldVeinFound = true;
+        // HIGH VALUE / LOW VOLUME: Gold is extremely scarce
+        // Generate 0.5 to 2.5 units (10x less than other resources)
+        const baseGold = getRandomInt(5, 25);
+        initialGold = (baseGold * 0.1).toFixed(2);
+
+        console.log(`🎉 [Claim] GOLD VEIN FOUND! Initial gold: ${initialGold} (terrain: ${hex.terrain_name})`);
+        logGameEvent(`[MINERÍA] ¡Veta de oro descubierta en el feudo ${h3_index}! Cantidad inicial: ${initialGold} unidades`);
+      } else {
+        console.log(`[Claim] No gold vein found (terrain has potential: ${hex.terrain_name})`);
+      }
+    } else {
+      console.log(`[Claim] Terrain has no gold potential (${hex.terrain_name})`);
+    }
+
+    console.log(`[Claim] Generated initial economy: pop=${initialPopulation}, happiness=${initialHappiness}, food=${initialFood}, wood=${initialWood}, stone=${initialStone}, iron=${initialIron}, gold=${initialGold}`);
 
     // PASO 3: Actualizar h3_map - Asignar hexágono al jugador sin edificio inicial (building_type_id = 0)
     await client.query(
@@ -711,8 +735,8 @@ app.post('/api/game/claim', requireAuth, async (req, res) => {
 
     // PASO 4: Insertar en territory_details
     const insertTerritoryDetailsQuery = `
-      INSERT INTO territory_details (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO territory_details (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored, oro)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (h3_index)
       DO UPDATE SET
         population = EXCLUDED.population,
@@ -720,7 +744,8 @@ app.post('/api/game/claim', requireAuth, async (req, res) => {
         food_stored = EXCLUDED.food_stored,
         wood_stored = EXCLUDED.wood_stored,
         stone_stored = EXCLUDED.stone_stored,
-        iron_stored = EXCLUDED.iron_stored
+        iron_stored = EXCLUDED.iron_stored,
+        oro = EXCLUDED.oro
     `;
     await client.query(insertTerritoryDetailsQuery, [
       h3_index,
@@ -729,7 +754,8 @@ app.post('/api/game/claim', requireAuth, async (req, res) => {
       initialFood,
       initialWood,
       initialStone,
-      initialIron
+      initialIron,
+      initialGold
     ]);
 
     // PASO 5: Cobrar el oro (100 monedas) al jugador
@@ -752,11 +778,16 @@ app.post('/api/game/claim', requireAuth, async (req, res) => {
       is_capital: isFirstTerritory,
       iron_vein_found: ironVeinFound,
       initial_iron: initialIron,
+      gold_vein_found: goldVeinFound,
+      initial_gold: initialGold,
       message: isFirstTerritory
         ? '👑 ¡Capital fundada! Tu reino comienza aquí.'
         : `🏰 ¡Territorio #${playerTerritoryCount + 1} colonizado!`,
       iron_message: ironVeinFound
         ? `⛏️ ¡VETA DE HIERRO ENCONTRADA! +${initialIron} hierro`
+        : null,
+      gold_message: goldVeinFound
+        ? `💰 ¡VETA DE ORO ENCONTRADA! +${initialGold} oro`
         : null
     });
 

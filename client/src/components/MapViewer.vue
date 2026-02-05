@@ -626,6 +626,7 @@
                   <th @click="sortKingdomBy('terrain')">Terreno</th>
                   <th @click="sortKingdomBy('population')">Población</th>
                   <th @click="sortKingdomBy('food')">Comida</th>
+                  <th @click="sortKingdomBy('gold')">🪙 Oro</th>
                   <th @click="sortKingdomBy('autonomy')">Autonomía (Días)</th>
                   <th @click="sortKingdomBy('distance')">Distancia a Capital</th>
                   <th>Acciones</th>
@@ -643,10 +644,11 @@
                   </td>
                   <td>{{ fief.terrain }}</td>
                   <td :class="{ 'text-danger': fief.population < 400 }">
-                    {{ Math.floor(fief.population) }}
+                    {{ formatNumber(fief.population) }}
                     <span v-if="fief.population < 400" class="warning-icon" title="Población baja">⚠️</span>
                   </td>
-                  <td>{{ fief.food.toFixed(1) }}</td>
+                  <td>{{ formatNumber(fief.food) }}</td>
+                  <td class="text-gold">{{ formatGold(fief.gold) }}</td>
                   <td :class="{
                     'text-danger': fief.autonomy < 30,
                     'text-success': fief.autonomy > 365
@@ -851,6 +853,7 @@ const filteredAndSortedFiefs = computed(() => {
       terrain: fief.terrain_name || 'Desconocido',
       population,
       food,
+      gold: Number(fief.oro || 0),
       consumption,
       autonomy,
       distance
@@ -2541,6 +2544,35 @@ const goToCapital = async () => {
 };
 
 /**
+ * Format number with K/M suffix
+ * @param {number} value - Number to format
+ * @returns {string} Formatted string (e.g., 2315 -> "2.3k", 12345677 -> "12.3M")
+ */
+const formatNumber = (value) => {
+  if (value === null || value === undefined || isNaN(value)) return '0';
+
+  const num = Number(value);
+
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  } else if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'k';
+  } else {
+    return num.toString();
+  }
+};
+
+/**
+ * Format gold with 2 decimals (since it's scarce and low volume)
+ * @param {number} value - Gold amount to format
+ * @returns {string} Formatted string with 2 decimals (e.g., 1.25)
+ */
+const formatGold = (value) => {
+  if (value === null || value === undefined || isNaN(value)) return '0.00';
+  return Number(value).toFixed(2);
+};
+
+/**
  * Sort kingdom fiefs by field
  * @param {string} field - Field to sort by
  */
@@ -2624,7 +2656,7 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
     const cell = response.data;
 
     // Build popup HTML content
-    let popupContent = '<div class="cell-inspector" style="font-family: \'Cinzel\', Georgia, serif; min-width: 250px;">';
+    let popupContent = '<div class="cell-inspector">';
 
     // CAPITAL BADGE - Show if this is the capital
     if (cell.is_capital) {
@@ -2634,50 +2666,50 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
     // TITLE - Settlement name or "Territorio Salvaje"
     const title = cell.settlement_name || (cell.player_id ? `Territorio de ${cell.player_name}` : 'Territorio Salvaje');
     const titleIcon = cell.is_capital ? '👑' : (cell.settlement_name ? '🏛️' : '🗺️');
-    const titleColor = cell.is_capital ? '#8B6914' : '#2c1810';
-    const titleBorder = cell.is_capital ? '#FFD700' : '#8b7355';
-    popupContent += `<h3 style="margin: 0 0 10px 0; color: ${titleColor}; font-size: 16px; border-bottom: 2px solid ${titleBorder}; padding-bottom: 8px;">${titleIcon} ${title}</h3>`;
+    
+    popupContent += `<h3 class="popup-title">${titleIcon} ${title}</h3>`;
 
     // OWNER - Player name or "Sin reclamar"
     const ownerText = cell.player_name
-      ? `<span style="color: ${cell.player_color}; font-weight: bold;">⚔️ ${cell.player_name}</span>`
-      : '<span style="color: #888;">🌿 Sin reclamar</span>';
-    popupContent += `<p style="margin: 5px 0;"><strong>Dueño:</strong> ${ownerText}</p>`;
+      ? `<span class="popup-owner-name" style="color: ${cell.player_color}">⚔️ ${cell.player_name}</span>`
+      : '<span class="unclaimed-text">🌿 Sin reclamar</span>';
+    popupContent += `<p class="popup-stat-row"><strong>Dueño:</strong> ${ownerText}</p>`;
 
     // TERRAIN TYPE
-    popupContent += `<p style="margin: 5px 0;"><strong>Terreno:</strong> ${cell.terrain_type}</p>`;
+    popupContent += `<p class="popup-stat-row"><strong>Terreno:</strong> ${cell.terrain_type}</p>`;
 
     // BUILDING (if any)
     if (cell.building_type) {
-      popupContent += `<p style="margin: 5px 0;"><strong>Edificio:</strong> ${cell.building_type}</p>`;
+      popupContent += `<p class="popup-stat-row"><strong>Edificio:</strong> ${cell.building_type}</p>`;
     }
 
     // TERRITORY DETAILS (only if owned and has territory data)
     if (cell.territory && cell.player_id === playerId.value) {
-      popupContent += '<div style="margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 5px;">';
-      popupContent += '<p style="margin: 5px 0; font-weight: bold; color: #5d4e37;">📊 Detalles del Territorio</p>';
+      popupContent += '<div class="popup-details-box">';
+      popupContent += '<p class="popup-details-title">📊 Detalles del Territorio</p>';
 
       // Population & Happiness
-      popupContent += `<p style="margin: 3px 0; font-size: 13px;">👥 Población: ${cell.territory.population} habitantes</p>`;
-      popupContent += `<p style="margin: 3px 0; font-size: 13px;">😊 Felicidad: ${cell.territory.happiness}%</p>`;
+      popupContent += `<p class="popup-detail-item">👥 Población: ${cell.territory.population} habitantes</p>`;
+      popupContent += `<p class="popup-detail-item">😊 Felicidad: ${cell.territory.happiness}%</p>`;
 
       // Resources
-      popupContent += '<p style="margin: 8px 0 3px 0; font-weight: bold; font-size: 12px;">Recursos Almacenados:</p>';
-      popupContent += `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 12px;">`;
-      popupContent += `<span>🌾 Comida: ${cell.territory.food}</span>`;
-      popupContent += `<span>🌲 Madera: ${cell.territory.wood}</span>`;
-      popupContent += `<span>⛰️ Piedra: ${cell.territory.stone}</span>`;
-      popupContent += `<span>⛏️ Hierro: ${cell.territory.iron}</span>`;
+      popupContent += '<p class="popup-resources-label">Recursos Almacenados:</p>';
+      popupContent += `<div class="popup-resource-grid">`;
+      popupContent += `<span class="resource-item">🌾 Comida: ${cell.territory.food}</span>`;
+      popupContent += `<span class="resource-item">🌲 Madera: ${cell.territory.wood}</span>`;
+      popupContent += `<span class="resource-item">⛰️ Piedra: ${cell.territory.stone}</span>`;
+      popupContent += `<span class="resource-item">⛏️ Hierro: ${cell.territory.iron}</span>`;
+      popupContent += `<span class="resource-item resource-gold">🪙 Oro: ${Number(cell.territory.gold || 0).toFixed(2)}</span>`;
       popupContent += `</div>`;
 
       popupContent += '</div>';
     } else if (cell.territory && cell.player_id) {
       // Territory owned by someone else
-      popupContent += '<p style="margin: 10px 0; font-size: 12px; color: #888; font-style: italic;">🔒 Información detallada requiere espionaje</p>';
+      popupContent += '<p class="espionage-required">🔒 Información detallada requiere espionaje</p>';
     }
 
     // ACTIONS
-    popupContent += '<div style="margin-top: 15px; display: flex; flex-direction: column; gap: 8px;">';
+    popupContent += '<div class="popup-actions">';
 
     if (!cell.player_id) {
       // Colonize button - check gold AND adjacency
@@ -2691,8 +2723,7 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
         isAdjacent = true;
       } else {
         // Get neighbors of clicked hex (6 adjacent hexes)
-        const neighbors = gridDisk(h3_index, 1); // Returns array including center + 6 neighbors
-        // Check if ANY neighbor is owned by player
+        const neighbors = gridDisk(h3_index, 1);
         isAdjacent = neighbors.some(neighborHex =>
           neighborHex !== h3_index && playerHexes.value.has(neighborHex)
         );
@@ -2706,13 +2737,11 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
         disabledReason = 'Debe ser contiguo a tu territorio';
       }
 
-      const buttonStyle = canColonize
-        ? 'background: linear-gradient(135deg, #8b6914 0%, #b8860b 100%); color: white; cursor: pointer;'
-        : 'background: #999; color: #666; cursor: not-allowed;';
+      const activeClass = canColonize ? 'btn-colonize' : 'btn-disabled';
 
       popupContent += `<button
         id="colonize-btn-${h3_index}"
-        style="padding: 10px 15px; border: 2px solid #5d4e37; border-radius: 5px; font-family: 'Cinzel', Georgia, serif; font-size: 13px; font-weight: 600; ${buttonStyle}"
+        class="btn-popup ${activeClass}"
         ${!canColonize ? 'disabled' : ''}
         title="${disabledReason}"
       >
@@ -2721,7 +2750,7 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
     } else if (cell.player_id === playerId.value) {
       // Manage button (disabled for now)
       popupContent += `<button
-        style="padding: 10px 15px; border: 2px solid #5d4e37; border-radius: 5px; font-family: 'Cinzel', Georgia, serif; font-size: 13px; font-weight: 600; background: #999; color: #666; cursor: not-allowed;"
+        class="btn-popup btn-manage"
         disabled
       >
         ⚙️ Gestionar (Próximamente)
@@ -2794,6 +2823,10 @@ const colonizeFromPopup = async (h3_index) => {
 
       if (response.data.iron_vein_found && response.data.iron_message) {
         message += ' ' + response.data.iron_message;
+      }
+
+      if (response.data.gold_vein_found && response.data.gold_message) {
+        message += ' ' + response.data.gold_message;
       }
 
       showToast(message, 'success');
