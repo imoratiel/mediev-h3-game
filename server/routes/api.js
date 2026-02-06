@@ -10,6 +10,7 @@ const { requireAuth, requireAdmin } = require('../src/middleware/auth');
 module.exports = function (pool, config, logic) {
     const { logGameEvent } = require('../src/utils/logger');
     const { formatDaysToYearsAndDays, getTerrainColor } = logic.territory;
+    const military = require('../src/logic/military');
 
     // ============================================
     // AUTHENTICATION ENDPOINTS
@@ -286,6 +287,45 @@ module.exports = function (pool, config, logic) {
             res.json({ success: true, message: `${building_type} mejorada al nivel ${currentLevel + 1}` });
         } catch (e) { if (client) await client.query('ROLLBACK'); res.status(500).json({ success: false, error: e.message }); }
         finally { client.release(); }
+    });
+
+    // ============================================
+    // MILITARY RECRUITMENT
+    // ============================================
+    router.get('/military/unit-types', async (req, res) => {
+        try {
+            const unitTypes = await military.getUnitTypes(pool);
+            res.json({ success: true, unit_types: unitTypes });
+        } catch (error) {
+            console.error('Error fetching unit types:', error);
+            res.status(500).json({ success: false, message: 'Error al obtener tipos de unidades' });
+        }
+    });
+
+    router.post('/military/recruit', requireAuth, async (req, res) => {
+        try {
+            const player_id = req.session.user.player_id;
+            const { h3_index, unit_type_id, quantity, army_name } = req.body;
+
+            if (!h3_index || !unit_type_id || !quantity || !army_name) {
+                return res.status(400).json({ success: false, message: 'Faltan parámetros requeridos' });
+            }
+
+            if (quantity <= 0) {
+                return res.status(400).json({ success: false, message: 'La cantidad debe ser mayor a 0' });
+            }
+
+            const result = await military.recruitUnits(pool, req.body, player_id);
+
+            if (result.success) {
+                logGameEvent(`[RECLUTAMIENTO] Jugador ${player_id} reclutó ${quantity} unidades tipo ${unit_type_id} en ${h3_index}`);
+            }
+
+            res.json(result);
+        } catch (error) {
+            console.error('Error recruiting units:', error);
+            res.status(500).json({ success: false, message: 'Error al reclutar unidades', error: error.message });
+        }
     });
 
     // ============================================

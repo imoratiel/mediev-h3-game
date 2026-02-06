@@ -598,9 +598,23 @@
             <div class="sidebar-section">
               <h4 class="sidebar-subtitle">🛠️ Acciones</h4>
               <div class="kingdom-actions-vertical">
-                <button class="kingdom-action-btn-sidebar" title="Próximamente">🔨 Construir</button>
-                <button class="kingdom-action-btn-sidebar" title="Próximamente">⚔️ Reclutar</button>
-                <button class="kingdom-action-btn-sidebar" title="Próximamente">📜 Leyes</button>
+                <button
+                  class="kingdom-action-btn-sidebar"
+                  :class="{ active: activeKingdomTab === 'fiefs' }"
+                  @click="activeKingdomTab = 'fiefs'"
+                  title="Ver listado de feudos"
+                >
+                  🏰 Feudos
+                </button>
+                <button
+                  class="kingdom-action-btn-sidebar"
+                  :class="{ active: activeKingdomTab === 'military' }"
+                  @click="openMilitaryTab"
+                  title="Reclutar tropas"
+                >
+                  ⚔️ Reclutar
+                </button>
+                <button class="kingdom-action-btn-sidebar" title="Próximamente" disabled>📜 Leyes</button>
               </div>
             </div>
 
@@ -636,7 +650,7 @@
           </div>
 
           <!-- Territories Table (Enhanced for Fullscreen) -->
-          <div class="kingdom-table-wrapper">
+          <div v-if="activeKingdomTab === 'fiefs'" class="kingdom-table-wrapper">
             <table class="kingdom-table full-width">
               <thead>
                 <tr>
@@ -737,6 +751,167 @@
             </table>
             <div v-if="filteredAndSortedFiefs.length === 0" class="empty-state">
               <p>No se encontraron feudos que coincidan con los filtros.</p>
+            </div>
+          </div>
+
+          <!-- Military Recruitment Tab -->
+          <div v-if="activeKingdomTab === 'military'" class="military-recruitment-panel">
+            <div class="recruitment-header">
+              <h3>⚔️ Reclutamiento de Tropas</h3>
+              <p class="recruitment-subtitle">Selecciona un feudo y un tipo de unidad para reclutar</p>
+            </div>
+
+            <div class="recruitment-content">
+              <!-- Fief Selection -->
+              <div class="recruitment-section">
+                <h4>1. Selecciona Feudo de Reclutamiento</h4>
+                <select
+                  v-model="selectedRecruitmentFief"
+                  class="recruitment-select"
+                  @change="recruitmentMessage = { type: '', text: '' }"
+                >
+                  <option :value="null">-- Selecciona un feudo --</option>
+                  <option
+                    v-for="fief in myFiefs"
+                    :key="fief.h3_index"
+                    :value="fief"
+                  >
+                    {{ fief.name }} - Población: {{ formatNumber(fief.population) }}
+                  </option>
+                </select>
+
+                <div v-if="selectedRecruitmentFief" class="fief-resources">
+                  <h5>Recursos Disponibles:</h5>
+                  <div class="resource-grid">
+                    <span>💰 Oro: {{ formatNumber(playerGold) }}</span>
+                    <span>🌲 Madera: {{ formatNumber(selectedRecruitmentFief.wood) }}</span>
+                    <span>⛰️ Piedra: {{ formatNumber(selectedRecruitmentFief.stone) }}</span>
+                    <span>⛏️ Hierro: {{ formatNumber(selectedRecruitmentFief.iron) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Unit Type Selection -->
+              <div class="recruitment-section">
+                <h4>2. Selecciona Tipo de Unidad</h4>
+                <div v-if="loadingUnitTypes" class="loading-text">Cargando unidades...</div>
+                <div v-else class="unit-types-grid">
+                  <div
+                    v-for="unit in unitTypes"
+                    :key="unit.id"
+                    :class="['unit-card', { selected: selectedUnitType?.id === unit.id }]"
+                    @click="selectedUnitType = unit; recruitmentMessage = { type: '', text: '' }"
+                  >
+                    <div class="unit-card-header">
+                      <h5>{{ unit.name }}</h5>
+                      <span class="unit-stats">
+                        ⚔️{{ unit.attack }} ❤️{{ unit.health_points }} 🏃{{ unit.speed }}
+                      </span>
+                    </div>
+                    <p class="unit-flavor">{{ unit.flavor_text }}</p>
+                    <div class="unit-requirements">
+                      <strong>Costo por unidad:</strong>
+                      <div class="req-list">
+                        <span
+                          v-for="req in unit.requirements"
+                          :key="req.resource_type"
+                          :class="[
+                            'req-item',
+                            {
+                              'req-insufficient':
+                                selectedRecruitmentFief &&
+                                ((req.resource_type === 'gold' && playerGold < req.amount) ||
+                                (req.resource_type === 'wood_stored' && selectedRecruitmentFief.wood < req.amount) ||
+                                (req.resource_type === 'stone_stored' && selectedRecruitmentFief.stone < req.amount) ||
+                                (req.resource_type === 'iron_stored' && selectedRecruitmentFief.iron < req.amount))
+                            }
+                          ]"
+                        >
+                          {{
+                            req.resource_type === 'gold' ? '💰' :
+                            req.resource_type === 'wood_stored' ? '🌲' :
+                            req.resource_type === 'stone_stored' ? '⛰️' :
+                            req.resource_type === 'iron_stored' ? '⛏️' : '📦'
+                          }}
+                          {{ req.amount }}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="unit-upkeep">
+                      <small>Manutención: 💰{{ unit.gold_upkeep }}/turno 🌾{{ unit.food_consumption }}/turno</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Recruitment Form -->
+              <div v-if="selectedUnitType && selectedRecruitmentFief" class="recruitment-section recruitment-form">
+                <h4>3. Configurar Reclutamiento</h4>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Cantidad:</label>
+                    <input
+                      v-model.number="recruitmentQuantity"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      class="recruitment-input"
+                      @input="recruitmentMessage = { type: '', text: '' }"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Nombre del Ejército:</label>
+                    <input
+                      v-model="recruitmentArmyName"
+                      type="text"
+                      placeholder="Ej: Guardia Real"
+                      maxlength="100"
+                      class="recruitment-input"
+                      @input="recruitmentMessage = { type: '', text: '' }"
+                    />
+                  </div>
+                </div>
+
+                <div class="total-cost">
+                  <h5>Costo Total:</h5>
+                  <div class="cost-breakdown">
+                    <span
+                      v-for="req in selectedUnitType.requirements"
+                      :key="req.resource_type"
+                      :class="[
+                        'cost-item',
+                        {
+                          'cost-insufficient':
+                            (req.resource_type === 'gold' && playerGold < req.amount * recruitmentQuantity) ||
+                            (req.resource_type === 'wood_stored' && selectedRecruitmentFief.wood < req.amount * recruitmentQuantity) ||
+                            (req.resource_type === 'stone_stored' && selectedRecruitmentFief.stone < req.amount * recruitmentQuantity) ||
+                            (req.resource_type === 'iron_stored' && selectedRecruitmentFief.iron < req.amount * recruitmentQuantity)
+                        }
+                      ]"
+                    >
+                      {{
+                        req.resource_type === 'gold' ? '💰' :
+                        req.resource_type === 'wood_stored' ? '🌲' :
+                        req.resource_type === 'stone_stored' ? '⛰️' :
+                        req.resource_type === 'iron_stored' ? '⛏️' : '📦'
+                      }}
+                      {{ req.amount * recruitmentQuantity }}
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="recruitmentMessage.text" :class="['recruitment-message', recruitmentMessage.type]">
+                  {{ recruitmentMessage.text }}
+                </div>
+
+                <button
+                  class="btn-recruit"
+                  :disabled="!canRecruit || isRecruiting"
+                  @click="recruitUnits"
+                >
+                  {{ isRecruiting ? 'Reclutando...' : `⚔️ Reclutar ${recruitmentQuantity} ${selectedUnitType.name}` }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -869,6 +1044,17 @@ const kingdomSort = ref({
   field: 'distance', // Default: sort by distance
   asc: true
 });
+
+// Military recruitment state
+const activeKingdomTab = ref('fiefs'); // 'fiefs' or 'military'
+const unitTypes = ref([]);
+const loadingUnitTypes = ref(false);
+const selectedRecruitmentFief = ref(null);
+const selectedUnitType = ref(null);
+const recruitmentQuantity = ref(1);
+const recruitmentArmyName = ref('');
+const recruitmentMessage = ref({ type: '', text: '' });
+const isRecruiting = ref(false);
 
 // Legend toggle state
 const legendCollapsed = ref(true); // Collapsed by default
@@ -3216,6 +3402,139 @@ const upgradeInfrastructure = async (h3_index, building_type) => {
     showToast(errorMsg, 'error');
   }
 };
+
+/**
+ * Fetch available unit types for recruitment
+ */
+const fetchUnitTypes = async () => {
+  try {
+    loadingUnitTypes.value = true;
+    const response = await axios.get(`${API_URL}/api/military/unit-types`, {
+      withCredentials: true
+    });
+
+    if (response.data.success) {
+      unitTypes.value = response.data.unit_types;
+      console.log('✓ Unit types loaded:', unitTypes.value.length);
+    }
+  } catch (err) {
+    console.error('❌ Error fetching unit types:', err);
+    showToast('Error al cargar tipos de unidades', 'error');
+  } finally {
+    loadingUnitTypes.value = false;
+  }
+};
+
+/**
+ * Switch to military tab and load unit types
+ */
+const openMilitaryTab = async () => {
+  activeKingdomTab.value = 'military';
+  if (unitTypes.value.length === 0) {
+    await fetchUnitTypes();
+  }
+  // Reset recruitment form
+  selectedRecruitmentFief.value = null;
+  selectedUnitType.value = null;
+  recruitmentQuantity.value = 1;
+  recruitmentArmyName.value = '';
+  recruitmentMessage.value = { type: '', text: '' };
+};
+
+/**
+ * Recruit units
+ */
+const recruitUnits = async () => {
+  if (!selectedRecruitmentFief.value) {
+    recruitmentMessage.value = { type: 'error', text: 'Selecciona un feudo' };
+    return;
+  }
+  if (!selectedUnitType.value) {
+    recruitmentMessage.value = { type: 'error', text: 'Selecciona un tipo de unidad' };
+    return;
+  }
+  if (recruitmentQuantity.value <= 0) {
+    recruitmentMessage.value = { type: 'error', text: 'La cantidad debe ser mayor a 0' };
+    return;
+  }
+  if (!recruitmentArmyName.value.trim()) {
+    recruitmentMessage.value = { type: 'error', text: 'Ingresa un nombre para el ejército' };
+    return;
+  }
+
+  try {
+    isRecruiting.value = true;
+    recruitmentMessage.value = { type: '', text: '' };
+
+    const response = await axios.post(`${API_URL}/api/military/recruit`, {
+      h3_index: selectedRecruitmentFief.value.h3_index,
+      unit_type_id: selectedUnitType.value.id,
+      quantity: recruitmentQuantity.value,
+      army_name: recruitmentArmyName.value.trim()
+    }, {
+      withCredentials: true
+    });
+
+    if (response.data.success) {
+      recruitmentMessage.value = {
+        type: 'success',
+        text: `✓ ${recruitmentQuantity.value} ${selectedUnitType.value.name} reclutado(s) en ${selectedRecruitmentFief.value.name}`
+      };
+
+      // Refresh data
+      await fetchPlayerData();
+      await updateFiefsUI();
+
+      // Reset form
+      recruitmentQuantity.value = 1;
+      recruitmentArmyName.value = '';
+      selectedUnitType.value = null;
+    } else {
+      recruitmentMessage.value = { type: 'error', text: response.data.message };
+    }
+  } catch (err) {
+    console.error('❌ Error recruiting units:', err);
+    const errorMsg = err.response?.data?.message || err.message || 'Error desconocido';
+    recruitmentMessage.value = { type: 'error', text: errorMsg };
+  } finally {
+    isRecruiting.value = false;
+  }
+};
+
+/**
+ * Get available resources for a fief for recruitment
+ */
+const getRecruitmentResources = (fief) => {
+  if (!fief) return null;
+  return {
+    wood: fief.wood || 0,
+    stone: fief.stone || 0,
+    iron: fief.iron || 0,
+    gold: playerGold.value
+  };
+};
+
+/**
+ * Check if recruitment is possible for selected unit and fief
+ */
+const canRecruit = computed(() => {
+  if (!selectedRecruitmentFief.value || !selectedUnitType.value || recruitmentQuantity.value <= 0) {
+    return false;
+  }
+
+  const resources = getRecruitmentResources(selectedRecruitmentFief.value);
+  const requirements = selectedUnitType.value.requirements || [];
+
+  for (const req of requirements) {
+    const needed = req.amount * recruitmentQuantity.value;
+    if (req.resource_type === 'gold' && resources.gold < needed) return false;
+    if (req.resource_type === 'wood_stored' && resources.wood < needed) return false;
+    if (req.resource_type === 'stone_stored' && resources.stone < needed) return false;
+    if (req.resource_type === 'iron_stored' && resources.iron < needed) return false;
+  }
+
+  return true;
+});
 
 /**
  * Check authentication status
@@ -6847,5 +7166,340 @@ onBeforeUnmount(() => {
   white-space: nowrap !important;
   padding-left: 4px !important;
   padding-right: 4px !important;
+}
+
+/* ========================================
+   MILITARY RECRUITMENT PANEL
+   ======================================== */
+.military-recruitment-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 20px;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+}
+
+.recruitment-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid rgba(255, 215, 0, 0.3);
+}
+
+.recruitment-header h3 {
+  font-size: 2rem;
+  margin: 0 0 10px 0;
+  color: #ffd700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.recruitment-subtitle {
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
+.recruitment-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.recruitment-section {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.recruitment-section h4 {
+  color: #ffd700;
+  margin: 0 0 15px 0;
+  font-size: 1.3rem;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+  padding-bottom: 10px;
+}
+
+.recruitment-section h5 {
+  color: #ffd700;
+  margin: 15px 0 10px 0;
+  font-size: 1rem;
+}
+
+.recruitment-select {
+  width: 100%;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.recruitment-select:hover {
+  border-color: rgba(255, 215, 0, 0.6);
+}
+
+.recruitment-select:focus {
+  outline: none;
+  border-color: #ffd700;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+.fief-resources {
+  margin-top: 15px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.resource-grid span {
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+}
+
+.unit-types-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.unit-card {
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 15px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.unit-card:hover {
+  border-color: rgba(255, 215, 0, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.2);
+}
+
+.unit-card.selected {
+  border-color: #ffd700;
+  background: rgba(255, 215, 0, 0.1);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+.unit-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.unit-card-header h5 {
+  margin: 0;
+  color: #ffd700;
+  font-size: 1.2rem;
+}
+
+.unit-stats {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.unit-flavor {
+  color: rgba(255, 255, 255, 0.6);
+  font-style: italic;
+  font-size: 0.9rem;
+  margin: 10px 0;
+  min-height: 40px;
+}
+
+.unit-requirements {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.unit-requirements strong {
+  color: #ffd700;
+  font-size: 0.9rem;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.req-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.req-item {
+  padding: 4px 8px;
+  background: rgba(0, 100, 0, 0.3);
+  border: 1px solid rgba(0, 255, 0, 0.3);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.req-item.req-insufficient {
+  background: rgba(100, 0, 0, 0.3);
+  border-color: rgba(255, 0, 0, 0.5);
+  color: #ff6b6b;
+}
+
+.unit-upkeep {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.unit-upkeep small {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.85rem;
+}
+
+.recruitment-form {
+  background: rgba(255, 215, 0, 0.05);
+  border-color: rgba(255, 215, 0, 0.4);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  color: #ffd700;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.recruitment-input {
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.recruitment-input:focus {
+  outline: none;
+  border-color: #ffd700;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+.total-cost {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.total-cost h5 {
+  margin: 0 0 10px 0;
+}
+
+.cost-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cost-item {
+  padding: 8px 16px;
+  background: rgba(0, 100, 0, 0.3);
+  border: 2px solid rgba(0, 255, 0, 0.3);
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.cost-item.cost-insufficient {
+  background: rgba(100, 0, 0, 0.3);
+  border-color: rgba(255, 0, 0, 0.5);
+  color: #ff6b6b;
+}
+
+.recruitment-message {
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.recruitment-message.success {
+  background: rgba(0, 100, 0, 0.3);
+  border: 1px solid rgba(0, 255, 0, 0.5);
+  color: #4caf50;
+}
+
+.recruitment-message.error {
+  background: rgba(100, 0, 0, 0.3);
+  border: 1px solid rgba(255, 0, 0, 0.5);
+  color: #ff6b6b;
+}
+
+.btn-recruit {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, #c9b037 0%, #ffd700 100%);
+  border: none;
+  border-radius: 8px;
+  color: #000;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+}
+
+.btn-recruit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5);
+}
+
+.btn-recruit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-recruit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loading-text {
+  text-align: center;
+  padding: 40px;
+  color: rgba(255, 255, 255, 0.6);
+  font-style: italic;
+}
+
+.kingdom-action-btn-sidebar.active {
+  background: rgba(255, 215, 0, 0.2);
+  border-color: #ffd700;
+  color: #ffd700;
 }
 </style>

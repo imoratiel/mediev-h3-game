@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS armies (
 -- 3. REQUISITOS DE MATERIALES (N:M)
 CREATE TABLE IF NOT EXISTS unit_requirements (
     id SERIAL PRIMARY KEY,
-    unit_type_id INT REFERENCES unit_types(unit_type_id) ON DELETE CASCADE,
+    unit_type_id INT REFERENCES unit_types(id) ON DELETE CASCADE,
     resource_type VARCHAR(20),
     amount INT NOT NULL
 );
@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS unit_requirements (
 -- 4. INSTANCIAS DE UNIDADES (DENTRO DE UN EJÉRCITO)
 CREATE TABLE IF NOT EXISTS army_instances (
     id SERIAL PRIMARY KEY,
-    army_id INT REFERENCES armies(army_id) ON DELETE CASCADE,
-    unit_type_id INT REFERENCES unit_types(unit_type_id),
+    army_id INT REFERENCES armies(id) ON DELETE CASCADE,
+    unit_type_id INT REFERENCES unit_types(id),
     quantity INT NOT NULL DEFAULT 1,
     experience DECIMAL(5,2) DEFAULT 0.00,
     morale DECIMAL(5,2) DEFAULT 100.00,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS army_instances (
 -- 5. MODIFICADORES DE TERRENO Y COMBATE
 CREATE TABLE IF NOT EXISTS unit_terrain_modifiers (
     id SERIAL PRIMARY KEY,
-    unit_type_id INT REFERENCES unit_types(unit_type_id) ON DELETE CASCADE,
+    unit_type_id INT REFERENCES unit_types(id) ON DELETE CASCADE,
     terrain_type VARCHAR(30),
     attack_modificator DECIMAL(3,2) DEFAULT 1.00,
     defense_modificator DECIMAL(3,2) DEFAULT 1.00,
@@ -64,8 +64,8 @@ CREATE TABLE IF NOT EXISTS unit_terrain_modifiers (
 -- 6. MATRIZ DE COUNTERS (BONUS ENTRE TROPAS)
 CREATE TABLE IF NOT EXISTS unit_combat_counters (
     id SERIAL PRIMARY KEY,
-    attacker_type_id INT REFERENCES unit_types(unit_type_id) ON DELETE CASCADE,
-    defender_type_id INT REFERENCES unit_types(unit_type_id) ON DELETE CASCADE,
+    attacker_type_id INT REFERENCES unit_types(id) ON DELETE CASCADE,
+    defender_type_id INT REFERENCES unit_types(id) ON DELETE CASCADE,
     damage_multiplier DECIMAL(3,2) DEFAULT 1.00
 );
 
