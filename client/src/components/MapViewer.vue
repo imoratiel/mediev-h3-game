@@ -952,7 +952,9 @@ const filteredAndSortedFiefs = computed(() => {
     } else if (isExploring) {
       explorationStatus = 'exploring';
       explorationStatusIcon = '⏳';
-      const turnsRemaining = fief.exploration_end_turn - currentTurn.value;
+      const turnsRemaining = (fief.exploration_end_turn && currentTurn.value)
+        ? Math.max(0, fief.exploration_end_turn - currentTurn.value)
+        : '?';
       explorationStatusShort = `${turnsRemaining}t`;
       explorationStatusText = `Explorando... (Faltan ${turnsRemaining} turno${turnsRemaining !== 1 ? 's' : ''})`;
     } else {
@@ -2513,7 +2515,7 @@ const selectMessage = async (message) => {
         threadMessages.value = response.data.messages;
       }
     } catch (error) {
-      console.error('Error loading thread:', error);
+      console.error('Error loading thread (GET /api/messages/thread/):', error);
       threadMessages.value = [];
     }
   } else {
@@ -2527,7 +2529,7 @@ const selectMessage = async (message) => {
       message.is_read = true;
       console.log(`✓ Message ${message.id} marked as read`);
     } catch (error) {
-      console.error('Error marking message as read:', error);
+      console.error('Error marking message as read (PUT /api/messages/:id/read):', error);
     }
   }
 };
@@ -2589,7 +2591,7 @@ const sendMessage = async () => {
       showToast('Error al enviar mensaje: ' + (response.data.message || 'Error desconocido'), 'error');
     }
   } catch (error) {
-    console.error('Error sending message:', error);
+    console.error('Error sending message (POST /api/messages):', error);
     showToast('Error al enviar mensaje: ' + (error.response?.data?.message || error.message), 'error');
   } finally {
     sendingMessage.value = false;
@@ -2640,6 +2642,12 @@ const focusOnHex = async (h3Index) => {
     // Get coordinates of the hexagon
     const [lat, lng] = cellToLatLng(h3Index);
 
+    // Validate coordinates before moving map
+    if (lat === undefined || lng === undefined || isNaN(lat) || isNaN(lng)) {
+      console.warn(`[Map] Invalid coordinates for hex ${h3Index}: [${lat}, ${lng}]`);
+      return;
+    }
+
     // Center map on hexagon with smooth animation
     map.setView([lat, lng], 12, {
       animate: true,
@@ -2669,7 +2677,7 @@ const focusOnHex = async (h3Index) => {
 
     console.log(`✓ Focused on hexagon: ${h3Index}`);
   } catch (err) {
-    console.error(`Error focusing on hex ${h3Index}:`, err);
+    console.error(`Error focusing on hex ${h3Index} (showCellDetailsPopup):`, err);
     showToast('Error: Índice H3 inválido', 'error');
   }
 };
@@ -2720,7 +2728,7 @@ const goToCapital = async () => {
     await focusOnHex(response.data.h3_index);
     showToast('Navegando a tu capital ⭐', 'success');
   } catch (err) {
-    console.error('Error navigating to capital:', err);
+    console.error('Error navigating to capital (GET /api/game/capital):', err);
 
     // Handle 404 specifically (no capital yet)
     if (err.response?.status === 404) {
@@ -2841,6 +2849,7 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
   try {
     // Fetch detailed cell information from API
     const response = await axios.get(`${API_URL}/api/map/cell-details/${h3_index}`);
+    console.log(`[Popup] Data for ${h3_index}:`, response.data);
     const cell = response.data;
 
     // Build popup HTML content
@@ -2859,7 +2868,7 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
 
     // OWNER - Player name or "Sin reclamar"
     const ownerText = cell.player_name
-      ? `<span class="popup-owner-name" style="color: ${cell.player_color}">⚔️ ${cell.player_name}</span>`
+      ? `<span class="popup-owner-name" style="color: #1a1612; border-bottom: 2px solid ${cell.player_color}">⚔️ ${cell.player_name}</span>`
       : '<span class="unclaimed-text">🌿 Sin reclamar</span>';
     popupContent += `<p class="popup-stat-row"><strong>Dueño:</strong> ${ownerText}</p>`;
 
@@ -2878,7 +2887,7 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
 
       // Population & Happiness
       popupContent += `<p class="popup-detail-item">👥 Población: ${cell.territory.population} habitantes</p>`;
-      popupContent += `<p class="popup-detail-item">😊 Felicidad: ${cell.territory.happiness}%</p>`;
+      popupContent += `<p class="popup-detail-item">😊 Felicidad: ${cell.territory.happiness || 0}%</p>`;
 
       // Resources
       popupContent += '<p class="popup-resources-label">Recursos Almacenados:</p>';
@@ -2886,43 +2895,37 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       popupContent += `<span class="resource-item">🌾 Comida: ${cell.territory.food}</span>`;
       popupContent += `<span class="resource-item">🌲 Madera: ${cell.territory.wood}</span>`;
 
-      // Mining resources - only show if territory has been explored
+      // Determine exploration state
       const isExplored = cell.territory.discovered_resource !== null;
-      const isExploring = cell.territory.exploration_end_turn !== null && !isExplored;
+      const isExploring = cell.territory.exploration_end_turn !== null && currentTurn.value < cell.territory.exploration_end_turn;
 
+      // Mining resources - only show if territory has been explored
       if (isExplored) {
-        // Show actual values for explored territories
         if (cell.territory.discovered_resource !== 'none') {
-          // Stone
           if (cell.territory.discovered_resource === 'stone') {
             const stone = Number(cell.territory.stone || 0);
-            const stoneClass = stone < 100 ? 'resource-item resource-low' : 'resource-item';
-            popupContent += `<span class="${stoneClass}">⛰️ Piedra: ${Math.round(stone)}</span>`;
+            popupContent += `<span class="resource-item">⛰️ Piedra: ${Math.round(stone)}</span>`;
           }
-
-          // Iron
           if (cell.territory.discovered_resource === 'iron') {
             const iron = Number(cell.territory.iron || 0);
-            const ironClass = iron < 100 ? 'resource-item resource-low' : 'resource-item';
-            popupContent += `<span class="${ironClass}">⛏️ Hierro: ${Math.round(iron)}</span>`;
+            popupContent += `<span class="resource-item">⛏️ Hierro: ${Math.round(iron)}</span>`;
           }
-
-          // Gold
           if (cell.territory.discovered_resource === 'gold') {
             const gold = Number(cell.territory.gold || 0);
-            const goldClass = gold < 0.5 ? 'resource-item resource-gold resource-low' : 'resource-item resource-gold';
-            popupContent += `<span class="${goldClass}">🪙 Oro: ${gold.toFixed(2)}</span>`;
+            popupContent += `<span class="resource-item resource-gold">🪙 Oro: ${gold.toFixed(2)}</span>`;
           }
         } else {
           popupContent += `<span class="resource-item" style="opacity: 0.5;">⛏️ Sin recursos mineros</span>`;
         }
+      } else if (isExploring) {
+        popupContent += `<span class="resource-item" style="opacity: 0.5;">⏳ Prospección en curso...</span>`;
       } else {
-        popupContent += `<span class="resource-item" style="opacity: 0.5;">❓ Recursos mineros desconocidos</span>`;
+        popupContent += `<span class="resource-item" style="opacity: 0.5;">❓ Recursos desconocidos</span>`;
       }
 
       popupContent += `</div>`;
 
-      // EXPLORATION STATUS - Show prominently
+      // EXPLORATION STATUS
       popupContent += '<div class="exploration-status-box">';
       popupContent += '<p class="exploration-status-label">📊 Estado de Prospección:</p>';
 
@@ -2942,115 +2945,8 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
         popupContent += `<p class="exploration-status exploration-not-started">⚪ Sin explorar</p>`;
       }
 
-      popupContent += '</div>';
-
-      // INFRASTRUCTURE SECTION (only for owned territories)
-      popupContent += '<div class="infrastructure-section">';
-      popupContent += '<p class="infrastructure-label">🏗️ Infraestructura:</p>';
-      popupContent += '<div class="infrastructure-grid">';
-
-      // Infrastructure levels
-      const farmLevel = Number(cell.territory.farm_level || 0);
-      const mineLevel = Number(cell.territory.mine_level || 0);
-      const lumberLevel = Number(cell.territory.lumber_level || 0);
-      const portLevel = Number(cell.territory.port_level || 0);
-
-      // Exponential cost calculation: Base * (2 ^ current_level)
-      const standardBase = 100;
-      const portBase = 10000;
-      const farmCost = standardBase * Math.pow(2, farmLevel);
-      const mineCost = standardBase * Math.pow(2, mineLevel);
-      const lumberCost = standardBase * Math.pow(2, lumberLevel);
-      const portCost = portBase * Math.pow(2, portLevel);
-
-      // Geographic restrictions
-      const foodOutput = Number(cell.food_output || 0);
-      const woodOutput = Number(cell.wood_output || 0);
-      const isCoast = cell.is_coast || cell.terrain_type === 'Coast';
-      const hasMinedResource = cell.territory.discovered_resource && cell.territory.discovered_resource !== 'none';
-
-      // Farm (requires food_output > 0)
-      const canBuildFarm = foodOutput > 0;
-      const farmDisabledReason = !canBuildFarm ? 'Este terreno no es apto para granjas' : '';
-
-      popupContent += `
-        <div class="infrastructure-item">
-          <span>🚜 Granja: Nivel ${farmLevel}</span>
-          ${canBuildFarm ? `
-            <button class="btn-upgrade" data-building="farm" data-h3="${h3_index}" data-cost="${farmCost}">
-              + (${farmCost}💰)
-            </button>
-          ` : `
-            <button class="btn-upgrade-disabled" disabled title="${farmDisabledReason}">
-              🚫
-            </button>
-          `}
-        </div>
-      `;
-
-      // Mine (requires discovered_resource)
-      const canBuildMine = hasMinedResource;
-      const mineDisabledReason = !canBuildMine ? 'No hay recursos mineros descubiertos' : '';
-
-      popupContent += `
-        <div class="infrastructure-item">
-          <span>⛏️ Mina: Nivel ${mineLevel}</span>
-          ${canBuildMine ? `
-            <button class="btn-upgrade" data-building="mine" data-h3="${h3_index}" data-cost="${mineCost}">
-              + (${mineCost}💰)
-            </button>
-          ` : `
-            <button class="btn-upgrade-disabled" disabled title="${mineDisabledReason}">
-              🚫
-            </button>
-          `}
-        </div>
-      `;
-
-      // Lumber mill (requires wood_output > 0)
-      const canBuildLumber = woodOutput > 0;
-      const lumberDisabledReason = !canBuildLumber ? 'No hay bosques en esta casilla' : '';
-
-      popupContent += `
-        <div class="infrastructure-item">
-          <span>🪓 Aserradero: Nivel ${lumberLevel}</span>
-          ${canBuildLumber ? `
-            <button class="btn-upgrade" data-building="lumber" data-h3="${h3_index}" data-cost="${lumberCost}">
-              + (${lumberCost}💰)
-            </button>
-          ` : `
-            <button class="btn-upgrade-disabled" disabled title="${lumberDisabledReason}">
-              🚫
-            </button>
-          `}
-        </div>
-      `;
-
-      // Port (requires is_coast)
-      const canBuildPort = isCoast;
-      const portDisabledReason = !canBuildPort ? 'Los puertos requieren costa' : '';
-
-      popupContent += `
-        <div class="infrastructure-item">
-          <span>⚓ Puerto: Nivel ${portLevel}</span>
-          ${canBuildPort ? `
-            <button class="btn-upgrade" data-building="port" data-h3="${h3_index}" data-cost="${portCost}">
-              + (${portCost}💰)
-            </button>
-          ` : `
-            <button class="btn-upgrade-disabled" disabled title="${portDisabledReason}">
-              🚫
-            </button>
-          `}
-        </div>
-      `;
-
-      popupContent += '</div>';
-      popupContent += '</div>';
-
-      popupContent += '</div>';
+      popupContent += '</div></div>';
     } else if (cell.territory && cell.player_id) {
-      // Territory owned by someone else
       popupContent += '<p class="espionage-required">🔒 Información detallada requiere espionaje</p>';
     }
 
@@ -3058,17 +2954,13 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
     popupContent += '<div class="popup-actions">';
 
     if (!cell.player_id) {
-      // Colonize button - check gold AND adjacency
       const hasEnoughGold = playerGold.value >= 100;
       let isAdjacent = false;
       let disabledReason = '';
 
-      // Check adjacency
       if (playerHexes.value.size === 0) {
-        // First territory - always allowed
         isAdjacent = true;
       } else {
-        // Get neighbors of clicked hex (6 adjacent hexes)
         const neighbors = gridDisk(h3_index, 1);
         isAdjacent = neighbors.some(neighborHex =>
           neighborHex !== h3_index && playerHexes.value.has(neighborHex)
@@ -3076,57 +2968,29 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       }
 
       const canColonize = hasEnoughGold && isAdjacent;
-
-      if (!hasEnoughGold) {
-        disabledReason = 'Oro insuficiente';
-      } else if (!isAdjacent) {
-        disabledReason = 'Debe ser contiguo a tu territorio';
-      }
+      if (!hasEnoughGold) disabledReason = 'Oro insuficiente';
+      else if (!isAdjacent) disabledReason = 'Debe ser contiguo a tu territorio';
 
       const activeClass = canColonize ? 'btn-colonize' : 'btn-disabled';
-
-      popupContent += `<button
-        id="colonize-btn-${h3_index}"
-        class="btn-popup ${activeClass}"
-        ${!canColonize ? 'disabled' : ''}
-        title="${disabledReason}"
-      >
+      popupContent += `<button id="colonize-btn-${h3_index}" class="btn-popup ${activeClass}" ${!canColonize ? 'disabled' : ''} title="${disabledReason}">
         🏰 Colonizar (100 💰)
       </button>`;
     } else if (cell.player_id === playerId.value) {
-      // Check exploration status
       const isExplored = cell.territory?.discovered_resource !== null;
-      const isExploring = cell.territory?.exploration_end_turn !== null && !isExplored;
+      const isExploring = cell.territory?.exploration_end_turn !== null && currentTurn.value < cell.territory?.exploration_end_turn;
       const explorationCost = explorationConfig.value.gold_cost;
 
       if (!isExplored && !isExploring) {
-        // Show exploration button
         const hasEnoughGold = playerGold.value >= explorationCost;
-        const canExplore = hasEnoughGold;
-
-        popupContent += `<button
-          id="explore-btn-${h3_index}"
-          class="btn-popup ${canExplore ? 'btn-explore' : 'btn-disabled'}"
-          ${!canExplore ? 'disabled' : ''}
-          title="${!canExplore ? 'Oro insuficiente' : 'Iniciar exploración minera'}"
-        >
+        popupContent += `<button id="explore-btn-${h3_index}" class="btn-popup ${hasEnoughGold ? 'btn-explore' : 'btn-disabled'}" ${!hasEnoughGold ? 'disabled' : ''} title="${!hasEnoughGold ? 'Oro insuficiente' : 'Iniciar exploración minera'}">
           ⛏️ Explorar Terreno (${explorationCost} 💰)
         </button>`;
       } else if (isExploring) {
-        // Show exploration status with turns remaining
         const turnsRemaining = cell.territory.exploration_end_turn - currentTurn.value;
         popupContent += `<button class="btn-popup btn-exploring" disabled>
           ⏳ Explorando... (${turnsRemaining} turno${turnsRemaining !== 1 ? 's' : ''})
         </button>`;
       }
-
-      // Manage button (disabled for now)
-      popupContent += `<button
-        class="btn-popup btn-manage"
-        disabled
-      >
-        ⚙️ Gestionar (Próximamente)
-      </button>`;
     }
 
     popupContent += '</div>';
@@ -3162,23 +3026,6 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
             exploreFromPopup(h3_index);
           });
         }
-
-        // Attach upgrade button handlers
-        const upgradeButtons = document.querySelectorAll('.btn-upgrade');
-        upgradeButtons.forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            const buildingType = e.target.getAttribute('data-building');
-            const h3Index = e.target.getAttribute('data-h3');
-            const cost = Number(e.target.getAttribute('data-cost'));
-
-            if (playerGold.value < cost) {
-              showToast(`Oro insuficiente. Necesitas ${cost} oro`, 'error');
-              return;
-            }
-
-            await upgradeInfrastructure(h3Index, buildingType);
-          });
-        });
       }, 100);
     }
 
@@ -3235,7 +3082,7 @@ const colonizeFromPopup = async (h3_index) => {
       showToast(response.data.message, 'error');
     }
   } catch (err) {
-    console.error('❌ Error colonizing territory:', err);
+    console.error('❌ Error colonizing territory (POST /api/game/claim):', err);
     const errorMsg = err.response?.data?.message || err.message || 'Error desconocido';
     showToast(errorMsg, 'error');
   }
@@ -3259,15 +3106,19 @@ const exploreFromPopup = async (h3_index) => {
       // Update player gold
       playerGold.value = response.data.new_gold_balance;
 
-      console.log(`✓ Exploration started! Gold spent: ${response.data.gold_spent}, Ends at turn: ${response.data.exploration_end_turn}`);
+      const endTurn = response.data.exploration_end_turn;
+      console.log(`✓ Exploration started! Gold spent: ${response.data.gold_spent}, Ends at turn: ${endTurn}`);
 
       // Close popup
       map.closePopup();
 
-      // Show success toast
-      showToast(`⛏️ Exploración iniciada. Finalizará en el turno ${response.data.exploration_end_turn}`, 'success');
+      // Show success toast with clear info
+      const msg = endTurn 
+        ? `⛏️ ¡Exploración iniciada! Los prospectores finalizarán en el turno ${endTurn}.` 
+        : '⛏️ ¡Exploración iniciada! Los prospectores se han puesto en marcha.';
+      showToast(msg, 'success');
 
-      // Refresh the map to show exploration status
+      // Refresh data silently
       await fetchHexagonData();
       await updateFiefsUI();
     } else {
@@ -3301,7 +3152,11 @@ const exploreFiefFromTable = async (h3_index) => {
       console.log(`✓ Exploration started! Gold spent: ${response.data.gold_spent}, Ends at turn: ${response.data.exploration_end_turn}`);
 
       // Show success toast
-      showToast(`⛏️ Exploración iniciada. Finalizará en el turno ${response.data.exploration_end_turn}`, 'success');
+      const endTurn = response.data.exploration_end_turn;
+      const msg = endTurn 
+        ? `⛏️ ¡Exploración iniciada! Finalizará en el turno ${endTurn}.` 
+        : '⛏️ ¡Exploración iniciada! Los prospectores se han puesto en marcha.';
+      showToast(msg, 'success');
 
       // Refresh the fiefs list to show exploration status
       await updateFiefsUI();
@@ -3356,7 +3211,7 @@ const upgradeInfrastructure = async (h3_index, building_type) => {
       showToast(response.data.message, 'error');
     }
   } catch (err) {
-    console.error('❌ Error upgrading infrastructure:', err);
+    console.error('❌ Error upgrading infrastructure (POST /api/territory/upgrade):', err);
     const errorMsg = err.response?.data?.message || err.message || 'Error desconocido';
     showToast(errorMsg, 'error');
   }
@@ -3399,7 +3254,7 @@ const checkAuth = async () => {
       }, 2000);
     }
   } catch (err) {
-    console.error('[Auth] Error checking authentication:', err);
+    console.error('[Auth] Error checking authentication (GET /api/auth/me):', err);
     currentUser.value = null;
     localStorage.removeItem('user');
 
@@ -3427,7 +3282,7 @@ const handleLogout = async () => {
       console.log('[Auth] ✓ Logout successful');
     }
   } catch (err) {
-    console.error('[Auth] Error during logout:', err);
+    console.error('[Auth] Error during logout (POST /api/auth/logout):', err);
     // Continue with logout even if API call fails
   } finally {
     // Clear all local storage data
