@@ -201,10 +201,10 @@ module.exports = function (pool, config, logic) {
     // ============================================
     // GAME LOGIC ENDPOINTS
     // ============================================
-    router.post('/game/claim', requireAuth, async (req, res) => {
+    router.post('/game/claim', authenticateToken, async (req, res) => {
         const client = await pool.connect();
         try {
-            const player_id = req.session.user.player_id;
+            const player_id = req.user.player_id;
             const { h3_index } = req.body;
             if (!h3_index) return res.status(400).json({ success: false, message: 'Falta parámetro: h3_index' });
 
@@ -241,9 +241,9 @@ module.exports = function (pool, config, logic) {
         } finally { client.release(); }
     });
 
-    router.get('/game/capital', requireAuth, async (req, res) => {
+    router.get('/game/capital', authenticateToken, async (req, res) => {
         try {
-            const result = await pool.query('SELECT h3_index FROM h3_map WHERE player_id = $1 AND is_capital = TRUE LIMIT 1', [req.session.user.player_id]);
+            const result = await pool.query('SELECT h3_index FROM h3_map WHERE player_id = $1 AND is_capital = TRUE LIMIT 1', [req.user.player_id]);
             if (result.rows.length === 0) return res.status(200).json({ success: false, message: 'No tienes capital' });
             res.json({ success: true, h3_index: result.rows[0].h3_index });    
         } catch (error) {
@@ -251,7 +251,7 @@ module.exports = function (pool, config, logic) {
             Logger.error(error, {
                 endpoint: '/game/capital',
                 method: 'GET',
-                userId: req.session?.user?.player_id
+                userId: req.user?.player_id
             });
             res.status(500).json({ success: false, message: 'Error al obtener información de capital' });
         }
@@ -295,13 +295,13 @@ module.exports = function (pool, config, logic) {
             Logger.error(error, {
                 endpoint: '/game/world-state',
                 method: 'GET',
-                userId: req.session?.user?.player_id
+                userId: req.user?.player_id
             });
             res.status(500).json({ success: false, error: e.message }); 
         }        
     });
 
-    router.get('/game/my-fiefs', requireAuth, async (req, res) => {
+    router.get('/game/my-fiefs', authenticateToken, async (req, res) => {
         const query = `
       SELECT m.h3_index, COALESCE(td.custom_name, s.name, 'Territorio sin nombre') AS location_name, td.*, t.name AS terrain_name, t.food_output
       FROM h3_map m
@@ -311,18 +311,18 @@ module.exports = function (pool, config, logic) {
       WHERE m.player_id = $1
       ORDER BY td.population DESC
     `;
-        const result = await pool.query(query, [req.session.user.player_id]);
+        const result = await pool.query(query, [req.user.player_id]);
         res.json({ success: true, fiefs: result.rows });
     });
 
     // ============================================
     // TERRITORY AND INFRASTRUCTURE
     // ============================================
-    router.post('/territory/explore', requireAuth, async (req, res) => {
+    router.post('/territory/explore', authenticateToken, async (req, res) => {
         const client = await pool.connect();
         try {
             const { h3_index } = req.body;
-            const player_id = req.session.user.player_id;
+            const player_id = req.user.player_id;
             await client.query('BEGIN');
             const ownership = await client.query('SELECT player_id FROM h3_map WHERE h3_index = $1', [h3_index]);
             if (ownership.rows[0]?.player_id !== player_id) { await client.query('ROLLBACK'); return res.status(403).json({ success: false, message: 'No posees este territorio' }); }
@@ -358,7 +358,7 @@ module.exports = function (pool, config, logic) {
             Logger.error(error, {
                 endpoint: '/territory/explore',
                 method: 'POST',
-                userId: req.session?.user?.player_id,
+                userId: req.user?.player_id,
                 payload: req.body
             });
             res.status(500).json({ success: false, error: e.message }); 
@@ -366,11 +366,11 @@ module.exports = function (pool, config, logic) {
         finally { client.release(); }
     });
 
-    router.post('/territory/upgrade', requireAuth, async (req, res) => {
+    router.post('/territory/upgrade', authenticateToken, async (req, res) => {
         const client = await pool.connect();
         try {
             const { h3_index, building_type } = req.body;
-            const player_id = req.session.user.player_id;
+            const player_id = req.user.player_id;
             const ownership = await client.query('SELECT player_id FROM h3_map WHERE h3_index = $1', [h3_index]);
             if (ownership.rows[0]?.player_id !== player_id) return res.status(403).json({ success: false, message: 'No posees este territorio' });
 
@@ -396,7 +396,7 @@ module.exports = function (pool, config, logic) {
             Logger.error(error, {
                 endpoint: '/territory/upgrade',
                 method: 'POST',
-                userId: req.session?.user?.player_id,
+                userId: req.user?.player_id,
                 payload: req.body
             });
             res.status(500).json({ success: false, error: e.message }); }
@@ -414,15 +414,15 @@ module.exports = function (pool, config, logic) {
             Logger.error(error, {
                 endpoint: '/api/military/unit-types',
                 method: 'GET',
-                userId: req.session?.user?.player_id
+                userId: req.user?.player_id
             });
             res.status(500).json({ success: false, message: 'Error al obtener tipos de unidades' });
         }
     });
 
-    router.post('/military/recruit', requireAuth, async (req, res) => {
+    router.post('/military/recruit', authenticateToken, async (req, res) => {
         try {
-            const player_id = req.session.user.player_id;
+            const player_id = req.user.player_id;
             const { h3_index, unit_type_id, quantity, army_name } = req.body;
 
             if (!h3_index || !unit_type_id || !quantity || !army_name) {
@@ -449,16 +449,16 @@ module.exports = function (pool, config, logic) {
             Logger.error(error, {
                 endpoint: '/api/military/recruit',
                 method: 'POST',
-                userId: req.session?.user?.player_id,
+                userId: req.user?.player_id,
                 payload: req.body
             });
             res.status(500).json({ success: false, message: 'Error al reclutar unidades', error: error.message });
         }
     });
 
-    router.get('/military/troops', requireAuth, async (req, res) => {
+    router.get('/military/troops', authenticateToken, async (req, res) => {
         try {
-            const player_id = req.session.user.player_id;
+            const player_id = req.user.player_id;
             const troops = await military.getTroops(pool, player_id);
 
             Logger.action('Consultó panel de tropas', player_id);
@@ -468,7 +468,7 @@ module.exports = function (pool, config, logic) {
             Logger.error(error, {
                 endpoint: '/api/military/troops',
                 method: 'GET',
-                userId: req.session?.user?.player_id
+                userId: req.user?.player_id
             });
             res.status(500).json({ success: false, message: 'Error al obtener tropas' });
         }
@@ -477,24 +477,32 @@ module.exports = function (pool, config, logic) {
     // ============================================
     // ADMIN AND MESSAGES
     // ============================================
-    router.post('/admin/reset', requireAdmin, async (req, res) => {
+    router.post('/admin/reset', authenticateToken, requireAdmin, async (req, res) => {
         try {
+            // Log admin access
+            Logger.action(`Acceso administrativo a /admin/reset - Reseteando mundo`, req.user.player_id);
+
             await pool.query("UPDATE world_state SET current_turn = 0, game_date = '1039-03-01' WHERE id = 1");
+
+            Logger.action(`Mundo reseteado exitosamente`, req.user.player_id);
             res.json({ success: true, message: 'Mundo reseteado' });
         } catch (error) {
             console.error('Admin reset error:', error);
             Logger.error(error, {
                 endpoint: '/admin/reset',
                 method: 'POST',
-                userId: req.session?.user?.player_id,
+                userId: req.user?.player_id,
                 payload: req.body
             });
             res.status(500).json({ success: false, message: 'Error al resetear mundo' });
         }
     });
 
-    router.get('/admin/stats', requireAdmin, async (req, res) => {
+    router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => {
         try {
+            // Log admin access
+            Logger.action(`Acceso administrativo a /admin/stats`, req.user.player_id);
+
             const world = (await pool.query('SELECT current_turn, game_date FROM world_state WHERE id = 1')).rows[0];
             const config = (await pool.query("SELECT value FROM game_config WHERE \"group\" = 'gameplay' and key = 'turn_duration_seconds'")).rows[0];
             const players = (await pool.query('SELECT COUNT(*) FROM players')).rows[0].count;
@@ -516,68 +524,82 @@ module.exports = function (pool, config, logic) {
             console.error('Admin stats error:', error);
             Logger.error(error, {
                 endpoint: '/admin/stats',
-                method: 'POST',
-                userId: req.session?.user?.player_id,
-                payload: req.body
+                method: 'GET',
+                userId: req.user?.player_id
             });
             res.status(500).json({ success: false, message: 'Error al obtener estadísticas' });
         }
     });
 
-    router.post('/admin/reset-explorations', requireAdmin, async (req, res) => {
+    router.post('/admin/reset-explorations', authenticateToken, requireAdmin, async (req, res) => {
         try {
+            // Log admin access
+            Logger.action(`Acceso administrativo a /admin/reset-explorations - Reseteando exploraciones`, req.user.player_id);
+
             await pool.query('UPDATE territory_details SET exploration_end_turn = NULL, discovered_resource = NULL');
+
+            Logger.action(`Exploraciones reseteadas exitosamente`, req.user.player_id);
             res.json({ success: true, message: 'Todas las exploraciones han sido reseteadas' });
         } catch (error) {
             console.error('Admin reset-explorations error:', error);
             Logger.error(error, {
                 endpoint: '/admin/reset-explorations',
                 method: 'POST',
-                userId: req.session?.user?.player_id,
+                userId: req.user?.player_id,
                 payload: req.body
             });
             res.status(500).json({ success: false, message: 'Error al resetear exploraciones' });
         }
     });
 
-    router.post('/admin/config', requireAdmin, async (req, res) => {
+    router.post('/admin/config', authenticateToken, requireAdmin, async (req, res) => {
         try {
             const { turn_interval_seconds } = req.body;
             if (!turn_interval_seconds) return res.status(400).json({ success: false, message: 'turn_interval_seconds requerido' });
 
+            // Log admin access
+            Logger.action(`Acceso administrativo a /admin/config - Actualizando intervalo de turnos a ${turn_interval_seconds}s`, req.user.player_id);
+
             // Also update in game_config for persistence across reloads if applicable
             await pool.query('INSERT INTO game_config ("group", "key", "value") VALUES ($1, $2, $3) ON CONFLICT ("group", "key") DO UPDATE SET value = EXCLUDED.value', ['gameplay', 'turn_duration_seconds', turn_interval_seconds.toString()]);
 
+            Logger.action(`Configuración actualizada: turn_interval_seconds = ${turn_interval_seconds}`, req.user.player_id);
             res.json({ success: true, message: 'Configuración actualizada. Reinicie el servidor para aplicar el nuevo intervalo de tiempo.' });
         } catch (error) {
             console.error('Admin config error:', error);
             Logger.error(error, {
                 endpoint: '/api/admin/config',
                 method: 'POST',
-                userId: req.session?.user?.player_id,
+                userId: req.user?.player_id,
                 payload: req.body
             });
             res.status(500).json({ success: false, message: 'Error al actualizar configuración', error: error.message });
         }
     });
 
-    router.get('/admin/game-config', requireAdmin, async (req, res) => {
+    router.get('/admin/game-config', authenticateToken, requireAdmin, async (req, res) => {
         try {
+            // Log admin access
+            Logger.action(`Acceso administrativo a /admin/game-config - Consultando configuración`, req.user.player_id);
+
             res.json({ success: true, config: config });
         } catch (error) {
             Logger.error(error, {
                 endpoint: '/admin/game-config',
                 method: 'GET',
-                userId: req.session?.user?.player_id
+                userId: req.user?.player_id
             });
             res.status(500).json({ success: false, message: 'Error al obtener configuración' });
         }
     });
 
-    router.put('/admin/game-config', requireAdmin, async (req, res) => {
+    router.put('/admin/game-config', authenticateToken, requireAdmin, async (req, res) => {
         try {
             const { group, key, value } = req.body;
             if (!group || !key || value === undefined) return res.status(400).json({ success: false, message: 'Faltan parámetros' });
+
+            // Log admin access
+            Logger.action(`Acceso administrativo a /admin/game-config - Actualizando ${group}.${key} = ${value}`, req.user.player_id);
 
             await pool.query('INSERT INTO game_config ("group", "key", "value") VALUES ($1, $2, $3) ON CONFLICT ("group", "key") DO UPDATE SET value = EXCLUDED.value', [group, key, value.toString()]);
 
@@ -585,30 +607,135 @@ module.exports = function (pool, config, logic) {
             if (!config[group]) config[group] = {};
             config[group][key] = !isNaN(value) ? Number(value) : value;
 
+            Logger.action(`Configuración actualizada: ${group}.${key} = ${value}`, req.user.player_id);
             res.json({ success: true, message: 'Configuración de juego actualizada' });
         } catch (error) {
             console.error('Admin update-game-config error:', error);
             Logger.error(error, {
                 endpoint: '/admin/game-config',
-                method: 'POST',
-                userId: req.session?.user?.player_id,
+                method: 'PUT',
+                userId: req.user?.player_id,
                 payload: req.body
             });
             res.status(500).json({ success: false, message: 'Error al actualizar configuración de juego' });
         }
     });
 
-    router.get('/messages', requireAuth, async (req, res) => {
-        const result = await pool.query('SELECT m.*, s.username as sender_username FROM messages m LEFT JOIN players s ON m.sender_id = s.player_id WHERE m.receiver_id = $1 OR m.sender_id = $1 ORDER BY m.sent_at DESC', [req.session.user.player_id]);
+    router.get('/messages', authenticateToken, async (req, res) => {
+        const result = await pool.query('SELECT m.*, s.username as sender_username FROM messages m LEFT JOIN players s ON m.sender_id = s.player_id WHERE m.receiver_id = $1 OR m.sender_id = $1 ORDER BY m.sent_at DESC', [req.user.player_id]);
         res.json({ success: true, messages: result.rows });
     });
 
-    router.post('/messages', requireAuth, async (req, res) => {
+    router.post('/messages', authenticateToken, async (req, res) => {
         const { recipient_username, subject, body } = req.body;
         const receiver = await pool.query('SELECT player_id FROM players WHERE username = $1', [recipient_username]);
         if (receiver.rows.length === 0) return res.status(404).json({ success: false, message: 'Destinatario no encontrado' });
-        await pool.query('INSERT INTO messages (sender_id, receiver_id, subject, body) VALUES ($1, $2, $3, $4)', [req.session.user.player_id, receiver.rows[0].player_id, subject, body]);
+        await pool.query('INSERT INTO messages (sender_id, receiver_id, subject, body) VALUES ($1, $2, $3, $4)', [req.user.player_id, receiver.rows[0].player_id, subject, body]);
         res.json({ success: true, message: 'Mensaje enviado' });
+    });
+
+    // ============================================
+    // GAME ENGINE CONTROL (ADMIN ONLY)
+    // ============================================
+    const { processGameTurn, isEngineActive } = require('../src/logic/turn_engine');
+
+    router.get('/admin/engine/status', authenticateToken, requireAdmin, async (req, res) => {
+        try {
+            Logger.action(`Acceso administrativo a /admin/engine/status - Consultando estado del motor`, req.user.player_id);
+
+            const worldState = await pool.query('SELECT current_turn, is_paused, last_updated FROM world_state WHERE id = 1');
+            const state = worldState.rows[0];
+
+            res.json({
+                success: true,
+                engine: {
+                    isRunning: isEngineActive(),
+                    isPaused: state.is_paused,
+                    currentTurn: state.current_turn,
+                    lastUpdate: state.last_updated
+                }
+            });
+        } catch (error) {
+            Logger.error(error, {
+                endpoint: '/admin/engine/status',
+                method: 'GET',
+                userId: req.user?.player_id
+            });
+            res.status(500).json({ success: false, message: 'Error al obtener estado del motor' });
+        }
+    });
+
+    router.post('/admin/engine/pause', authenticateToken, requireAdmin, async (req, res) => {
+        try {
+            Logger.action(`Acceso administrativo a /admin/engine/pause - Pausando juego`, req.user.player_id);
+
+            await pool.query('UPDATE world_state SET is_paused = true WHERE id = 1');
+
+            Logger.action(`Juego pausado exitosamente`, req.user.player_id);
+            res.json({ success: true, message: 'Juego pausado. El motor seguirá corriendo pero no procesará turnos.' });
+        } catch (error) {
+            Logger.error(error, {
+                endpoint: '/admin/engine/pause',
+                method: 'POST',
+                userId: req.user?.player_id
+            });
+            res.status(500).json({ success: false, message: 'Error al pausar juego' });
+        }
+    });
+
+    router.post('/admin/engine/resume', authenticateToken, requireAdmin, async (req, res) => {
+        try {
+            Logger.action(`Acceso administrativo a /admin/engine/resume - Reanudando juego`, req.user.player_id);
+
+            await pool.query('UPDATE world_state SET is_paused = false WHERE id = 1');
+
+            Logger.action(`Juego reanudado exitosamente`, req.user.player_id);
+            res.json({ success: true, message: 'Juego reanudado. El motor procesará el siguiente turno según el intervalo configurado.' });
+        } catch (error) {
+            Logger.error(error, {
+                endpoint: '/admin/engine/resume',
+                method: 'POST',
+                userId: req.user?.player_id
+            });
+            res.status(500).json({ success: false, message: 'Error al reanudar juego' });
+        }
+    });
+
+    router.post('/admin/engine/force-turn', authenticateToken, requireAdmin, async (req, res) => {
+        try {
+            Logger.action(`Acceso administrativo a /admin/engine/force-turn - Forzando procesamiento de turno`, req.user.player_id);
+
+            // Force process a turn manually
+            const result = await processGameTurn(pool, config);
+
+            if (result.paused) {
+                Logger.action(`Intento de forzar turno bloqueado: juego está pausado`, req.user.player_id);
+                return res.status(400).json({
+                    success: false,
+                    message: 'No se puede forzar turno: el juego está pausado. Usa /admin/engine/resume primero.'
+                });
+            }
+
+            if (result.success) {
+                Logger.action(`Turno forzado exitosamente: turno ${result.turn}`, req.user.player_id);
+                res.json({
+                    success: true,
+                    message: `Turno ${result.turn} procesado exitosamente`,
+                    turn: result.turn,
+                    date: result.date
+                });
+            } else {
+                Logger.action(`Error al forzar turno`, req.user.player_id);
+                res.status(500).json({ success: false, message: 'Error al procesar turno' });
+            }
+        } catch (error) {
+            Logger.error(error, {
+                endpoint: '/admin/engine/force-turn',
+                method: 'POST',
+                userId: req.user?.player_id
+            });
+            res.status(500).json({ success: false, message: 'Error al forzar procesamiento de turno' });
+        }
     });
 
     return router;

@@ -1456,8 +1456,17 @@ const loadExplorationConfig = async () => {
       console.log(`✓ Exploration config loaded:`, explorationConfig.value);
     }
   } catch (err) {
-    console.warn('Failed to load exploration config, using defaults:', err.message);
-    // Keep default values
+    // Handle authentication/authorization errors
+    if (err.response?.status === 401) {
+      console.error('❌ No autenticado - Se requiere login para acceder a configuración de admin');
+      showToast('Sesión expirada o inválida', 'error');
+    } else if (err.response?.status === 403) {
+      console.error('❌ Acceso denegado - Se requieren permisos de administrador');
+      showToast('⛔ Acceso Denegado: Se requieren permisos de administrador', 'error');
+    } else {
+      console.warn('Failed to load exploration config, using defaults:', err.message);
+    }
+    // Keep default values on any error
   }
 };
 
