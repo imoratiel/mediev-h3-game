@@ -27,11 +27,13 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "h3-js": "^4.4.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.17.2"
   },
   "devDependencies": {

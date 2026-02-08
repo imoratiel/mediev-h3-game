@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const session = require('express-session');
+const cookieParser = require('cookie-parser');
 const pool = require('./db');
 const path = require('path');
 
@@ -23,12 +23,7 @@ initializeLogger();
 // Middleware
 app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
 app.use(express.json());
-app.use(session({
-  secret: 'medieval-game-secret-key-change-in-production',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: false, httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
-}));
+app.use(cookieParser()); // Parse cookies for JWT extraction
 
 // Routes
 const apiRoutes = require('./routes/api')(pool, CONFIG, {

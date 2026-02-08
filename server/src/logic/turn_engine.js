@@ -15,7 +15,7 @@ async function processGameTurn(pool, config) {
         const dayOfYear = newTurn % (days_per_year || 365);
 
         await client.query(`
-      UPDATE territory_details SET food_stored = GREATEST(0, food_stored - (FLOOR(population / 100.0) * 0.01))
+      UPDATE territory_details SET food_stored = GREATEST(0, food_stored - (FLOOR(population / 100.0) * 0.1))
       WHERE h3_index IN (SELECT h3_index FROM h3_map WHERE player_id IS NOT NULL)
     `);
 

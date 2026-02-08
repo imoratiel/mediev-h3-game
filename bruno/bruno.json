@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "mediev-h3-game",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

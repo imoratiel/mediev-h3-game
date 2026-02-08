@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const h3 = require('h3-js');
-const { requireAuth, requireAdmin } = require('../src/middleware/auth');
+const { authenticateToken, requireAdmin, generateToken } = require('../src/middleware/auth');
 
 // This file will contain all the endpoints moved from index.js
 // It expects to be passed the pool, config, and logic modules if needed
@@ -18,33 +18,107 @@ module.exports = function (pool, config, logic) {
     router.post('/auth/login', async (req, res) => {
         try {
             const { username, password } = req.body;
-            if (!username || !password) return res.status(400).json({ success: false, message: 'Usuario y contraseña requeridos' });
+
+            if (!username || !password) {
+                Logger.error(new Error('Login attempt without credentials'), {
+                    endpoint: '/api/auth/login',
+                    method: 'POST'
+                });
+                return res.status(400).json({ success: false, message: 'Usuario y contraseña requeridos' });
+            }
 
             const result = await pool.query('SELECT player_id, username, password, role FROM players WHERE username = $1', [username]);
-            if (result.rows.length === 0) return res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
+
+            if (result.rows.length === 0) {
+                Logger.error(new Error('Login attempt with non-existent user'), {
+                    endpoint: '/api/auth/login',
+                    method: 'POST',
+                    username
+                });
+                return res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
+            }
 
             const user = result.rows[0];
-            if (password !== user.password) return res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
 
-            req.session.user = { player_id: user.player_id, username: user.username, role: user.role || 'player' };
-            console.log(`✓ User logged in: ${user.username} (${user.role})`);
-            res.json({ success: true, user: req.session.user });
+            if (password !== user.password) {
+                Logger.error(new Error('Login attempt with incorrect password'), {
+                    endpoint: '/api/auth/login',
+                    method: 'POST',
+                    userId: user.player_id,
+                    username: user.username
+                });
+                return res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
+            }
+
+            // Generate JWT token
+            const payload = {
+                player_id: user.player_id,
+                username: user.username,
+                role: user.role || 'player'
+            };
+
+            const token = generateToken(payload);
+
+            // Send token as HttpOnly cookie
+            res.cookie('access_token', token, {
+                httpOnly: true,        // Prevents client-side JS from accessing
+                secure: false,         // Set to true in production with HTTPS
+                sameSite: 'lax',       // CSRF protection
+                maxAge: 24 * 60 * 60 * 1000  // 24 hours
+            });
+
+            // Log successful login
+            Logger.action(`JWT generado y enviado para usuario ${username} (${user.role})`, user.player_id);
+            console.log(`✓ User logged in: ${user.username} (${user.role}) - JWT issued`);
+
+            res.json({
+                success: true,
+                user: {
+                    player_id: user.player_id,
+                    username: user.username,
+                    role: user.role || 'player'
+                }
+            });
         } catch (error) {
             console.error('Login error:', error);
+            Logger.error(error, {
+                endpoint: '/api/auth/login',
+                method: 'POST'
+            });
             res.status(500).json({ success: false, message: 'Error interno del servidor' });
         }
     });
 
-    router.post('/auth/logout', (req, res) => {
-        req.session.destroy((err) => {
-            if (err) return res.status(500).json({ success: false, message: 'Error al cerrar sesión' });
-            res.json({ success: true, message: 'Sesión cerrada exitosamente' });
+    router.post('/auth/logout', authenticateToken, (req, res) => {
+        const userId = req.user?.player_id;
+        const username = req.user?.username;
+
+        // Clear the JWT cookie
+        res.clearCookie('access_token', {
+            httpOnly: true,
+            secure: false,
+            sameSite: 'lax'
         });
+
+        // Log successful logout
+        if (userId) {
+            Logger.action(`Cerró sesión (JWT invalidado)`, userId);
+            console.log(`✓ User logged out: ${username}`);
+        }
+
+        res.json({ success: true, message: 'Sesión cerrada exitosamente' });
     });
 
-    router.get('/auth/me', (req, res) => {
-        if (!req.session || !req.session.user) return res.status(401).json({ success: false, message: 'No hay sesión activa' });
-        res.json({ success: true, user: req.session.user });
+    router.get('/auth/me', authenticateToken, (req, res) => {
+        // authenticateToken middleware already verified the JWT and set req.user
+        res.json({
+            success: true,
+            user: {
+                player_id: req.user.player_id,
+                username: req.user.username,
+                role: req.user.role
+            }
+        });
     });
 
     // ============================================
@@ -168,9 +242,19 @@ module.exports = function (pool, config, logic) {
     });
 
     router.get('/game/capital', requireAuth, async (req, res) => {
-        const result = await pool.query('SELECT h3_index FROM h3_map WHERE player_id = $1 AND is_capital = TRUE LIMIT 1', [req.session.user.player_id]);
-        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'No tienes capital' });
-        res.json({ success: true, h3_index: result.rows[0].h3_index });
+        try {
+            const result = await pool.query('SELECT h3_index FROM h3_map WHERE player_id = $1 AND is_capital = TRUE LIMIT 1', [req.session.user.player_id]);
+            if (result.rows.length === 0) return res.status(200).json({ success: false, message: 'No tienes capital' });
+            res.json({ success: true, h3_index: result.rows[0].h3_index });    
+        } catch (error) {
+            console.error('Admin update-game-config error:', error);
+            Logger.error(error, {
+                endpoint: '/game/capital',
+                method: 'GET',
+                userId: req.session?.user?.player_id
+            });
+            res.status(500).json({ success: false, message: 'Error al obtener información de capital' });
+        }
     });
 
     router.get('/map/cell-details/:h3_index', async (req, res) => {

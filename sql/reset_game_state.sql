@@ -12,9 +12,6 @@ SET
 UPDATE territory_details 
 SET custom_name = NULL;
 
--- 3. Borrar ejércitos (Tabula Rasa militar)
-TRUNCATE TABLE armies CASCADE;
-
 -- 4. Resetear el estado del mundo (Turno 1)
 UPDATE world_state 
 SET 
@@ -22,14 +19,6 @@ SET
     game_date = '1039-03-01',
     is_paused = TRUE 
 WHERE id = 1;
-
--- 5. Resetear oro de los jugadores (Opcional)
-UPDATE players 
-SET gold = 5000 
-WHERE username = 'Neutral';
-
-COMMIT;
-
 
 -- Reset exploration status for all territories
 -- All territories start as unexplored
@@ -40,5 +29,14 @@ SET
   exploration_end_turn = NULL,
   discovered_resource = NULL;
 
--- This makes all territories start as "unexplored"
--- Players must spend gold to explore each territory to discover what resources it contains
+-- 1. Limpiamos la tabla de tropas (instancias individuales)
+-- Es la tabla "hija" que depende de las otras, por eso va primero.
+TRUNCATE TABLE troops RESTART IDENTITY CASCADE;
+
+-- 2. Limpiamos la tabla de ejércitos (agrupadores de tropas)
+-- Al usar RESTART IDENTITY, los contadores de ID vuelven a empezar desde 1.
+TRUNCATE TABLE armies RESTART IDENTITY CASCADE;
+
+TRUNCATE TABLE messages RESTART IDENTITY CASCADE;
+
+COMMIT;
