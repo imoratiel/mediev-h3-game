@@ -728,7 +728,7 @@ const mapContainer = ref(null);
 const loading = ref(false);
 const error = ref(null);
 const hexagonCount = ref(0);
-const hexagonOpacity = ref(60);
+const hexagonOpacity = ref(100); // 100% opacity by default to match rendered hexagons
 const currentZoom = ref(13);
 const currentResolution = ref(8); // H3 resolution (8 or 10)
 const terrainTypes = ref([]);
@@ -1054,12 +1054,14 @@ let debounceTimer = null;
 
 // Configuration
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const MIN_ZOOM = 9;
+const MIN_ZOOM = 9; // Zoom mínimo del mapa
+const MIN_ZOOM_H3 = 11; // Hexágonos visibles desde zoom 11
+const MAX_ZOOM_H3 = 17; // Hexágonos visibles hasta zoom 17
 const MIN_ZOOM_SETTLEMENTS = 12; // Mostrar asentamientos solo a partir de zoom 12
 const LEON_CENTER = [42.599, -5.573];
 const INITIAL_ZOOM = 13;
 const DEBOUNCE_DELAY = 500; // ms
-const ZOOM_THRESHOLD_RES_10 = 14; // Zoom >= 14 -> res 10, < 14 -> res 8
+// REMOVED: ZOOM_THRESHOLD_RES_10 - Now resolution is always 8 (database only has res 8 indices)
 
 /**
  * Leer parámetros de la URL (lat, lng, zoom, res)
@@ -1142,11 +1144,8 @@ const initMap = () => {
   }
 
   // Inicializar resolución desde URL o determinar automáticamente según zoom
-  if (urlParams && urlParams.res) {
-    currentResolution.value = urlParams.res;
-  } else {
-    currentResolution.value = zoom >= ZOOM_THRESHOLD_RES_10 ? 10 : 8;
-  }
+  // Force resolution to always be 8 (database only contains res 8 indices)
+  currentResolution.value = 8;
 
   console.log(`Initializing map at [${center[0]}, ${center[1]}], zoom ${zoom}, resolution ${currentResolution.value}`);
 
@@ -1299,9 +1298,8 @@ const handleMapMove = () => {
 
 /**
  * Handle zoom change
- * Cambia automáticamente la resolución según el nivel de zoom:
- * - Zoom < 14: Resolución 8 (hexágonos más grandes)
- * - Zoom >= 14: Resolución 10 (hexágonos más pequeños)
+ * - Resolution is always 8 (database only contains res 8 indices)
+ * - Hexagons visible between zoom 11-17
  * - Zoom < 12: Oculta asentamientos
  * - Zoom >= 12: Muestra asentamientos
  */
@@ -1309,22 +1307,15 @@ const handleZoomChange = () => {
   const previousZoom = currentZoom.value;
   currentZoom.value = map.getZoom();
 
-  // Determinar nueva resolución según zoom
-  const newResolution = currentZoom.value >= ZOOM_THRESHOLD_RES_10 ? 10 : 8;
+  // Resolution is always 8 (no dynamic switching)
+  // Database only has res 8 indices, so we don't change resolution
 
   // Verificar si cruzamos el umbral de visualización de asentamientos
   const wasShowingSettlements = previousZoom >= MIN_ZOOM_SETTLEMENTS;
   const shouldShowSettlements = currentZoom.value >= MIN_ZOOM_SETTLEMENTS;
 
-  // Si la resolución cambió, actualizar y recargar hexágonos
-  if (newResolution !== currentResolution.value) {
-    console.log(`Zoom ${currentZoom.value}: Changing resolution from ${currentResolution.value} to ${newResolution}`);
-    currentResolution.value = newResolution;
-    loadHexagonsIfZoomValid();
-  } else {
-    // Solo recargar si el zoom es válido (sin cambio de resolución)
-    loadHexagonsIfZoomValid();
-  }
+  // Always reload hexagons if zoom is valid (no resolution changes)
+  loadHexagonsIfZoomValid();
 
   // Manejar visibilidad de asentamientos según zoom
   if (wasShowingSettlements !== shouldShowSettlements) {
@@ -1339,14 +1330,21 @@ const handleZoomChange = () => {
 };
 
 /**
- * Load hexagons only if zoom is valid (>= MIN_ZOOM)
+ * Load hexagons only if zoom is within valid range (11-17)
+ * Optimized to only show hexagons at appropriate zoom levels
  */
 const loadHexagonsIfZoomValid = () => {
-  if (map.getZoom() >= MIN_ZOOM) {
+  const currentZoom = map.getZoom();
+  if (currentZoom >= MIN_ZOOM_H3 && currentZoom <= MAX_ZOOM_H3) {
     fetchHexagonData();
   } else {
-    // Clear hexagons if zoom is too low
+    // Clear hexagons if zoom is outside valid range
     clearHexagons();
+    if (currentZoom < MIN_ZOOM_H3) {
+      console.log(`Hexágonos ocultos: zoom ${currentZoom} < ${MIN_ZOOM_H3}`);
+    } else if (currentZoom > MAX_ZOOM_H3) {
+      console.log(`Hexágonos ocultos: zoom ${currentZoom} > ${MAX_ZOOM_H3}`);
+    }
   }
 };
 
@@ -1880,26 +1878,26 @@ const renderHexagons = (hexagons) => {
       // --- 1. FILL SETUP (territoryPane) ---
       // Base color: terrain if layer is active, otherwise neutral
       let fillColor = showTerrainLayer.value ? terrainColor : '#606060';
-      let fillOpacity = 0.3; // Default requested
+      let fillOpacity = 1.0; // Opacidad completa para máxima claridad visual
 
       // Override fill logic based on priorities
       if (isCapital && isMyTerritory) {
          fillColor = '#ff0000';
-         fillOpacity = 0.5;
+         fillOpacity = 1.0;
       } else if (isMyTerritory) {
          fillColor = '#ff0000';
-         fillOpacity = 0.3;
+         fillOpacity = 1.0;
       } else if (isPoliticalView.value && hex.player_id) {
          // Enemy territory: show player color if political view is active
          if (playerColor && isPoliticalView.value) {
            fillColor = playerColor;
          }
-         fillOpacity = 0.05; // Enemy territory faint fill
+         fillOpacity = 0.6; // Enemy territory semitransparente para diferenciación
       } else if (playerColor) {
-         fillOpacity = 0.05;
+         fillOpacity = 0.6;
       } else if (!showTerrainLayer.value) {
-         // No terrain layer and no player: very low opacity
-         fillOpacity = 0.05;
+         // No terrain layer and no player: medium opacity
+         fillOpacity = 0.7;
       }
 
       // --- 2. BORDER SETUP (borderPane) ---

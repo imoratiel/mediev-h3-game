@@ -634,10 +634,95 @@ module.exports = function (pool, config, logic) {
         res.json({ success: true, message: 'Mensaje enviado' });
     });
 
+    // Mark message as read
+    router.put('/messages/:id/read', authenticateToken, async (req, res) => {
+        try {
+            const messageId = parseInt(req.params.id);
+            const playerId = req.user.player_id;
+
+            // Verify message exists and user is the receiver
+            const messageCheck = await pool.query(
+                'SELECT id, receiver_id, is_read FROM messages WHERE id = $1',
+                [messageId]
+            );
+
+            if (messageCheck.rows.length === 0) {
+                Logger.error(new Error('Message not found'), {
+                    context: 'api.markMessageRead',
+                    messageId: messageId,
+                    userId: playerId
+                });
+                return res.status(404).json({ success: false, message: 'Mensaje no encontrado' });
+            }
+
+            const message = messageCheck.rows[0];
+
+            // Security check: only the receiver can mark a message as read
+            if (message.receiver_id !== playerId) {
+                Logger.error(new Error('Unauthorized mark as read attempt'), {
+                    context: 'api.markMessageRead',
+                    messageId: messageId,
+                    userId: playerId,
+                    actualReceiverId: message.receiver_id
+                });
+                return res.status(403).json({ success: false, message: 'No autorizado' });
+            }
+
+            // Update message to mark as read
+            await pool.query(
+                'UPDATE messages SET is_read = TRUE WHERE id = $1',
+                [messageId]
+            );
+
+            Logger.action(`Mensaje ${messageId} marcado como leído`, playerId);
+            res.json({ success: true, message: 'Mensaje marcado como leído' });
+        } catch (error) {
+            Logger.error(error, {
+                context: 'api.markMessageRead',
+                endpoint: 'PUT /api/messages/:id/read',
+                userId: req.user?.player_id,
+                messageId: req.params.id
+            });
+            res.status(500).json({ success: false, message: 'Error al marcar mensaje como leído' });
+        }
+    });
+
+    // Get thread messages
+    router.get('/messages/thread/:thread_id', authenticateToken, async (req, res) => {
+        try {
+            const threadId = parseInt(req.params.thread_id);
+            const playerId = req.user.player_id;
+
+            // Get all messages in thread where user is sender or receiver
+            const result = await pool.query(`
+                SELECT m.*,
+                       s.username as sender_username,
+                       r.username as receiver_username
+                FROM messages m
+                LEFT JOIN players s ON m.sender_id = s.player_id
+                LEFT JOIN players r ON m.receiver_id = r.player_id
+                WHERE m.thread_id = $1
+                  AND (m.sender_id = $2 OR m.receiver_id = $2)
+                ORDER BY m.sent_at ASC
+            `, [threadId, playerId]);
+
+            Logger.action(`Thread ${threadId} consultado`, playerId);
+            res.json({ success: true, messages: result.rows });
+        } catch (error) {
+            Logger.error(error, {
+                context: 'api.getMessageThread',
+                endpoint: 'GET /api/messages/thread/:thread_id',
+                userId: req.user?.player_id,
+                threadId: req.params.thread_id
+            });
+            res.status(500).json({ success: false, message: 'Error al cargar conversación' });
+        }
+    });
+
     // ============================================
     // GAME ENGINE CONTROL (ADMIN ONLY)
     // ============================================
-    const { processGameTurn, isEngineActive } = require('../src/logic/turn_engine');
+    const { processGameTurn, isEngineActive, processHarvestManually } = require('../src/logic/turn_engine');
 
     router.get('/admin/engine/status', authenticateToken, requireAdmin, async (req, res) => {
         try {
@@ -735,6 +820,46 @@ module.exports = function (pool, config, logic) {
                 userId: req.user?.player_id
             });
             res.status(500).json({ success: false, message: 'Error al forzar procesamiento de turno' });
+        }
+    });
+
+    router.post('/admin/engine/force-harvest', authenticateToken, requireAdmin, async (req, res) => {
+        try {
+            Logger.action(`Acceso administrativo a /admin/engine/force-harvest - Forzando procesamiento de cosecha`, req.user.player_id);
+
+            const worldState = await pool.query('SELECT current_turn FROM world_state WHERE id = 1');
+            const currentTurn = worldState.rows[0].current_turn;
+
+            // Force process harvest manually
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+
+                // Import processHarvest function
+                const { processHarvestManually } = require('../src/logic/turn_engine');
+                await processHarvestManually(client, currentTurn, config);
+
+                await client.query('COMMIT');
+
+                Logger.action(`Cosecha forzada exitosamente en turno ${currentTurn}`, req.user.player_id);
+                res.json({
+                    success: true,
+                    message: `Cosecha procesada exitosamente en turno ${currentTurn}`,
+                    turn: currentTurn
+                });
+            } catch (error) {
+                if (client) await client.query('ROLLBACK');
+                throw error;
+            } finally {
+                client.release();
+            }
+        } catch (error) {
+            Logger.error(error, {
+                endpoint: '/admin/engine/force-harvest',
+                method: 'POST',
+                userId: req.user?.player_id
+            });
+            res.status(500).json({ success: false, message: 'Error al forzar procesamiento de cosecha' });
         }
     });
 

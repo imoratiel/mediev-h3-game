@@ -72,19 +72,47 @@ const commands = {
         }
     },
 
+    async forceHarvest() {
+        console.log('\n🌾 Forzando procesamiento de cosecha...\n');
+
+        await loadGameConfig(pool, Logger.event);
+        const { processHarvestManually } = require('./src/logic/turn_engine');
+
+        const worldState = await pool.query('SELECT current_turn FROM world_state WHERE id = 1');
+        const currentTurn = worldState.rows[0].current_turn;
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await processHarvestManually(client, currentTurn, CONFIG);
+            await client.query('COMMIT');
+
+            console.log('✅ Cosecha procesada exitosamente');
+            console.log(`   Turno: ${currentTurn}`);
+            console.log('   Revisa los mensajes del juego para ver el resumen de cosecha.\n');
+        } catch (error) {
+            if (client) await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    },
+
     async help() {
         console.log('\n🎮 HERRAMIENTAS ADMINISTRATIVAS DEL MOTOR DEL JUEGO\n');
         console.log('Uso: node server/admin_tools.js <comando>\n');
         console.log('Comandos disponibles:');
-        console.log('  status     - Muestra el estado actual del juego y el motor');
-        console.log('  pause      - Pausa el procesamiento de turnos');
-        console.log('  resume     - Reanuda el procesamiento de turnos');
-        console.log('  forceTurn  - Fuerza el procesamiento de un turno inmediatamente');
-        console.log('  help       - Muestra esta ayuda\n');
+        console.log('  status       - Muestra el estado actual del juego y el motor');
+        console.log('  pause        - Pausa el procesamiento de turnos');
+        console.log('  resume       - Reanuda el procesamiento de turnos');
+        console.log('  forceTurn    - Fuerza el procesamiento de un turno inmediatamente');
+        console.log('  forceHarvest - Fuerza el procesamiento de cosecha (solo para pruebas)');
+        console.log('  help         - Muestra esta ayuda\n');
         console.log('Ejemplos:');
         console.log('  node server/admin_tools.js status');
         console.log('  node server/admin_tools.js resume');
-        console.log('  node server/admin_tools.js forceTurn\n');
+        console.log('  node server/admin_tools.js forceTurn');
+        console.log('  node server/admin_tools.js forceHarvest\n');
     }
 };
 
