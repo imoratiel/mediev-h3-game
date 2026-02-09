@@ -6,25 +6,25 @@
           <tr>
             <th class="col-feudo">Feudo</th>
             <th class="col-terreno">Terreno</th>
-            <th class="col-number text-right">👥</th>
-            <th class="col-number text-right">😊</th>
-            <th class="col-number text-right">🌾</th>
-            <th class="col-number text-right">🌲</th>
-            <th class="col-number text-right">⛰️</th>
-            <th class="col-number text-right">⛏️</th>
-            <th class="col-number text-right">💰</th>
-            <th class="col-prospection text-center">Prospección</th>
-            <th class="col-number text-right">Δ Alim.</th>
-            <th class="col-number text-right">Auton.</th>
-            <th class="col-number text-right">Dist.</th>
-            <th class="col-number text-right">⚔️</th>
-            <th class="col-actions text-center">Acciones</th>
+            <th class="col-number">👥</th>
+            <th class="col-number">😊</th>
+            <th class="col-number">🌾</th>
+            <th class="col-number">🌲</th>
+            <th class="col-number">⛰️</th>
+            <th class="col-number">⛏️</th>
+            <th class="col-number">💰</th>
+            <th class="col-prospection">Prospección</th>
+            <th class="col-number">Δ Alim.</th>
+            <th class="col-number">Auton.</th>
+            <th class="col-number">Dist.</th>
+            <th class="col-number">⚔️</th>
+            <th class="col-actions">Acciones</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="fief in fiefs" :key="fief.h3_index">
-            <td class="fief-name-cell">{{ fief.custom_name || fief.h3_index }}</td>
-            <td class="terrain-cell">{{ fief.terrain_name || 'Desconocido' }}</td>
+            <td class="fief-name-cell">{{ fief.name }}</td>
+            <td class="terrain-cell">{{ fief.terrain }}</td>
             <td class="text-right">{{ formatNumber(fief.population) }}</td>
             <td class="text-right">{{ fief.happiness }}%</td>
             <td class="text-right">{{ formatNumber(fief.food) }}</td>
@@ -116,8 +116,8 @@ const formatGold = (val) => {
 }
 
 /* Column widths */
-.col-feudo { width: 180px; }
-.col-terreno { width: 100px; }
+.col-feudo { width: 160px; }
+.col-terreno { width: 110px; }
 .col-number { width: 70px; }
 .col-prospection { width: 120px; }
 .col-actions { width: 140px; }
