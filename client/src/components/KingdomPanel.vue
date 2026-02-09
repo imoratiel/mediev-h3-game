@@ -4,28 +4,27 @@
       <table class="kingdom-table">
         <thead>
           <tr>
-            <th class="tight-col">H3</th>
-            <th>Nombre</th>
-            <th>Terreno</th>
-            <th class="text-right">👥</th>
-            <th class="text-right">😊</th>
-            <th class="text-right">🌾</th>
-            <th class="text-right">🌲</th>
-            <th class="text-right">⛰️</th>
-            <th class="text-right">⛏️</th>
-            <th class="text-right">💰</th>
-            <th class="text-center">Prospección</th>
-            <th class="text-right">Δ Alim.</th>
-            <th class="text-right">Auton.</th>
-            <th class="text-right">Dist.</th>
-            <th class="text-center">Acciones</th>
+            <th class="col-feudo">Feudo</th>
+            <th class="col-terreno">Terreno</th>
+            <th class="col-number text-right">👥</th>
+            <th class="col-number text-right">😊</th>
+            <th class="col-number text-right">🌾</th>
+            <th class="col-number text-right">🌲</th>
+            <th class="col-number text-right">⛰️</th>
+            <th class="col-number text-right">⛏️</th>
+            <th class="col-number text-right">💰</th>
+            <th class="col-prospection text-center">Prospección</th>
+            <th class="col-number text-right">Δ Alim.</th>
+            <th class="col-number text-right">Auton.</th>
+            <th class="col-number text-right">Dist.</th>
+            <th class="col-number text-right">⚔️</th>
+            <th class="col-actions text-center">Acciones</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="fief in fiefs" :key="fief.h3_index">
-            <td class="h3-cell tight-col">{{ fief.h3_index?.substring(0, 8) }}</td>
-            <td class="fief-name-cell">{{ fief.name }}</td>
-            <td>{{ fief.terrain }}</td>
+            <td class="fief-name-cell">{{ fief.custom_name || fief.h3_index }}</td>
+            <td class="terrain-cell">{{ fief.terrain_name || 'Desconocido' }}</td>
             <td class="text-right">{{ formatNumber(fief.population) }}</td>
             <td class="text-right">{{ fief.happiness }}%</td>
             <td class="text-right">{{ formatNumber(fief.food) }}</td>
@@ -60,6 +59,7 @@
               {{ fief.autonomy === Infinity ? '∞' : fief.autonomy }}
             </td>
             <td class="text-right">{{ fief.distance }}</td>
+            <td class="text-right troops-cell">{{ fief.total_troops || 0 }}</td>
             <td class="table-actions">
               <button class="btn-micro" @click="$emit('focusOnFief', fief.h3_index)" title="Ver en el mapa">🗺️</button>
               <button 
@@ -111,22 +111,59 @@ const formatGold = (val) => {
   border-collapse: collapse;
   font-size: 0.9rem;
   color: #e8d5b5;
+  table-layout: fixed;
+  border: 1px solid #5d4e37;
 }
 
+/* Column widths */
+.col-feudo { width: 180px; }
+.col-terreno { width: 100px; }
+.col-number { width: 70px; }
+.col-prospection { width: 120px; }
+.col-actions { width: 140px; }
+
 .kingdom-table th {
-  background: rgba(0, 0, 0, 0.4);
-  padding: 10px;
-  text-align: left;
-  border-bottom: 2px solid #5d4e37;
-  color: #c5a059;
+  background: rgba(26, 22, 18, 0.9);
+  padding: 10px 12px;
+  text-align: center !important;
+  border: 1px solid #5d4e37;
+  border-bottom: 3px solid #c5a059;
+  color: #ffd700;
   font-family: 'Cinzel', serif;
   text-transform: uppercase;
   font-size: 0.8rem;
+  font-weight: bold;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .kingdom-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 10px 12px;
+  border-right: 1px solid rgba(93, 78, 55, 0.4);
+  border-bottom: 1px solid rgba(93, 78, 55, 0.3);
+  vertical-align: middle;
+}
+
+.kingdom-table td:last-child {
+  border-right: none;
+}
+
+.kingdom-table tbody tr {
+  transition: background-color 0.2s;
+  border-bottom: 1px solid rgba(93, 78, 55, 0.3);
+}
+
+.kingdom-table tbody tr:hover {
+  background: rgba(197, 160, 89, 0.15);
+}
+
+.kingdom-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.kingdom-table tbody tr:nth-child(even):hover {
+  background: rgba(197, 160, 89, 0.2);
 }
 
 .text-right { text-align: right; }
@@ -135,13 +172,26 @@ const formatGold = (val) => {
 .text-danger { color: #ff6b6b; }
 .text-success { color: #4caf50; }
 
-.h3-cell {
-  font-family: monospace;
-  font-size: 0.75rem;
-  color: #a89875;
+.fief-name-cell {
+  font-weight: 600;
+  color: #f4e4bc;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left !important;
 }
 
-.tight-col { width: 1%; white-space: nowrap; }
+.terrain-cell {
+  color: #d4c5a0;
+  font-size: 0.9rem;
+  text-align: left !important;
+}
+
+.troops-cell {
+  font-weight: bold;
+  color: #ff9800;
+}
 
 .dimmed-dash {
   color: rgba(255, 255, 255, 0.2);
@@ -152,6 +202,7 @@ const formatGold = (val) => {
   display: flex;
   gap: 6px;
   justify-content: center;
+  align-items: center;
 }
 
 .btn-micro {
@@ -171,6 +222,11 @@ const formatGold = (val) => {
   transform: scale(1.1);
 }
 
+.btn-micro:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .btn-explore-micro {
   background: rgba(26, 22, 18, 0.6);
 }
@@ -181,7 +237,7 @@ const formatGold = (val) => {
   border-color: rgba(255, 215, 0, 0.3);
 }
 
-.btn-recruit-micro:hover {
+.btn-recruit-micro:hover:not(:disabled) {
   background: rgba(255, 215, 0, 0.2);
   border-color: #ffd700;
 }
@@ -191,10 +247,20 @@ const formatGold = (val) => {
   border-radius: 4px;
   font-size: 0.75rem;
   font-weight: bold;
+  display: inline-block;
 }
 
-.exploration-badge-completed { background: rgba(76, 175, 80, 0.2); color: #4caf50; border: 1px solid #4caf50; }
-.exploration-badge-exploring { background: rgba(243, 156, 18, 0.2); color: #f39c12; border: 1px solid #f39c12; }
+.exploration-badge-completed {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: 1px solid #4caf50;
+}
+
+.exploration-badge-exploring {
+  background: rgba(243, 156, 18, 0.2);
+  color: #f39c12;
+  border: 1px solid #f39c12;
+}
 
 .empty-state {
   text-align: center;

@@ -303,11 +303,24 @@ module.exports = function (pool, config, logic) {
 
     router.get('/game/my-fiefs', authenticateToken, async (req, res) => {
         const query = `
-      SELECT m.h3_index, COALESCE(td.custom_name, s.name, 'Territorio sin nombre') AS location_name, td.*, t.name AS terrain_name, t.food_output
+      SELECT
+        m.h3_index,
+        COALESCE(td.custom_name, s.name, 'Territorio sin nombre') AS location_name,
+        td.*,
+        t.name AS terrain_name,
+        t.food_output,
+        COALESCE(garrison.total_troops, 0) AS total_troops
       FROM h3_map m
       JOIN territory_details td ON m.h3_index = td.h3_index
       JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
       LEFT JOIN settlements s ON m.h3_index = s.h3_index
+      LEFT JOIN (
+        SELECT a.h3_index, SUM(tr.quantity) AS total_troops
+        FROM armies a
+        JOIN troops tr ON a.army_id = tr.army_id
+        WHERE a.player_id = $1
+        GROUP BY a.h3_index
+      ) garrison ON m.h3_index = garrison.h3_index
       WHERE m.player_id = $1
       ORDER BY td.population DESC
     `;

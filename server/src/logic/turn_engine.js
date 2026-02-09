@@ -157,6 +157,283 @@ ${territories.rows.length > 0 ? `Territorios productivos: ${territories.rows.len
 }
 
 /**
+ * Process military food consumption (troops consume from army provisions, then from fief)
+ * @param {Object} client - PostgreSQL client (within transaction)
+ * @param {number} turn - Current turn number
+ * @param {Object} config - Game configuration
+ */
+async function processMilitaryConsumption(client, turn, config) {
+    try {
+        Logger.engine(`[TURN ${turn}] Processing military food consumption...`);
+
+        // Get all armies with their troops and stationed location
+        const armiesResult = await client.query(`
+            SELECT
+                a.army_id,
+                a.player_id,
+                a.name,
+                a.h3_index,
+                a.food_provisions,
+                p.username
+            FROM armies a
+            JOIN players p ON a.player_id = p.player_id
+            WHERE a.h3_index IS NOT NULL
+        `);
+
+        for (const army of armiesResult.rows) {
+            try {
+                // Calculate total food consumption for this army
+                const consumptionResult = await client.query(`
+                    SELECT COALESCE(SUM(t.quantity * ut.food_consumption), 0) as total_consumption
+                    FROM troops t
+                    JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
+                    WHERE t.army_id = $1
+                `, [army.army_id]);
+
+                const totalConsumption = Math.floor(parseFloat(consumptionResult.rows[0]?.total_consumption || 0));
+
+                if (totalConsumption === 0) {
+                    continue; // No troops = no consumption
+                }
+
+                let remainingConsumption = totalConsumption;
+                let consumedFromArmy = 0;
+                let consumedFromFief = 0;
+                let source = '';
+
+                // STEP 1: Consume from army provisions first
+                const armyProvisions = parseFloat(army.food_provisions || 0);
+                if (armyProvisions > 0) {
+                    consumedFromArmy = Math.min(armyProvisions, remainingConsumption);
+                    remainingConsumption -= consumedFromArmy;
+
+                    await client.query(`
+                        UPDATE armies
+                        SET food_provisions = GREATEST(0, food_provisions - $1)
+                        WHERE army_id = $2
+                    `, [consumedFromArmy, army.army_id]);
+                }
+
+                // STEP 2: If army provisions depleted, consume from fief (overflow)
+                if (remainingConsumption > 0 && army.h3_index) {
+                    // Verify fief belongs to same player (can't eat from enemy fief)
+                    const fiefCheck = await client.query(`
+                        SELECT m.player_id, td.food_stored
+                        FROM h3_map m
+                        JOIN territory_details td ON m.h3_index = td.h3_index
+                        WHERE m.h3_index = $1
+                    `, [army.h3_index]);
+
+                    if (fiefCheck.rows.length > 0) {
+                        const fief = fiefCheck.rows[0];
+
+                        if (fief.player_id === army.player_id) {
+                            const fiefFood = parseFloat(fief.food_stored || 0);
+                            consumedFromFief = Math.min(fiefFood, remainingConsumption);
+                            remainingConsumption -= consumedFromFief;
+
+                            await client.query(`
+                                UPDATE territory_details
+                                SET food_stored = GREATEST(0, food_stored - $1)
+                                WHERE h3_index = $2
+                            `, [consumedFromFief, army.h3_index]);
+
+                            // Generate warning message if army started consuming from fief
+                            if (consumedFromFief > 0 && consumedFromArmy < totalConsumption) {
+                                const messageSubject = `⚠️ Suministros Agotados - Ejército ${army.name}`;
+                                const messageBody = `
+El Ejército **${army.name}** ha agotado sus provisiones propias y ha comenzado a consumir las reservas del feudo.
+
+📍 **Ubicación**: ${army.h3_index}
+🍖 **Consumido del feudo**: ${consumedFromFief.toFixed(1)} raciones
+
+⚠️ Reabastecer urgentemente para evitar hambruna.
+                                `.trim();
+
+                                await client.query(`
+                                    INSERT INTO messages (sender_id, receiver_id, subject, body, is_read, sent_at)
+                                    VALUES (NULL, $1, $2, $3, false, CURRENT_TIMESTAMP)
+                                `, [army.player_id, messageSubject, messageBody]);
+                            }
+                        }
+                    }
+                }
+
+                // STEP 3: Determine source and log
+                if (consumedFromArmy > 0 && consumedFromFief > 0) {
+                    source = 'Ejército+Feudo';
+                } else if (consumedFromArmy > 0) {
+                    source = 'Ejército';
+                } else if (consumedFromFief > 0) {
+                    source = 'Feudo';
+                }
+
+                // STEP 4: Check for starvation (deficit remains)
+                if (remainingConsumption > 0) {
+                    Logger.engine(`[TURN ${turn}] ⚠️ HAMBRUNA - Ejército ${army.army_id} (${army.name}) de player ${army.player_id}: Deficit de ${remainingConsumption.toFixed(1)} raciones`);
+
+                    // Generate starvation message
+                    const messageSubject = `🚨 HAMBRUNA - Ejército ${army.name}`;
+                    const messageBody = `
+¡ALERTA CRÍTICA!
+
+El Ejército **${army.name}** está sufriendo **HAMBRUNA**.
+
+📊 **Situación**:
+• Consumo requerido: ${totalConsumption.toFixed(1)}
+• Consumido de provisiones: ${consumedFromArmy.toFixed(1)}
+• Consumido del feudo: ${consumedFromFief.toFixed(1)}
+• **Déficit**: ${remainingConsumption.toFixed(1)} ⚠️
+
+🩸 Las tropas están sufriendo bajas por inanición. Reabastecer INMEDIATAMENTE.
+                    `.trim();
+
+                    await client.query(`
+                        INSERT INTO messages (sender_id, receiver_id, subject, body, is_read, sent_at)
+                        VALUES (NULL, $1, $2, $3, false, CURRENT_TIMESTAMP)
+                    `, [army.player_id, messageSubject, messageBody]);
+                } else {
+                    Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} (${army.name}) de player ${army.player_id} (${army.username}) consumió ${totalConsumption.toFixed(1)} raciones. (Fuente: ${source})`);
+                }
+
+            } catch (armyError) {
+                Logger.error(armyError, {
+                    context: 'turn_engine.processMilitaryConsumption',
+                    phase: 'army_consumption',
+                    turn: turn,
+                    armyId: army.army_id
+                });
+                // Continue with other armies
+            }
+        }
+
+        Logger.engine(`[TURN ${turn}] Military consumption completed for ${armiesResult.rows.length} armies`);
+    } catch (error) {
+        Logger.error(error, {
+            context: 'turn_engine.processMilitaryConsumption',
+            phase: 'global',
+            turn: turn
+        });
+        throw error;
+    }
+}
+
+/**
+ * Process monthly production (wood, stone, iron, fishing)
+ * @param {Object} client - PostgreSQL client (within transaction)
+ * @param {number} turn - Current turn number
+ * @param {Object} config - Game configuration
+ */
+async function processMonthlyProduction(client, turn, config) {
+    try {
+        Logger.engine(`[TURN ${turn}] Processing monthly production...`);
+
+        // Get all active players
+        const playersResult = await client.query(`
+            SELECT DISTINCT p.player_id, p.username
+            FROM players p
+            JOIN h3_map m ON p.player_id = m.player_id
+            WHERE m.player_id IS NOT NULL
+        `);
+
+        for (const player of playersResult.rows) {
+            try {
+                // Calculate production for this player's territories
+                const territories = await client.query(`
+                    SELECT
+                        td.*,
+                        tt.wood_output, tt.stone_output, tt.iron_output, tt.fishing_output,
+                        m.player_id
+                    FROM territory_details td
+                    JOIN h3_map m ON td.h3_index = m.h3_index
+                    JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+                    WHERE m.player_id = $1
+                `, [player.player_id]);
+
+                let totalWoodProduced = 0;
+                let totalStoneProduced = 0;
+                let totalIronProduced = 0;
+                let totalFishingProduced = 0;
+
+                // Process each territory
+                for (const territory of territories.rows) {
+                    // Base production from terrain
+                    let woodProduction = territory.wood_output || 0;
+                    let stoneProduction = territory.stone_output || 0;
+                    let ironProduction = territory.iron_output || 0;
+                    let fishingProduction = territory.fishing_output || 0;
+
+                    // Apply building multipliers
+                    const lumberMultiplier = 1 + ((territory.lumber_level || 0) * (config.infrastructure?.prod_multiplier_per_level || 0.20));
+                    const mineMultiplier = 1 + ((territory.mine_level || 0) * (config.infrastructure?.prod_multiplier_per_level || 0.20));
+
+                    woodProduction = Math.floor(woodProduction * lumberMultiplier);
+                    stoneProduction = Math.floor(stoneProduction * mineMultiplier);
+                    ironProduction = Math.floor(ironProduction * mineMultiplier);
+                    // Fishing is constant (no multiplier building yet)
+                    fishingProduction = Math.floor(fishingProduction);
+
+                    // Update territory storage
+                    await client.query(`
+                        UPDATE territory_details
+                        SET
+                            wood_stored = wood_stored + $1,
+                            stone_stored = stone_stored + $2,
+                            iron_stored = iron_stored + $3,
+                            food_stored = food_stored + $4
+                        WHERE h3_index = $5
+                    `, [woodProduction, stoneProduction, ironProduction, fishingProduction, territory.h3_index]);
+
+                    totalWoodProduced += woodProduction;
+                    totalStoneProduced += stoneProduction;
+                    totalIronProduced += ironProduction;
+                    totalFishingProduced += fishingProduction;
+                }
+
+                // Generate monthly production message
+                const messageSubject = `📊 Producción Mensual - Turno ${turn}`;
+                const messageBody = `
+🏭 **Producción Industrial:**
+• Madera: +${totalWoodProduced}
+• Piedra: +${totalStoneProduced}
+• Hierro: +${totalIronProduced}
+
+🎣 **Producción Pesquera:**
+• Comida (Pesca): +${totalFishingProduced}
+
+${territories.rows.length > 0 ? `Territorios productivos: ${territories.rows.length}` : '⚠️ No tienes territorios productivos este turno'}
+                `.trim();
+
+                // Insert message (sender_id = NULL for system messages)
+                await client.query(`
+                    INSERT INTO messages (sender_id, receiver_id, subject, body, is_read, sent_at)
+                    VALUES (NULL, $1, $2, $3, false, CURRENT_TIMESTAMP)
+                `, [player.player_id, messageSubject, messageBody]);
+
+                Logger.engine(`[TURN ${turn}] Monthly production for player ${player.player_id} (${player.username}): Wood ${totalWoodProduced}, Stone ${totalStoneProduced}, Iron ${totalIronProduced}, Fishing ${totalFishingProduced}`);
+            } catch (playerError) {
+                Logger.error(playerError, {
+                    context: 'turn_engine.processMonthlyProduction',
+                    phase: 'player_production',
+                    turn: turn,
+                    playerId: player.player_id
+                });
+                // Continue with other players
+            }
+        }
+
+        Logger.engine(`[TURN ${turn}] Monthly production completed for ${playersResult.rows.length} players`);
+    } catch (error) {
+        Logger.error(error, {
+            context: 'turn_engine.processMonthlyProduction',
+            phase: 'global',
+            turn: turn
+        });
+        throw error;
+    }
+}
+
+/**
  * Process completed explorations
  * @param {Object} client - PostgreSQL client (within transaction)
  * @param {number} turn - Current turn number
@@ -339,7 +616,19 @@ async function processGameTurn(pool, config) {
         // Process completed explorations (every turn)
         await processExplorations(client, newTurn, config);
 
-        // Harvest logic (days 75 and 180)
+        // Military food consumption (every turn)
+        await processMilitaryConsumption(client, newTurn, config);
+
+        // Monthly production (day 1 of each month)
+        const gameDate = new Date(newDate);
+        const dayOfMonth = gameDate.getDate();
+
+        if (dayOfMonth === 1) {
+            Logger.engine(`[TURN ${newTurn}] Monthly production day (day 1 of month)`);
+            await processMonthlyProduction(client, newTurn, config);
+        }
+
+        // Harvest logic (days 75 and 180 - Spring and Fall harvests)
         if (dayOfYear === 75 || dayOfYear === 180) {
             Logger.engine(`[TURN ${newTurn}] Harvest day (day ${dayOfYear} of year)`);
             await processHarvest(client, newTurn, config);
@@ -433,5 +722,7 @@ module.exports = {
     stopTimeEngine,
     isEngineActive,
     processHarvestManually: processHarvest,
-    processExplorationsManually: processExplorations
+    processExplorationsManually: processExplorations,
+    processMonthlyProductionManually: processMonthlyProduction,
+    processMilitaryConsumptionManually: processMilitaryConsumption
 };
