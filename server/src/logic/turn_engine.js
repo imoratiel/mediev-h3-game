@@ -157,6 +157,90 @@ ${territories.rows.length > 0 ? `Territorios productivos: ${territories.rows.len
 }
 
 /**
+ * Process completed explorations
+ * @param {Object} client - PostgreSQL client (within transaction)
+ * @param {number} turn - Current turn number
+ * @param {Object} config - Game configuration
+ */
+async function processExplorations(client, turn, config) {
+    try {
+        Logger.engine(`[TURN ${turn}] Processing completed explorations...`);
+
+        // Get all territories with completed explorations
+        const explorationsResult = await client.query(`
+            SELECT
+                td.h3_index,
+                td.exploration_end_turn,
+                m.player_id,
+                tt.name as terrain_type,
+                p.username
+            FROM territory_details td
+            JOIN h3_map m ON td.h3_index = m.h3_index
+            JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+            JOIN players p ON m.player_id = p.player_id
+            WHERE td.exploration_end_turn <= $1
+                AND td.exploration_end_turn IS NOT NULL
+        `, [turn]);
+
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const exploration of explorationsResult.rows) {
+            try {
+                // Determine discovered resource
+                const discoveredResource = determineDiscoveredResource(exploration.terrain_type);
+
+                // Update territory with discovery result and clear exploration_end_turn
+                await client.query(`
+                    UPDATE territory_details
+                    SET discovered_resource = $1,
+                        exploration_end_turn = NULL
+                    WHERE h3_index = $2
+                `, [discoveredResource, exploration.h3_index]);
+
+                // Generate message for player
+                const messageSubject = discoveredResource === 'none'
+                    ? `🔍 Exploración Completada - ${exploration.h3_index}`
+                    : `💎 Recurso Descubierto - ${exploration.h3_index}`;
+
+                const messageBody = discoveredResource === 'none'
+                    ? `La exploración del territorio ${exploration.h3_index} ha finalizado.\n\n❌ No se encontraron recursos especiales en este territorio.`
+                    : `¡La exploración del territorio ${exploration.h3_index} ha finalizado con éxito!\n\n✨ **Recurso descubierto**: ${discoveredResource.toUpperCase()}\n\nEste recurso estará disponible para su explotación.`;
+
+                await client.query(`
+                    INSERT INTO messages (sender_id, receiver_id, subject, body, is_read, sent_at)
+                    VALUES (NULL, $1, $2, $3, false, CURRENT_TIMESTAMP)
+                `, [exploration.player_id, messageSubject, messageBody]);
+
+                Logger.engine(`[TURN ${turn}] Exploration completed for player ${exploration.player_id} (${exploration.username}) at ${exploration.h3_index}: discovered ${discoveredResource}`);
+                successCount++;
+            } catch (explorationError) {
+                errorCount++;
+                Logger.error(explorationError, {
+                    context: 'turn_engine.processExplorations',
+                    phase: 'territory_exploration',
+                    turn: turn,
+                    h3_index: exploration.h3_index,
+                    playerId: exploration.player_id
+                });
+                // Continue with other explorations
+            }
+        }
+
+        if (successCount > 0 || errorCount > 0) {
+            Logger.engine(`[TURN ${turn}] Explorations completed: ${successCount} successful, ${errorCount} errors`);
+        }
+    } catch (error) {
+        Logger.error(error, {
+            context: 'turn_engine.processExplorations',
+            phase: 'global',
+            turn: turn
+        });
+        // Don't throw - allow turn to continue
+    }
+}
+
+/**
  * Process a single game turn
  * @param {Object} pool - PostgreSQL pool
  * @param {Object} config - Game configuration
@@ -252,6 +336,9 @@ async function processGameTurn(pool, config) {
             }
         }
 
+        // Process completed explorations (every turn)
+        await processExplorations(client, newTurn, config);
+
         // Harvest logic (days 75 and 180)
         if (dayOfYear === 75 || dayOfYear === 180) {
             Logger.engine(`[TURN ${newTurn}] Harvest day (day ${dayOfYear} of year)`);
@@ -345,5 +432,6 @@ module.exports = {
     startTimeEngine,
     stopTimeEngine,
     isEngineActive,
-    processHarvestManually: processHarvest
+    processHarvestManually: processHarvest,
+    processExplorationsManually: processExplorations
 };

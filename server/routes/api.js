@@ -675,7 +675,7 @@ module.exports = function (pool, config, logic) {
             );
 
             Logger.action(`Mensaje ${messageId} marcado como leído`, playerId);
-            res.json({ success: true, message: 'Mensaje marcado como leído' });
+            res.json({ success: true, message: `Mensaje id: ${messageId} marcado como leído` });
         } catch (error) {
             Logger.error(error, {
                 context: 'api.markMessageRead',
@@ -860,6 +860,47 @@ module.exports = function (pool, config, logic) {
                 userId: req.user?.player_id
             });
             res.status(500).json({ success: false, message: 'Error al forzar procesamiento de cosecha' });
+        }
+    });
+
+    // Force exploration processing (admin only, for testing)
+    router.post('/admin/engine/force-exploration', authenticateToken, requireAdmin, async (req, res) => {
+        try {
+            Logger.action(`Acceso administrativo a /admin/engine/force-exploration - Forzando procesamiento de exploraciones`, req.user.player_id);
+
+            const worldState = await pool.query('SELECT current_turn FROM world_state WHERE id = 1');
+            const currentTurn = worldState.rows[0].current_turn;
+
+            // Force process explorations manually
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+
+                // Import processExplorations function
+                const { processExplorationsManually } = require('../src/logic/turn_engine');
+                await processExplorationsManually(client, currentTurn, config);
+
+                await client.query('COMMIT');
+
+                Logger.action(`Exploraciones forzadas exitosamente en turno ${currentTurn}`, req.user.player_id);
+                res.json({
+                    success: true,
+                    message: `Exploraciones procesadas exitosamente en turno ${currentTurn}`,
+                    turn: currentTurn
+                });
+            } catch (error) {
+                if (client) await client.query('ROLLBACK');
+                throw error;
+            } finally {
+                client.release();
+            }
+        } catch (error) {
+            Logger.error(error, {
+                endpoint: '/admin/engine/force-exploration',
+                method: 'POST',
+                userId: req.user?.player_id
+            });
+            res.status(500).json({ success: false, message: 'Error al forzar procesamiento de exploraciones' });
         }
     });
 
