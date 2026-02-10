@@ -27,7 +27,7 @@ module.exports = function (pool, config, logic) {
                 return res.status(400).json({ success: false, message: 'Usuario y contraseña requeridos' });
             }
 
-            const result = await pool.query('SELECT player_id, username, password, role FROM players WHERE username = $1', [username]);
+            const result = await pool.query('SELECT player_id, username, password, role, capital_h3, gold FROM players WHERE username = $1', [username]);
 
             if (result.rows.length === 0) {
                 Logger.error(new Error('Login attempt with non-existent user'), {
@@ -54,7 +54,8 @@ module.exports = function (pool, config, logic) {
             const payload = {
                 player_id: user.player_id,
                 username: user.username,
-                role: user.role || 'player'
+                role: user.role || 'player',
+                capital_h3: user.capital_h3
             };
 
             const token = generateToken(payload);
@@ -76,7 +77,9 @@ module.exports = function (pool, config, logic) {
                 user: {
                     player_id: user.player_id,
                     username: user.username,
-                    role: user.role || 'player'
+                    role: user.role || 'player',
+                    capital_h3: user.capital_h3,
+                    gold: user.gold
                 }
             });
         } catch (error) {
@@ -243,11 +246,13 @@ module.exports = function (pool, config, logic) {
 
     router.get('/game/capital', authenticateToken, async (req, res) => {
         try {
-            const result = await pool.query('SELECT h3_index FROM h3_map WHERE player_id = $1 AND is_capital = TRUE LIMIT 1', [req.user.player_id]);
-            if (result.rows.length === 0) return res.status(200).json({ success: false, message: 'No tienes capital' });
-            res.json({ success: true, h3_index: result.rows[0].h3_index });    
+            const result = await pool.query('SELECT capital_h3 FROM players WHERE player_id = $1', [req.user.player_id]);
+            if (result.rows.length === 0 || !result.rows[0].capital_h3) {
+                return res.status(200).json({ success: false, message: 'No tienes capital' });
+            }
+            res.json({ success: true, h3_index: result.rows[0].capital_h3 });
         } catch (error) {
-            console.error('Admin update-game-config error:', error);
+            console.error('Get capital error:', error);
             Logger.error(error, {
                 endpoint: '/game/capital',
                 method: 'GET',
@@ -387,10 +392,12 @@ module.exports = function (pool, config, logic) {
         td.*,
         t.name AS terrain_name,
         t.food_output,
-        COALESCE(garrison.total_troops, 0) AS total_troops
+        COALESCE(garrison.total_troops, 0) AS total_troops,
+        p.capital_h3
       FROM h3_map m
       JOIN territory_details td ON m.h3_index = td.h3_index
       JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
+      JOIN players p ON m.player_id = p.player_id
       LEFT JOIN settlements s ON m.h3_index = s.h3_index
       LEFT JOIN (
         SELECT a.h3_index, SUM(tr.quantity) AS total_troops
@@ -403,7 +410,14 @@ module.exports = function (pool, config, logic) {
       ORDER BY td.population DESC
     `;
         const result = await pool.query(query, [req.user.player_id]);
-        res.json({ success: true, fiefs: result.rows });
+
+        // Add calculated is_capital field to each fief
+        const fiefsWithCapital = result.rows.map(row => ({
+            ...row,
+            is_capital: (row.h3_index === row.capital_h3)
+        }));
+
+        res.json({ success: true, fiefs: fiefsWithCapital });
     });
 
     // ============================================

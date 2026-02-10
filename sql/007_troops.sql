@@ -1,3 +1,5 @@
+
+
 -- 1. TIPOS DE UNIDADES (ESTADÍSTICAS BASE)
 CREATE TABLE IF NOT EXISTS unit_types (
     unit_type_id SERIAL PRIMARY KEY,
@@ -74,6 +76,8 @@ CREATE INDEX IF NOT EXISTS idx_army_h3_main ON armies (h3_index);
 -- ---------------------------------------------------------
 -- CARGA DE TROPAS ACTUALIZADA
 -- ---------------------------------------------------------
+
+COMMIT;
 
 INSERT INTO unit_types (name, attack, health_points, speed, detection_range, gold_upkeep, food_consumption, is_siege, descrip) VALUES
 ('Milicia', 5, 30, 2, 1, 0.50, 0.1, FALSE, 'Campesinos con lanzas de madera.'),

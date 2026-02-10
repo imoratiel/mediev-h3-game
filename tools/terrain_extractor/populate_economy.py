@@ -33,7 +33,7 @@ def populate():
         # --- PASO 1: LECTURA ---
         print("🔍 Leyendo mapa y tipos de terreno...")
         cur.execute("""
-            SELECT m.h3_index, t.fertility, t.wood_output, t.stone_output, t.iron_output 
+            SELECT m.h3_index, t.food_output, t.wood_output, t.stone_output, t.iron_output 
             FROM h3_map m
             JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
         """)
@@ -53,12 +53,12 @@ def populate():
             inserts = []
             
             for cell in batch:
-                h3_index, fertility, wood, stone, iron = cell
+                h3_index, food_output, wood, stone, iron = cell
                 
                 # 1. Cálculos base
                 pop = getRandomInt(200, 400)
                 hap = getRandomInt(50, 70)
-                food = calculateLoot(500, 2500, fertility)
+                food = calculateLoot(500, 2500, food_output)
                 wood_s = calculateLoot(500, 2500, wood)
                 stone_s = calculateLoot(500, 2500, stone)
                 

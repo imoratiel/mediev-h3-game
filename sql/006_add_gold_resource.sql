@@ -8,14 +8,9 @@ ADD COLUMN IF NOT EXISTS gold_stored DECIMAL(10, 2) DEFAULT 0.0;
 CREATE INDEX IF NOT EXISTS idx_territory_details_oro ON territory_details(gold_stored);
 
 -- Update existing territories to have 0 gold initially
-UPDATE territory_details SET oro = 0.0 WHERE gold_stored IS NULL;
+UPDATE territory_details SET gold_stored = 0.0 WHERE gold_stored IS NULL;
 
-
-
-
-
--- 1. Renombrar el campo de oro (ejecutar primero)
-ALTER TABLE territory_details RENAME COLUMN oro TO gold_stored;
+commit;
 
 -- 2. Añadir campos para la exploración
 ALTER TABLE territory_details 
@@ -30,6 +25,8 @@ CREATE TABLE game_config (
     "value" VARCHAR(255)
 );
 
+commit;
+
 -- Insertar los valores iniciales con las comillas correctas
 INSERT INTO game_config ("group", "key", "value") VALUES 
 ('exploration', 'turns_required', '5'),
@@ -43,10 +40,6 @@ INSERT INTO game_config ("group", "key", "value") VALUES
 ('infrastructure', 'prod_multiplier_per_level', '0.20'),
 ('infrastructure', 'upgrade_cost_gold_base', '100')
 ON CONFLICT ("key") DO NOTHING;
-
-
--- 1. Renombrar el campo de fertilidad a producción de comida
-ALTER TABLE terrain_types RENAME COLUMN fertility TO food_output;
 
 -- 2. Asegurarnos de que el coste base de los puertos esté en la configuración
 -- (Si ya existe la clave gold_cost_base_port, esto la actualizará)

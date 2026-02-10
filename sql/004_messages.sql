@@ -27,6 +27,8 @@ BEGIN
     END IF;
 END $$;
 
+COMMIT;
+
 -- 3. Ahora que existen, configuramos el Admin
 -- SUSTITUYE 'tu_contraseña_aqui' por la que quieras usar
 UPDATE players 

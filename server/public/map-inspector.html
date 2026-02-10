@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>H3 Map Inspector - Terrain Debugger</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- H3-js -->
+    <script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Axios for HTTP requests -->
+    <script src="https://unpkg.com/axios@1.6.2/dist/axios.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        #loginContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        #loginContainer.hidden {
+            display: none;
+        }
+
+        .login-box {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            width: 90%;
+            max-width: 400px;
+            color: #333;
+        }
+
+        .login-box h1 {
+            margin-bottom: 10px;
+            font-size: 28px;
+            color: #1e3c72;
+            text-align: center;
+        }
+
+        .login-box p {
+            margin-bottom: 30px;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #1e3c72;
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 14px;
+            background: #1e3c72;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .login-button:hover {
+            background: #2a5298;
+        }
+
+        .login-button:disabled {
+            background: #999;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            margin-top: 15px;
+            padding: 12px;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 6px;
+            color: #c33;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        #mapContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #mapContainer.hidden {
+            display: none;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .info-overlay {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            min-width: 250px;
+        }
+
+        .info-overlay h2 {
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #4CAF50;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 8px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .info-row .label {
+            color: #aaa;
+            font-weight: 600;
+        }
+
+        .info-row .value {
+            color: #fff;
+        }
+
+        .logout-button {
+            width: 100%;
+            margin-top: 15px;
+            padding: 10px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .logout-button:hover {
+            background: #d32f2f;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 1500;
+            font-size: 14px;
+            display: none;
+        }
+
+        .loading-overlay.visible {
+            display: block;
+        }
+
+        .legend {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            max-width: 200px;
+        }
+
+        .legend h3 {
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #4CAF50;
+            border-bottom: 1px solid #4CAF50;
+            padding-bottom: 5px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            margin-right: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Container -->
+    <div id="loginContainer">
+        <div class="login-box">
+            <h1>🗺️ Map Inspector</h1>
+            <p>Herramienta de depuración del terreno H3</p>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Usuario</label>
+                    <input type="text" id="username" name="username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="login-button" id="loginButton">Iniciar Sesión</button>
+                <div id="loginError" class="error-message" style="display: none;"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Map Container -->
+    <div id="mapContainer" class="hidden">
+        <div id="map"></div>
+
+        <div class="info-overlay">
+            <h2>📊 Información</h2>
+            <div class="info-row">
+                <span class="label">Zoom:</span>
+                <span class="value" id="infoZoom">-</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Centro:</span>
+                <span class="value" id="infoCenter">-</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Hexágonos:</span>
+                <span class="value" id="infoHexCount">0</span>
+            </div>
+            <button class="logout-button" id="logoutButton">Cerrar Sesión</button>
+        </div>
+
+        <div class="legend">
+            <h3>Tipos de Terreno</h3>
+            <div id="legendContent"></div>
+        </div>
+
+        <div class="loading-overlay" id="loadingOverlay">
+            ⏳ Cargando terreno...
+        </div>
+    </div>
+
+    <script>
+        // Configure Axios
+        axios.defaults.withCredentials = true;
+        axios.defaults.baseURL = window.location.origin;
+
+        // Terrain color mapping (based on terrain types)
+        const TERRAIN_COLORS = {
+            'Ocean': '#1565C0',
+            'Coastal': '#42A5F5',
+            'Plain': '#9CCC65',
+            'Forest': '#2E7D32',
+            'Hills': '#795548',
+            'Mountains': '#5D4037',
+            'Desert': '#FDD835',
+            'Swamp': '#4E342E',
+            'Tundra': '#CFD8DC',
+            'Snow': '#ECEFF1'
+        };
+
+        // Default color for unknown terrains
+        const DEFAULT_COLOR = '#757575';
+
+        // Global variables
+        let map = null;
+        let hexagonLayer = null;
+        let isAuthenticated = false;
+        let isLoading = false;
+
+        // DOM elements
+        const loginContainer = document.getElementById('loginContainer');
+        const mapContainer = document.getElementById('mapContainer');
+        const loginForm = document.getElementById('loginForm');
+        const loginButton = document.getElementById('loginButton');
+        const loginError = document.getElementById('loginError');
+        const logoutButton = document.getElementById('logoutButton');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const infoZoom = document.getElementById('infoZoom');
+        const infoCenter = document.getElementById('infoCenter');
+        const infoHexCount = document.getElementById('infoHexCount');
+        const legendContent = document.getElementById('legendContent');
+
+        // Check authentication on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            await checkAuthentication();
+        });
+
+        // Check if user has valid access_token cookie
+        async function checkAuthentication() {
+            try {
+                // Try to fetch a protected endpoint
+                const response = await axios.get('/api/game/my-fiefs');
+
+                if (response.status === 200) {
+                    isAuthenticated = true;
+                    showMap();
+                } else {
+                    isAuthenticated = false;
+                    showLogin();
+                }
+            } catch (error) {
+                isAuthenticated = false;
+                showLogin();
+            }
+        }
+
+        // Show login form
+        function showLogin() {
+            loginContainer.classList.remove('hidden');
+            mapContainer.classList.add('hidden');
+        }
+
+        // Show map
+        function showMap() {
+            loginContainer.classList.add('hidden');
+            mapContainer.classList.remove('hidden');
+
+            if (!map) {
+                initMap();
+            }
+        }
+
+        // Handle login form submission
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            loginButton.disabled = true;
+            loginButton.textContent = 'Iniciando sesión...';
+            loginError.style.display = 'none';
+
+            try {
+                const response = await axios.post('/api/login', {
+                    username,
+                    password
+                });
+
+                if (response.data.success) {
+                    isAuthenticated = true;
+                    showMap();
+                } else {
+                    showLoginError(response.data.message || 'Error de autenticación');
+                }
+            } catch (error) {
+                showLoginError(error.response?.data?.message || 'Error al conectar con el servidor');
+            } finally {
+                loginButton.disabled = false;
+                loginButton.textContent = 'Iniciar Sesión';
+            }
+        });
+
+        // Show login error
+        function showLoginError(message) {
+            loginError.textContent = message;
+            loginError.style.display = 'block';
+        }
+
+        // Handle logout
+        logoutButton.addEventListener('click', async () => {
+            try {
+                await axios.post('/api/logout');
+            } catch (error) {
+                console.error('Logout error:', error);
+            } finally {
+                isAuthenticated = false;
+                showLogin();
+            }
+        });
+
+        // Initialize Leaflet map
+        function initMap() {
+            // Create map centered on Madrid
+            map = L.map('map', {
+                center: [40.4168, -3.7038],
+                zoom: 10,
+                preferCanvas: true,
+                renderer: L.canvas()
+            });
+
+            // Add base tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(map);
+
+            // Create hexagon layer
+            hexagonLayer = L.layerGroup().addTo(map);
+
+            // Update info overlay
+            updateInfoOverlay();
+
+            // Populate legend
+            populateLegend();
+
+            // Load initial hexagons
+            loadHexagons();
+
+            // Add event listeners
+            map.on('moveend', () => {
+                loadHexagons();
+                updateInfoOverlay();
+            });
+
+            map.on('zoomend', () => {
+                updateInfoOverlay();
+            });
+        }
+
+        // Update info overlay
+        function updateInfoOverlay() {
+            if (!map) return;
+
+            const zoom = map.getZoom();
+            const center = map.getCenter();
+
+            infoZoom.textContent = zoom.toFixed(0);
+            infoCenter.textContent = `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`;
+        }
+
+        // Populate legend with terrain colors
+        function populateLegend() {
+            legendContent.innerHTML = '';
+
+            for (const [terrainName, color] of Object.entries(TERRAIN_COLORS)) {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+
+                const colorBox = document.createElement('div');
+                colorBox.className = 'legend-color';
+                colorBox.style.backgroundColor = color;
+
+                const label = document.createElement('span');
+                label.textContent = terrainName;
+
+                item.appendChild(colorBox);
+                item.appendChild(label);
+                legendContent.appendChild(item);
+            }
+        }
+
+        // Load hexagons from API
+        async function loadHexagons() {
+            if (!map || isLoading) return;
+
+            const bounds = map.getBounds();
+            const minLat = bounds.getSouth();
+            const maxLat = bounds.getNorth();
+            const minLng = bounds.getWest();
+            const maxLng = bounds.getEast();
+
+            isLoading = true;
+            loadingOverlay.classList.add('visible');
+
+            try {
+                const response = await axios.get('/api/map/region', {
+                    params: { minLat, maxLat, minLng, maxLng }
+                });
+
+                if (response.data.success) {
+                    renderHexagons(response.data.territories);
+                }
+            } catch (error) {
+                console.error('Error loading hexagons:', error);
+            } finally {
+                isLoading = false;
+                loadingOverlay.classList.remove('visible');
+            }
+        }
+
+        // Render hexagons on map
+        function renderHexagons(territories) {
+            // Clear existing hexagons
+            hexagonLayer.clearLayers();
+
+            let hexCount = 0;
+
+            territories.forEach(territory => {
+                try {
+                    // Get terrain color
+                    const color = TERRAIN_COLORS[territory.terrain_name] || DEFAULT_COLOR;
+
+                    // Convert H3 index to boundary coordinates
+                    const boundary = h3.cellToBoundary(territory.h3_index);
+
+                    // Create polygon
+                    const polygon = L.polygon(boundary, {
+                        color: color,
+                        weight: 1,
+                        fillColor: color,
+                        fillOpacity: 0.6,
+                        renderer: L.canvas()
+                    });
+
+                    // Add click event for tooltip
+                    polygon.on('click', () => {
+                        showHexagonInfo(territory);
+                    });
+
+                    // Add to layer
+                    polygon.addTo(hexagonLayer);
+                    hexCount++;
+                } catch (error) {
+                    console.error(`Error rendering hexagon ${territory.h3_index}:`, error);
+                }
+            });
+
+            // Update hex count in info overlay
+            infoHexCount.textContent = hexCount;
+        }
+
+        // Show hexagon information in popup
+        function showHexagonInfo(territory) {
+            const center = h3.cellToLatLng(territory.h3_index);
+
+            const popupContent = `
+                <div style="font-family: monospace; font-size: 12px;">
+                    <strong style="color: #1e3c72; font-size: 14px;">🔍 Información del Hexágono</strong>
+                    <hr style="margin: 8px 0; border: none; border-top: 1px solid #ddd;">
+                    <div style="margin-bottom: 4px;">
+                        <strong>H3 Index:</strong><br>
+                        <code style="background: #f5f5f5; padding: 2px 4px; border-radius: 3px;">${territory.h3_index}</code>
+                    </div>
+                    <div style="margin-bottom: 4px;">
+                        <strong>Coordenadas:</strong> (${territory.coord_x || 'N/A'}, ${territory.coord_y || 'N/A'})
+                    </div>
+                    <div style="margin-bottom: 4px;">
+                        <strong>Terreno ID:</strong> ${territory.terrain_type_id}
+                    </div>
+                    <div style="margin-bottom: 4px;">
+                        <strong>Terreno:</strong> <span style="color: ${TERRAIN_COLORS[territory.terrain_name] || DEFAULT_COLOR}; font-weight: bold;">${territory.terrain_name}</span>
+                    </div>
+                    <div style="margin-bottom: 4px;">
+                        <strong>Lat/Lng:</strong> ${center[0].toFixed(6)}, ${center[1].toFixed(6)}
+                    </div>
+                </div>
+            `;
+
+            L.popup()
+                .setLatLng(center)
+                .setContent(popupContent)
+                .openOn(map);
+        }
+    </script>
+</body>
+</html>

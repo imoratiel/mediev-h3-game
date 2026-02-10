@@ -40,3 +40,18 @@ TRUNCATE TABLE armies RESTART IDENTITY CASCADE;
 TRUNCATE TABLE messages RESTART IDENTITY CASCADE;
 
 COMMIT;
+
+
+
+-- INDICES
+
+ALTER TABLE territory_details DROP CONSTRAINT IF EXISTS idx_territory_details_oro CASCADE;
+
+--ALTER TABLE territory_details DROP CONSTRAINT IF EXISTS idx_army_h3_main CASCADE;
+
+ALTER TABLE h3_map DROP CONSTRAINT IF EXISTS idx_h3_map_coords CASCADE;
+
+
+VACUUM FULL h3_map;
+VACUUM FULL territory_details;
+

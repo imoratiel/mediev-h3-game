@@ -99,10 +99,18 @@ def create_region_polygon() -> List[Tuple[float, float]]:
     ]
 
 
-def generate_h3_cells() -> List[str]:
+def generate_h3_cells() -> Tuple[List[str], Dict[str, Tuple[int, int]]]:
     """
     Generates H3 cells covering the target region using polygon_to_cells (h3 v4 API).
-    Returns list of H3 cell indices as strings.
+    Calculates cartesian coordinates (X, Y) for each cell with origin at Southwest.
+
+    Returns:
+        Tuple of (list of H3 cell indices as strings, dict mapping h3_index to (coord_x, coord_y))
+
+    Coordinate System:
+        - Origin (0, 0) at Southwest corner (min_lat, min_lng)
+        - X increases towards East (longitude increases)
+        - Y increases towards North (latitude increases)
     """
     logger.info(f"Generating H3 cells at resolution {H3_RESOLUTION} for target region...")
 
@@ -118,8 +126,95 @@ def generate_h3_cells() -> List[str]:
     h3_cells = h3.polygon_to_cells(h3.LatLngPoly(polygon_coords), H3_RESOLUTION)
     h3_cells_list = list(h3_cells)
 
-    logger.info(f"Generated {len(h3_cells_list)} H3 cells")
-    return h3_cells_list
+    logger.info(f"Generated {len(h3_cells_list)} H3 cells (pre-filter)")
+
+    # ====== FILTRADO ESTRICTO: Solo celdas dentro del BOUNDING_BOX ======
+    logger.info("Filtering cells: removing any outside BOUNDING_BOX...")
+
+    filtered_cells = []
+    outside_count = 0
+
+    for h3_index in h3_cells_list:
+        lat, lng = h3.cell_to_latlng(h3_index)
+
+        # Verificar que la celda esté DENTRO del bounding box
+        if (BOUNDING_BOX['min_lat'] <= lat <= BOUNDING_BOX['max_lat'] and
+            BOUNDING_BOX['min_lng'] <= lng <= BOUNDING_BOX['max_lng']):
+            filtered_cells.append(h3_index)
+        else:
+            outside_count += 1
+            if outside_count <= 5:  # Log primeras 5 celdas descartadas
+                logger.info(f"  Discarded cell outside bbox: {h3_index} at ({lat:.6f}, {lng:.6f})")
+
+    h3_cells_list = filtered_cells
+
+    logger.info(f"Filtered: {len(h3_cells_list)} cells inside bbox, {outside_count} cells discarded")
+    logger.info(f"BBox limits: lat=[{BOUNDING_BOX['min_lat']}, {BOUNDING_BOX['max_lat']}], "
+                f"lng=[{BOUNDING_BOX['min_lng']}, {BOUNDING_BOX['max_lng']}]")
+
+    # ====== CALCULATE CARTESIAN COORDINATES (X, Y) ======
+    logger.info("Calculating cartesian coordinates (X, Y) for H3 cells...")
+
+    # Find origin cell: closest to Southwest corner (min_lat, min_lng)
+    origin_lat = BOUNDING_BOX['min_lat']
+    origin_lng = BOUNDING_BOX['min_lng']
+    origin_cell = h3.latlng_to_cell(origin_lat, origin_lng, H3_RESOLUTION)
+
+    logger.info(f"Origin cell (Southwest): {origin_cell} at ({origin_lat:.6f}, {origin_lng:.6f})")
+
+    # Calculate local IJ coordinates for each cell relative to origin
+    coord_dict = {}  # {h3_index: (i, j)}
+    failed_coords = 0
+
+    for h3_index in h3_cells_list:
+        try:
+            # Get local IJ coordinates relative to origin
+            # Returns CoordIJ with .i and .j attributes
+            local_ij = h3.cell_to_local_ij(origin_cell, h3_index)
+            coord_dict[h3_index] = (local_ij.i, local_ij.j)
+        except Exception as e:
+            # Some cells might be too far from origin for local IJ calculation
+            # Fallback: use center coordinates converted to approximate grid position
+            lat, lng = h3.cell_to_latlng(h3_index)
+            # Approximate grid position based on distance from origin
+            approx_i = int((lng - origin_lng) * 111000 / 500)  # ~500m per cell
+            approx_j = int((lat - origin_lat) * 111000 / 500)
+            coord_dict[h3_index] = (approx_i, approx_j)
+            failed_coords += 1
+            if failed_coords <= 3:
+                logger.warning(f"Failed to calculate local IJ for {h3_index}, using approximation: {e}")
+
+    if failed_coords > 0:
+        logger.warning(f"Used approximation for {failed_coords} cells (too far from origin for local IJ)")
+
+    # ====== NORMALIZE COORDINATES TO START AT (0, 0) ======
+    # Find minimum I and J values
+    all_i_values = [coord[0] for coord in coord_dict.values()]
+    all_j_values = [coord[1] for coord in coord_dict.values()]
+
+    min_i = min(all_i_values)
+    min_j = min(all_j_values)
+    max_i = max(all_i_values)
+    max_j = max(all_j_values)
+
+    logger.info(f"Raw coordinate ranges: I=[{min_i}, {max_i}], J=[{min_j}, {max_j}]")
+
+    # Normalize: shift so minimum is (0, 0)
+    # X = I coordinate (increases East), Y = J coordinate (increases North)
+    normalized_coords = {}
+    for h3_index, (i, j) in coord_dict.items():
+        coord_x = int(i - min_i)  # Normalize I to X (starts at 0)
+        coord_y = int(j - min_j)  # Normalize J to Y (starts at 0)
+        normalized_coords[h3_index] = (coord_x, coord_y)
+
+    # Calculate grid dimensions
+    grid_width = max_i - min_i + 1
+    grid_height = max_j - min_j + 1
+
+    logger.info(f"Normalized grid: {grid_width} x {grid_height} cells (X: 0-{grid_width-1}, Y: 0-{grid_height-1})")
+    logger.info(f"Origin (0,0) at Southwest corner, X increases East, Y increases North")
+
+    return h3_cells_list, normalized_coords
 
 
 def create_vrt_from_tiffs(raster_dir: str, vrt_path: str = None) -> str:
@@ -195,7 +290,9 @@ def scan_raster_coverage(raster_dir: str) -> Dict[str, dict]:
     if not tif_files:
         raise FileNotFoundError(f"No .tif files found in {raster_dir}")
 
-    logger.info(f"Scanning coverage of {len(tif_files)} .tif files...")
+    logger.info("=" * 80)
+    logger.info(f"SCANNING RASTER COVERAGE: {len(tif_files)} .tif files found")
+    logger.info("=" * 80)
     coverage_map = {}
 
     for tif_file in tif_files:
@@ -208,13 +305,43 @@ def scan_raster_coverage(raster_dir: str) -> Dict[str, dict]:
                     'width': ds.width,
                     'height': ds.height
                 }
-                logger.info(f"  - {os.path.basename(tif_file)}: "
-                           f"lat=[{ds.bounds.bottom:.2f}, {ds.bounds.top:.2f}], "
-                           f"lng=[{ds.bounds.left:.2f}, {ds.bounds.right:.2f}]")
+                logger.info(f"  ✓ {os.path.basename(tif_file):<30} | "
+                           f"Lat: [{ds.bounds.bottom:7.2f}, {ds.bounds.top:7.2f}] | "
+                           f"Lng: [{ds.bounds.left:7.2f}, {ds.bounds.right:7.2f}] | "
+                           f"Size: {ds.width}x{ds.height}")
         except Exception as e:
-            logger.warning(f"Could not read {tif_file}: {e}")
+            logger.warning(f"  ✗ Could not read {os.path.basename(tif_file)}: {e}")
+
+    logger.info("=" * 80)
+    logger.info(f"Total valid tiles: {len(coverage_map)}")
+    logger.info("=" * 80)
 
     return coverage_map
+
+
+def calculate_expected_tile_name(lat: float, lng: float) -> str:
+    """
+    Calculates the expected SRTM tile name for given coordinates.
+
+    Args:
+        lat: Latitude
+        lng: Longitude
+
+    Returns:
+        Expected tile name (e.g., "N42W006" for coordinates in that tile)
+    """
+    # Round down to get tile corner
+    lat_int = int(np.floor(lat))
+    lng_int = int(np.floor(lng))
+
+    # Format tile name
+    lat_prefix = 'N' if lat_int >= 0 else 'S'
+    lng_prefix = 'E' if lng_int >= 0 else 'W'
+
+    lat_str = f"{abs(lat_int):02d}"
+    lng_str = f"{abs(lng_int):03d}"
+
+    return f"{lat_prefix}{lat_str}{lng_prefix}{lng_str}"
 
 
 def find_raster_for_coord(lat: float, lng: float, coverage_map: Dict[str, dict]) -> Optional[str]:
@@ -780,7 +907,7 @@ def calculate_terrain_ruggedness(lat: float, lng: float, srtm_data: Optional[dic
         return None
 
 
-def renaturalize_modern_cities(terrain_data: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
+def renaturalize_modern_cities(terrain_data: List[Tuple[str, int, int, int]]) -> List[Tuple[str, int, int, int]]:
     """
     Renaturaliza ciudades modernas (TIF=50, marcadas como ID 0) usando inpainting.
 
@@ -791,18 +918,19 @@ def renaturalize_modern_cities(terrain_data: List[Tuple[str, int]]) -> List[Tupl
     4. Si es interior, aplica Moda de vecinos naturales (relleno)
 
     Args:
-        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id)
+        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id, coord_x, coord_y)
 
     Returns:
         Lista actualizada con ciudades renaturalizadas
     """
     logger.info("Identificando ciudades modernas (TIF=50) para renaturalizar...")
 
-    # Crear diccionario h3_index (hex string) -> terrain_type_id para lookup rapido
-    terrain_dict = {h3_idx: terrain_id for h3_idx, terrain_id in terrain_data}
+    # Crear diccionarios para lookup rapido
+    terrain_dict = {h3_idx: terrain_id for h3_idx, terrain_id, _, _ in terrain_data}
+    coords_dict = {h3_idx: (cx, cy) for h3_idx, _, cx, cy in terrain_data}
 
     # Identificar ciudades modernas (ID 0)
-    modern_cities = [(h3_idx, terrain_id) for h3_idx, terrain_id in terrain_data if terrain_id == 0]
+    modern_cities = [(h3_idx, terrain_id) for h3_idx, terrain_id, _, _ in terrain_data if terrain_id == 0]
     logger.info(f"Ciudades modernas detectadas: {len(modern_cities)}")
 
     if not modern_cities:
@@ -855,13 +983,16 @@ def renaturalize_modern_cities(terrain_data: List[Tuple[str, int]]) -> List[Tupl
     logger.info(f"Ciudades modernas renaturalizadas: {renaturalized}")
     logger.info(f"Convertidas en costa: {converted_to_coast}")
 
-    # Reconstruir terrain_data con valores actualizados
-    updated_terrain_data = [(h3_idx, terrain_dict[h3_idx]) for h3_idx, _ in terrain_data]
+    # Reconstruir terrain_data con valores actualizados y coordenadas preservadas
+    updated_terrain_data = [
+        (h3_idx, terrain_dict[h3_idx], coords_dict[h3_idx][0], coords_dict[h3_idx][1])
+        for h3_idx, _, _, _ in terrain_data
+    ]
 
     return updated_terrain_data
 
 
-def overlay_historical_settlements(terrain_data: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
+def overlay_historical_settlements(terrain_data: List[Tuple[str, int, int, int]]) -> List[Tuple[str, int, int, int]]:
     """
     Carga asentamientos historicos desde la base de datos y sobreescribe el terreno con ID 14.
 
@@ -869,7 +1000,7 @@ def overlay_historical_settlements(terrain_data: List[Tuple[str, int]]) -> List[
     no las ciudades modernas detectadas en el TIF.
 
     Args:
-        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id)
+        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id, coord_x, coord_y)
 
     Returns:
         Lista actualizada con asentamientos historicos marcados como ID 14
@@ -893,8 +1024,9 @@ def overlay_historical_settlements(terrain_data: List[Tuple[str, int]]) -> List[
 
         logger.info(f"Asentamientos historicos encontrados: {len(settlements)}")
 
-        # Crear diccionario h3_index -> terrain_type_id
-        terrain_dict = {h3_idx: terrain_id for h3_idx, terrain_id in terrain_data}
+        # Crear diccionarios para lookup rapido
+        terrain_dict = {h3_idx: terrain_id for h3_idx, terrain_id, _, _ in terrain_data}
+        coords_dict = {h3_idx: (cx, cy) for h3_idx, _, cx, cy in terrain_data}
 
         # Sobreescribir con ID 14
         overlayed = 0
@@ -905,8 +1037,11 @@ def overlay_historical_settlements(terrain_data: List[Tuple[str, int]]) -> List[
 
         logger.info(f"Asentamientos historicos inyectados: {overlayed}")
 
-        # Reconstruir terrain_data
-        updated_terrain_data = [(h3_idx, terrain_dict[h3_idx]) for h3_idx, _ in terrain_data]
+        # Reconstruir terrain_data con coordenadas preservadas
+        updated_terrain_data = [
+            (h3_idx, terrain_dict[h3_idx], coords_dict[h3_idx][0], coords_dict[h3_idx][1])
+            for h3_idx, _, _, _ in terrain_data
+        ]
 
         return updated_terrain_data
 
@@ -918,8 +1053,9 @@ def overlay_historical_settlements(terrain_data: List[Tuple[str, int]]) -> List[
 
 def extract_terrain_from_raster(
     raster_dir: str,
-    h3_cells: List[str]
-) -> List[Tuple[str, int]]:
+    h3_cells: List[str],
+    h3_coords: Dict[str, Tuple[int, int]] = None
+) -> List[Tuple[str, int, int, int]]:
     """
     Extracts terrain values from GeoTIFF files using OPTIMIZED MASTER HIERARCHY
     with MEDIEVAL NATURALIZATION.
@@ -944,8 +1080,13 @@ def extract_terrain_from_raster(
     - Usa Window() para lectura de pixels individuales
     - Logs limpios sin emojis, resumen cada 10,000 celdas
 
-    Returns list of tuples (h3_index_as_hex_string, terrain_type_id).
+    Returns list of tuples (h3_index_as_hex_string, terrain_type_id, coord_x, coord_y).
     """
+    # Ensure h3_coords is provided
+    if h3_coords is None:
+        logger.warning("No coordinates provided, using default (0, 0) for all cells")
+        h3_coords = {h3_index: (0, 0) for h3_index in h3_cells}
+
     # Load land mask for spatial optimization
     logger.info("Cargando mascara de tierra (Natural Earth 10m)...")
     land_mask = load_land_mask()
@@ -1020,11 +1161,60 @@ def extract_terrain_from_raster(
     start_time = time.time()
     last_log_time = start_time
 
-    # Log first H3 cell for debugging
+    # ====== VALIDACIÓN DE COORDENADAS: Verificar que todas las celdas están en el bbox ======
+    logger.info("=" * 80)
+    logger.info("VALIDATING H3 CELLS COORDINATES")
+    logger.info("=" * 80)
+
     if h3_cells:
+        # Verificar primera celda
         first_lat, first_lng = h3.cell_to_latlng(h3_cells[0])
         logger.info(f"First H3 cell: {h3_cells[0]}")
         logger.info(f"  - Coordinates: lat={first_lat:.6f}, lng={first_lng:.6f}")
+
+        # Verificar última celda
+        last_lat, last_lng = h3.cell_to_latlng(h3_cells[-1])
+        logger.info(f"Last H3 cell: {h3_cells[-1]}")
+        logger.info(f"  - Coordinates: lat={last_lat:.6f}, lng={last_lng:.6f}")
+
+        # Calcular rangos de coordenadas de todas las celdas
+        all_lats = []
+        all_lngs = []
+        for h3_idx in h3_cells[:min(1000, len(h3_cells))]:  # Sample primeras 1000
+            lat, lng = h3.cell_to_latlng(h3_idx)
+            all_lats.append(lat)
+            all_lngs.append(lng)
+
+        min_cell_lat = min(all_lats)
+        max_cell_lat = max(all_lats)
+        min_cell_lng = min(all_lngs)
+        max_cell_lng = max(all_lngs)
+
+        logger.info(f"Cell coordinate ranges (from {len(all_lats)} samples):")
+        logger.info(f"  Latitude:  [{min_cell_lat:.6f}, {max_cell_lat:.6f}]")
+        logger.info(f"  Longitude: [{min_cell_lng:.6f}, {max_cell_lng:.6f}]")
+        logger.info(f"Expected bbox:")
+        logger.info(f"  Latitude:  [{BOUNDING_BOX['min_lat']:.6f}, {BOUNDING_BOX['max_lat']:.6f}]")
+        logger.info(f"  Longitude: [{BOUNDING_BOX['min_lng']:.6f}, {BOUNDING_BOX['max_lng']:.6f}]")
+
+        # VALIDACIÓN CRÍTICA: Detectar coordenadas fuera del bbox
+        if (min_cell_lng > 0 and BOUNDING_BOX['min_lng'] < 0):
+            logger.error("=" * 80)
+            logger.error("CRITICAL ERROR: LONGITUDE SIGN MISMATCH!")
+            logger.error(f"  Cell longitudes are POSITIVE: [{min_cell_lng:.2f}, {max_cell_lng:.2f}]")
+            logger.error(f"  Expected NEGATIVE longitudes: [{BOUNDING_BOX['min_lng']:.2f}, {BOUNDING_BOX['max_lng']:.2f}]")
+            logger.error("  This indicates the cells are NOT in the Iberian Peninsula!")
+            logger.error("=" * 80)
+            raise ValueError(f"Generated cells have wrong longitude sign. Expected negative (Iberia), got positive.")
+
+        if (min_cell_lat < BOUNDING_BOX['min_lat'] - 0.5 or max_cell_lat > BOUNDING_BOX['max_lat'] + 0.5 or
+            min_cell_lng < BOUNDING_BOX['min_lng'] - 0.5 or max_cell_lng > BOUNDING_BOX['max_lng'] + 0.5):
+            logger.warning("=" * 80)
+            logger.warning("WARNING: Some cells appear to be outside the bounding box!")
+            logger.warning(f"  This may cause missing tile errors.")
+            logger.warning("=" * 80)
+
+    logger.info("=" * 80)
 
     try:
         for idx, h3_index in enumerate(h3_cells):
@@ -1033,10 +1223,13 @@ def extract_terrain_from_raster(
             # CHANGED: Store h3_index as hexadecimal string, not integer
             terrain_type_id = None
 
+            # Get cartesian coordinates for this cell
+            coord_x, coord_y = h3_coords.get(h3_index, (0, 0))
+
             # ====== A) MAR: Descartar mar abierto con land_mask ======
             if not is_point_on_land(lat, lng, land_mask, debug=False):
                 terrain_type_id = 1  # Mar
-                terrain_data.append((h3_index, terrain_type_id))
+                terrain_data.append((h3_index, terrain_type_id, coord_x, coord_y))
                 terrain_counter[terrain_type_id] += 1
                 phase_1_mar += 1
                 open_sea_discarded += 1
@@ -1053,18 +1246,22 @@ def extract_terrain_from_raster(
                 # ====== FASE 1: MAR (fuera de cobertura) ======
                 if not raster_path:
                     terrain_type_id = 1  # Mar
-                    terrain_data.append((h3_index, terrain_type_id))
+                    terrain_data.append((h3_index, terrain_type_id, coord_x, coord_y))
                     terrain_counter[terrain_type_id] += 1
                     phase_1_mar += 1
                     out_of_bounds += 1
                     if out_of_bounds <= 5:
-                        logger.info(f"FASE 1 (MAR): Cell outside tiles at lat={lat:.6f}, lng={lng:.6f}")
+                        expected_tile = calculate_expected_tile_name(lat, lng)
+                        logger.warning(f"TILE FALTANTE: Cell {h3_index} at ({lat:.6f}, {lng:.6f}) requires tile {expected_tile}")
+                        logger.warning(f"  Available tiles: {', '.join(coverage_map.keys())}")
+                    if out_of_bounds == 10:
+                        logger.warning(f"  ... (suppressing further missing tile warnings, total: {out_of_bounds})")
                     continue
 
                 # Skip tiles that previously failed to open
                 if raster_path in failed_tiles:
                     terrain_type_id = 1  # Mar
-                    terrain_data.append((h3_index, terrain_type_id))
+                    terrain_data.append((h3_index, terrain_type_id, coord_x, coord_y))
                     terrain_counter[terrain_type_id] += 1
                     phase_1_mar += 1
                     skipped += 1
@@ -1080,10 +1277,16 @@ def extract_terrain_from_raster(
                         if open_duration > 5.0:
                             logger.warning(f"[!] Slow file open: {os.path.basename(raster_path)} took {open_duration:.1f}s")
                     except Exception as e:
-                        logger.error(f"Failed to open {os.path.basename(raster_path)}: {e}")
+                        logger.error("=" * 80)
+                        logger.error(f"RASTER FILE ERROR: Failed to open tile for cell {h3_index}")
+                        logger.error(f"  Cell coordinates: lat={lat:.6f}, lng={lng:.6f}")
+                        logger.error(f"  Required tile: {os.path.basename(raster_path)}")
+                        logger.error(f"  Full path: {raster_path}")
+                        logger.error(f"  Error: {e}")
+                        logger.error("=" * 80)
                         failed_tiles.add(raster_path)
                         terrain_type_id = 1  # Mar
-                        terrain_data.append((h3_index, terrain_type_id))
+                        terrain_data.append((h3_index, terrain_type_id, coord_x, coord_y))
                         terrain_counter[terrain_type_id] += 1
                         phase_1_mar += 1
                         skipped += 1
@@ -1163,7 +1366,7 @@ def extract_terrain_from_raster(
                 # EJECUTAR FUNCION MAESTRA DE DECISION
                 terrain_type_id = determine_terrain(center_value, elevation, ruggedness, h3_index, idx, is_river_cell)
 
-                terrain_data.append((h3_index, terrain_type_id))
+                terrain_data.append((h3_index, terrain_type_id, coord_x, coord_y))
                 terrain_counter[terrain_type_id] += 1
                 processed += 1
 
@@ -1172,7 +1375,7 @@ def extract_terrain_from_raster(
                 if idx < 5:  # Log first few errors
                     logger.warning(f"Error processing cell {h3_index} at lat={lat:.6f}, lng={lng:.6f}: {e}")
                 terrain_type_id = 1  # Mar
-                terrain_data.append((h3_index, terrain_type_id))
+                terrain_data.append((h3_index, terrain_type_id, coord_x, coord_y))
                 terrain_counter[terrain_type_id] += 1
                 phase_1_mar += 1
                 skipped += 1
@@ -1257,7 +1460,7 @@ def extract_terrain_from_raster(
 
 def insert_terrain_data_batch(
     db_config: Dict[str, str],
-    terrain_data: List[Tuple[str, int]]
+    terrain_data: List[Tuple[str, int, int, int]]
 ) -> None:
     """
     Inserts terrain data into h3_map table using optimized batch inserts with execute_values.
@@ -1266,6 +1469,7 @@ def insert_terrain_data_batch(
 
     IMPORTANT: Does NOT truncate table - preserves has_road markers set by setup_history.py
     IMPORTANT: h3_index is stored as TEXT (hexadecimal string), not BIGINT
+    IMPORTANT: Now includes coord_x and coord_y for cartesian coordinate system
     """
     logger.info(f"Connecting to database at {db_config['host']}...")
 
@@ -1280,25 +1484,52 @@ def insert_terrain_data_batch(
     try:
         with conn.cursor() as cursor:
             # NO TRUNCATE: Preserve has_road column set by setup_history.py
-            logger.info("Updating h3_map data (preserving has_road markers)...")
+            logger.info("Updating h3_map data (preserving has_road markers and inserting coordinates)...")
 
-            # Prepare insert query that PRESERVES has_road on conflict
-            # New schema includes player_id and building_type_id (defaults: NULL, 0)
+            # Prepare insert query that PRESERVES has_road on conflict and includes coord_x, coord_y
+            # New schema includes player_id, building_type_id, coord_x, coord_y (defaults: NULL, 0, 0, 0)
             insert_query = """
-                INSERT INTO h3_map (h3_index, terrain_type_id, player_id, building_type_id, has_road)
+                INSERT INTO h3_map (h3_index, terrain_type_id, player_id, building_type_id, has_road, coord_x, coord_y)
                 VALUES %s
                 ON CONFLICT (h3_index)
                 DO UPDATE SET
-                    terrain_type_id = EXCLUDED.terrain_type_id
+                    terrain_type_id = EXCLUDED.terrain_type_id,
+                    coord_x = EXCLUDED.coord_x,
+                    coord_y = EXCLUDED.coord_y
                     -- player_id, building_type_id, has_road NOT updated, preserving existing values
             """
 
             # Note: We need to provide all fields for new inserts
             # Defaults: player_id=NULL, building_type_id=0, has_road=FALSE
-            # h3_index is already a hexadecimal string
-            terrain_data_with_fields = [(h3_index, terrain_id, None, 0, False) for h3_index, terrain_id in terrain_data]
+            # h3_index is already a hexadecimal string, coord_x and coord_y are integers
+
+            # VALIDACIÓN: Verificar que coord_x y coord_y son enteros
+            logger.info("Validating coordinate data types...")
+            invalid_coords = 0
+            for h3_index, terrain_id, coord_x, coord_y in terrain_data[:min(100, len(terrain_data))]:
+                if not isinstance(coord_x, int) or not isinstance(coord_y, int):
+                    logger.error(f"Invalid coordinate types for {h3_index}: coord_x={coord_x} (type={type(coord_x)}), coord_y={coord_y} (type={type(coord_y)})")
+                    invalid_coords += 1
+
+            if invalid_coords > 0:
+                raise TypeError(f"Found {invalid_coords} cells with non-integer coordinates. All coords must be int.")
+
+            logger.info("✓ All coordinates are valid integers")
+
+            terrain_data_with_fields = [
+                (h3_index, terrain_id, None, 0, False, int(coord_x), int(coord_y))
+                for h3_index, terrain_id, coord_x, coord_y in terrain_data
+            ]
 
             logger.info(f"Inserting/updating {len(terrain_data_with_fields)} records in batches of {BATCH_SIZE}...")
+
+            # Log sample of coordinates being inserted
+            if len(terrain_data_with_fields) > 0:
+                sample_size = min(5, len(terrain_data_with_fields))
+                logger.info(f"Sample of first {sample_size} records (h3_index, terrain_id, coord_x, coord_y):")
+                for i in range(sample_size):
+                    h3_idx, terrain_id, _, _, _, cx, cy = terrain_data_with_fields[i]
+                    logger.info(f"  {i+1}. {h3_idx} -> terrain={terrain_id}, coords=({cx}, {cy})")
 
             # Insert in batches with progress logging
             total_inserted = 0
@@ -1329,7 +1560,7 @@ def insert_terrain_data_batch(
         logger.info("Database connection closed")
 
 
-def postprocess_coastal_detection(terrain_data: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
+def postprocess_coastal_detection(terrain_data: List[Tuple[str, int, int, int]]) -> List[Tuple[str, int, int, int]]:
     """
     Post-procesa los datos de terreno para detectar Costa Inteligente.
 
@@ -1339,10 +1570,10 @@ def postprocess_coastal_detection(terrain_data: List[Tuple[str, int]]) -> List[T
     - Si es así, reclasifica la celda como Costa (ID 2).
 
     Args:
-        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id)
+        terrain_data: Lista de tuplas (h3_index_hex_string, terrain_type_id, coord_x, coord_y)
 
     Returns:
-        Lista actualizada de tuplas (h3_index_hex_string, terrain_type_id) con costas detectadas
+        Lista actualizada de tuplas (h3_index_hex_string, terrain_type_id, coord_x, coord_y) con costas detectadas
     """
     logger.info("=" * 80)
     logger.info("FASE DE POST-PROCESAMIENTO: DETECCIÓN DE COSTA INTELIGENTE")
@@ -1350,15 +1581,16 @@ def postprocess_coastal_detection(terrain_data: List[Tuple[str, int]]) -> List[T
 
     start_time = time.time()
 
-    # Crear diccionario para búsqueda rápida: {h3_index_hex_str: terrain_type_id}
-    terrain_dict = {h3_hex: terrain_id for h3_hex, terrain_id in terrain_data}
+    # Crear diccionarios para búsqueda rápida
+    terrain_dict = {h3_hex: terrain_id for h3_hex, terrain_id, _, _ in terrain_data}
+    coords_dict = {h3_hex: (cx, cy) for h3_hex, _, cx, cy in terrain_data}
 
     logger.info(f"Total de celdas a procesar: {len(terrain_data)}")
 
     # Identificar candidatos a costa: celdas Río (ID 4) o Agua (ID 3)
     water_candidates = [
         h3_hex
-        for h3_hex, terrain_id in terrain_data
+        for h3_hex, terrain_id, _, _ in terrain_data
         if terrain_id in [3, 4]
     ]
 
@@ -1395,13 +1627,13 @@ def postprocess_coastal_detection(terrain_data: List[Tuple[str, int]]) -> List[T
 
     logger.info(f"Celdas reclasificadas como Costa (ID 2): {reclassified_count}")
 
-    # Aplicar las reclasificaciones a terrain_data
+    # Aplicar las reclasificaciones a terrain_data con coordenadas preservadas
     updated_terrain_data = []
-    for h3_hex, terrain_id in terrain_data:
+    for h3_hex, terrain_id, coord_x, coord_y in terrain_data:
         if h3_hex in updated_terrain:
-            updated_terrain_data.append((h3_hex, updated_terrain[h3_hex]))
+            updated_terrain_data.append((h3_hex, updated_terrain[h3_hex], coord_x, coord_y))
         else:
-            updated_terrain_data.append((h3_hex, terrain_id))
+            updated_terrain_data.append((h3_hex, terrain_id, coord_x, coord_y))
 
     elapsed = time.time() - start_time
     logger.info(f"Post-procesamiento completado en {elapsed:.2f}s")
@@ -1431,16 +1663,16 @@ def main():
                 f"lng=[{BOUNDING_BOX['min_lng']}, {BOUNDING_BOX['max_lng']}]")
 
     try:
-        # Step 1: Generate H3 cells for target region
-        h3_cells = generate_h3_cells()
+        # Step 1: Generate H3 cells for target region with cartesian coordinates
+        h3_cells, h3_coords = generate_h3_cells()
 
         # Step 2: Extract terrain data from raster (creates VRT automatically)
-        terrain_data = extract_terrain_from_raster(str(raster_dir), h3_cells)
+        terrain_data = extract_terrain_from_raster(str(raster_dir), h3_cells, h3_coords)
 
         # Step 2.5: Post-procesamiento - Detección de Costa Inteligente
         terrain_data = postprocess_coastal_detection(terrain_data)
 
-        # Step 3: Insert data into database
+        # Step 3: Insert data into database (includes coord_x, coord_y)
         insert_terrain_data_batch(DB_CONFIG, terrain_data)
 
         logger.info("=" * 60)

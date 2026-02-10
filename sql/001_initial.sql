@@ -17,7 +17,7 @@ CREATE TABLE terrain_types (
     terrain_type_id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
     color VARCHAR(7) NOT NULL,
-    fertility INT DEFAULT 0,
+    food_output INT DEFAULT 0,
     wood_output INT DEFAULT 0,
     stone_output INT DEFAULT 0,
     iron_output INT DEFAULT 0,
@@ -57,23 +57,6 @@ INSERT INTO building_types (building_type_id, name, icon_slug) VALUES
 (5, 'Granja', 'farm'),
 (6, 'Mina', 'mine'),
 (7, 'Puerto', 'port');
-
-CREATE TABLE unit_types (
-    unit_type_id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL,
-    base_attack INT NOT NULL,
-    base_defense INT NOT NULL,
-    base_speed INT NOT NULL,
-    carry_capacity INT DEFAULT 0,
-    cost_gold INT DEFAULT 0,
-    cost_pop INT DEFAULT 1
-);
-
-INSERT INTO unit_types (name, base_attack, base_defense, base_speed, carry_capacity) VALUES 
-('Levas Campesinas', 5, 5, 2, 5),
-('Infantería Ligera', 15, 10, 3, 10),
-('Arqueros', 25, 5, 3, 5),
-('Caballería', 40, 20, 6, 20);
 
 -- 3. JUGADORES Y ESTADO
 CREATE TABLE world_state (
@@ -130,39 +113,3 @@ CREATE TABLE territory_details (
     port_level INT DEFAULT 0,
     defense_level INT DEFAULT 0
 );
-
-CREATE TABLE armies (
-    army_id SERIAL PRIMARY KEY,
-    player_id INT NOT NULL REFERENCES players(player_id),
-    unit_type_id INT NOT NULL REFERENCES unit_types(unit_type_id),
-    h3_index TEXT NOT NULL, 
-    count INT NOT NULL DEFAULT 1,
-    current_health DECIMAL(5,2) DEFAULT 100.0,
-    fatigue DECIMAL(5,2) DEFAULT 0.0,
-    experience DECIMAL(10,2) DEFAULT 0.0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 5. VISTA API
-CREATE OR REPLACE VIEW v_map_display AS
-SELECT 
-    m.h3_index,
-    m.terrain_type_id,
-    t.name AS terrain_name,
-    t.color AS terrain_color,
-    m.has_road,
-    m.is_capital,
-    m.player_id,
-    p.color AS player_color,
-    p.username AS owner_name,
-    m.building_type_id,
-    bt.icon_slug,
-    COALESCE(td.custom_name, s.name) AS location_name,
-    s.type AS settlement_type,
-    s.population_rank
-FROM h3_map m
-JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
-LEFT JOIN players p ON m.player_id = p.player_id
-LEFT JOIN building_types bt ON m.building_type_id = bt.building_type_id
-LEFT JOIN settlements s ON m.h3_index = s.h3_index
-LEFT JOIN territory_details td ON m.h3_index = td.h3_index;

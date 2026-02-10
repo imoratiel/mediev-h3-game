@@ -22,8 +22,10 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="fief in fiefs" :key="fief.h3_index">
-            <td class="fief-name-cell">{{ fief.name }}</td>
+          <tr v-for="fief in fiefs" :key="fief.h3_index" :class="{ 'capital-row': fief.is_capital }">
+            <td class="fief-name-cell">
+              <span v-if="fief.is_capital" class="capital-icon" title="Capital del Reino">👑 </span>{{ fief.name }}
+            </td>
             <td class="terrain-cell">{{ fief.terrain }}</td>
             <td class="text-right">{{ formatNumber(fief.population) }}</td>
             <td class="text-right">{{ fief.happiness }}%</td>
@@ -164,6 +166,34 @@ const formatGold = (val) => {
 
 .kingdom-table tbody tr:nth-child(even):hover {
   background: rgba(197, 160, 89, 0.2);
+}
+
+/* Capital row highlight */
+.capital-row {
+  background: rgba(255, 215, 0, 0.08) !important;
+  border-left: 3px solid #ffd700;
+}
+
+.capital-row:hover {
+  background: rgba(255, 215, 0, 0.15) !important;
+}
+
+.capital-icon {
+  font-size: 1.1rem;
+  color: #ffd700;
+  margin-right: 4px;
+  animation: pulse-gold 2s ease-in-out infinite;
+}
+
+@keyframes pulse-gold {
+  0%, 100% {
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+  }
+  50% {
+    opacity: 0.85;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.8);
+  }
 }
 
 .text-right { text-align: right; }
