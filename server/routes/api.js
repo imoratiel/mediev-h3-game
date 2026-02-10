@@ -398,7 +398,61 @@ module.exports = function (pool, config, logic) {
                 userId: req.user?.player_id,
                 payload: req.query
             });
-            res.status(500).json({ success: false, message: 'Error al obtener tropas del mapa' });
+            res.status(500).json({ success: false, message: 'Error al obtener ejércitos' });
+        }
+    });
+
+    // Get detailed army info for a specific hex (for popup)
+    router.get('/map/army-details/:h3_index', authenticateToken, async (req, res) => {
+        try {
+            const { h3_index } = req.params;
+
+            // 1. Get armies basic info + resources + rest
+            const armiesQuery = `
+                SELECT 
+                    a.army_id, a.name, a.player_id, a.rest_level,
+                    a.gold_provisions, a.food_provisions, a.wood_provisions,
+                    p.username as player_name,
+                    p.id_color as player_color
+                FROM armies a
+                JOIN players p ON a.player_id = p.player_id
+                WHERE a.h3_index = $1
+            `;
+
+            const armiesResult = await pool.query(armiesQuery, [h3_index]);
+            const armies = armiesResult.rows;
+
+            // 2. For each army, get units
+            for (let army of armies) {
+                const unitsQuery = `
+                    SELECT 
+                        t.quantity, t.experience, t.morale,
+                        ut.name as unit_name, ut.attack, ut.defense
+                    FROM troops t
+                    JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
+                    WHERE t.army_id = $1
+                `;
+                const unitsResult = await pool.query(unitsQuery, [army.army_id]);
+                army.units = unitsResult.rows;
+
+                // Calculate total troops for summary
+                army.total_count = army.units.reduce((sum, u) => sum + u.quantity, 0);
+            }
+
+            res.json({
+                success: true,
+                armies: armies,
+                current_player_id: req.user.player_id
+            });
+
+        } catch (error) {
+            Logger.error(error, {
+                endpoint: '/map/army-details',
+                method: 'GET',
+                userId: req.user?.player_id,
+                payload: req.params
+            });
+            res.status(500).json({ success: false, message: 'Error al obtener detalles del ejército' });
         }
     });
 
@@ -409,19 +463,19 @@ module.exports = function (pool, config, logic) {
     });
 
     router.get('/game/world-state', async (req, res) => {
-        try{
+        try {
             const result = await pool.query('SELECT current_turn, game_date, is_paused FROM world_state WHERE id = 1');
-            res.json({ success: true, turn: result.rows[0].current_turn, date: result.rows[0].game_date, is_paused: result.rows[0].is_paused });    
-        } catch (e) { 
-            if (client) 
-                await client.query('ROLLBACK');             
+            res.json({ success: true, turn: result.rows[0].current_turn, date: result.rows[0].game_date, is_paused: result.rows[0].is_paused });
+        } catch (e) {
+            if (client)
+                await client.query('ROLLBACK');
             Logger.error(error, {
                 endpoint: '/game/world-state',
                 method: 'GET',
                 userId: req.user?.player_id
             });
-            res.status(500).json({ success: false, error: e.message }); 
-        }        
+            res.status(500).json({ success: false, error: e.message });
+        }
     });
 
     router.get('/game/my-fiefs', authenticateToken, async (req, res) => {
@@ -497,16 +551,16 @@ module.exports = function (pool, config, logic) {
                 new_gold_balance: newGoldResult.rows[0].gold,
                 gold_spent: cost
             });
-        } catch (e) { 
-            if (client) 
-                await client.query('ROLLBACK');             
+        } catch (e) {
+            if (client)
+                await client.query('ROLLBACK');
             Logger.error(error, {
                 endpoint: '/territory/explore',
                 method: 'POST',
                 userId: req.user?.player_id,
                 payload: req.body
             });
-            res.status(500).json({ success: false, error: e.message }); 
+            res.status(500).json({ success: false, error: e.message });
         }
         finally { client.release(); }
     });
@@ -535,16 +589,17 @@ module.exports = function (pool, config, logic) {
             await client.query('COMMIT');
             logGameEvent(`[INFRAESTRUCTURA] Jugador ${player_id} mejoró ${building_type} en ${h3_index}`);
             res.json({ success: true, message: `${building_type} mejorada al nivel ${currentLevel + 1}` });
-        } catch (e) { 
-            if (client) 
-                await client.query('ROLLBACK'); 
+        } catch (e) {
+            if (client)
+                await client.query('ROLLBACK');
             Logger.error(error, {
                 endpoint: '/territory/upgrade',
                 method: 'POST',
                 userId: req.user?.player_id,
                 payload: req.body
             });
-            res.status(500).json({ success: false, error: e.message }); }
+            res.status(500).json({ success: false, error: e.message });
+        }
         finally { client.release(); }
     });
 
