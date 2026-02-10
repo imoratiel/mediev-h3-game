@@ -231,13 +231,37 @@ module.exports = function (pool, config, logic) {
             }
 
             const eco = logic.conquest.generateInitialEconomy();
-            await client.query('UPDATE h3_map SET player_id = $1, building_type_id = 0, is_capital = $2, last_update = CURRENT_TIMESTAMP WHERE h3_index = $3', [player_id, isFirstTerritory, h3_index]);
+
+            // Update h3_map (removed is_capital column - now in players.capital_h3)
+            await client.query('UPDATE h3_map SET player_id = $1, building_type_id = 0, last_update = CURRENT_TIMESTAMP WHERE h3_index = $2', [player_id, h3_index]);
+
+            // Insert territory details
             await client.query('INSERT INTO territory_details (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored, gold_stored) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (h3_index) DO UPDATE SET population = EXCLUDED.population, happiness = EXCLUDED.happiness, food_stored = EXCLUDED.food_stored, wood_stored = EXCLUDED.wood_stored, stone_stored = EXCLUDED.stone_stored, iron_stored = EXCLUDED.iron_stored, gold_stored = EXCLUDED.gold_stored', [h3_index, eco.population, eco.happiness, eco.food, eco.wood, eco.stone, 0, 0]);
+
+            // Update player's gold
             await client.query('UPDATE players SET gold = gold - $1 WHERE player_id = $2', [CLAIM_COST, player_id]);
+
+            // If this is the first territory, set it as capital
+            if (isFirstTerritory) {
+                await client.query('UPDATE players SET capital_h3 = $1 WHERE player_id = $2', [h3_index, player_id]);
+                Logger.action(`Primera capital fundada en ${h3_index}`, player_id);
+            }
+
             await client.query('COMMIT');
 
-            logGameEvent(`[Claim] Jugador ${player_id} reclamó ${h3_index}`);
-            res.json({ success: true, is_capital: isFirstTerritory, message: isFirstTerritory ? '👑 ¡Capital fundada!' : '🏰 ¡Territorio colonizado!' });
+            logGameEvent(`[Claim] Jugador ${player_id} reclamó ${h3_index}${isFirstTerritory ? ' (CAPITAL)' : ''}`);
+
+            // Check if terrain has iron output for discovery message
+            let message = isFirstTerritory ? '👑 ¡Capital fundada!' : '🏰 ¡Territorio colonizado!';
+            const hasIron = hex.iron_output && hex.iron_output > 0;
+
+            res.json({
+                success: true,
+                is_capital: isFirstTerritory,
+                iron_vein_found: hasIron,
+                iron_message: hasIron ? `⛏️ ¡Filón de hierro descubierto! (+${hex.iron_output} hierro/mes)` : null,
+                message
+            });
         } catch (error) {
             if (client) await client.query('ROLLBACK');
             res.status(500).json({ success: false, error: error.message });
@@ -265,7 +289,19 @@ module.exports = function (pool, config, logic) {
     router.get('/map/cell-details/:h3_index', async (req, res) => {
         const { h3_index } = req.params;
         const query = `
-      SELECT m.*, t.name AS terrain_type, t.color AS terrain_color, t.food_output, t.wood_output, p.username AS player_name, p.color AS player_color, b.name AS building_type, s.name AS settlement_name, s.type AS settlement_type, td.*
+      SELECT
+        m.*,
+        t.name AS terrain_type,
+        t.color AS terrain_color,
+        t.food_output,
+        t.wood_output,
+        p.username AS player_name,
+        p.color AS player_color,
+        p.capital_h3,
+        b.name AS building_type,
+        s.name AS settlement_name,
+        s.type AS settlement_type,
+        td.*
       FROM h3_map m
       LEFT JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
       LEFT JOIN players p ON m.player_id = p.player_id
@@ -277,9 +313,13 @@ module.exports = function (pool, config, logic) {
         const result = await pool.query(query, [h3_index]);
         if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Hexágono no encontrado' });
         const cell = result.rows[0];
+
+        // Calculate is_capital dynamically
+        const is_capital = cell.player_id && cell.capital_h3 === h3_index;
+
         res.json({
             h3_index, terrain_type: cell.terrain_type, terrain_color: cell.terrain_color, food_output: cell.food_output || 0, wood_output: cell.wood_output || 0,
-            player_id: cell.player_id, player_name: cell.player_name, building_type: cell.building_type, is_capital: cell.is_capital,
+            player_id: cell.player_id, player_name: cell.player_name, building_type: cell.building_type, is_capital,
             settlement_name: cell.settlement_name, territory: cell.population ? { population: cell.population, happiness: cell.happiness, food: cell.food_stored, wood: cell.wood_stored, stone: cell.discovered_resource ? cell.stone_stored : 0, iron: cell.discovered_resource ? cell.iron_stored : 0, gold: cell.discovered_resource ? cell.gold_stored : 0, discovered_resource: cell.discovered_resource, exploration_end_turn: cell.exploration_end_turn, farm_level: cell.farm_level, mine_level: cell.mine_level, lumber_level: cell.lumber_level, port_level: cell.port_level } : null
         });
     });
