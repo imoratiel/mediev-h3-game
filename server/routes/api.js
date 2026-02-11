@@ -417,7 +417,9 @@ module.exports = function (pool, config, logic) {
                     a.army_id, a.name, a.player_id, a.rest_level,
                     a.gold_provisions, a.food_provisions, a.wood_provisions,
                     p.username as player_name,
-                    p.color as player_color
+                    p.color as player_color,
+                    a.destination,
+                    a.recovering
                 FROM armies a
                 JOIN players p ON a.player_id = p.player_id
                 WHERE a.h3_index = $1
