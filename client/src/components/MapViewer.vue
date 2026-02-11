@@ -972,9 +972,16 @@ const filteredAndSortedFiefs = computed(() => {
       }
     }
 
+    // Build name with coordinates
+    let baseName = fief.location_name || fief.h3_index?.substring(0, 8) || 'Territorio';
+    let nameWithCoords = baseName;
+    if (fief.coord_x !== null && fief.coord_x !== undefined && fief.coord_y !== null && fief.coord_y !== undefined) {
+      nameWithCoords = `${baseName} (${fief.coord_x}, ${fief.coord_y})`;
+    }
+
     return {
       h3_index: fief.h3_index,
-      name: fief.location_name || fief.h3_index?.substring(0, 8) || 'Territorio',
+      name: nameWithCoords,
       terrain: fief.terrain_name || 'Desconocido',
       population,
       happiness,

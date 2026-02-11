@@ -24,7 +24,9 @@ SELECT
     bt.icon_slug,
     COALESCE(td.custom_name, s.name) AS location_name,
     s.type AS settlement_type,
-    s.population_rank
+    s.population_rank,
+    m.coord_x, 
+    m.coord_y 
 FROM h3_map m
 JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
 LEFT JOIN players p_owner ON m.player_id = p_owner.player_id

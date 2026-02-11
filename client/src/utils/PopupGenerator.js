@@ -44,6 +44,11 @@ export function generateCellPopupContent(cell, config) {
   // TERRAIN TYPE
   popupContent += `<p class="popup-stat-row"><strong>Terreno:</strong> ${cell.terrain_type}</p>`;
 
+  // COORDINATES (if available)
+  if (cell.coord_x !== null && cell.coord_x !== undefined && cell.coord_y !== null && cell.coord_y !== undefined) {
+    popupContent += `<p class="popup-stat-row"><strong>Coordenadas:</strong> (${cell.coord_x}, ${cell.coord_y})</p>`;
+  }
+
   // BUILDING (if any)
   if (cell.building_type) {
     popupContent += `<p class="popup-stat-row"><strong>Edificio:</strong> ${cell.building_type}</p>`;

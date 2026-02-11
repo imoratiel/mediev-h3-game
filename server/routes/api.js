@@ -142,7 +142,7 @@ module.exports = function (pool, config, logic) {
             if (h3CellsArray.length === 0) return res.json([]);
 
             const query = `
-        SELECT h3_index, terrain_type_id, terrain_color, has_road, player_id, player_color, building_type_id, icon_slug, location_name, settlement_type
+        SELECT h3_index, terrain_type_id, terrain_color, has_road, player_id, player_color, building_type_id, icon_slug, location_name, settlement_type, coord_x, coord_y
         FROM v_map_display WHERE h3_index = ANY($1::text[])
       `;
             const result = await pool.query(query, [h3CellsArray]);
@@ -157,7 +157,9 @@ module.exports = function (pool, config, logic) {
                 building_type_id: row.building_type_id || 0,
                 icon_slug: row.icon_slug || null,
                 location_name: row.location_name || null,
-                settlement_type: row.settlement_type || null
+                settlement_type: row.settlement_type || null,
+                coord_x: row.coord_x,
+                coord_y: row.coord_y
             }));
 
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -482,6 +484,8 @@ module.exports = function (pool, config, logic) {
         const query = `
       SELECT
         m.h3_index,
+        m.coord_x,
+        m.coord_y,
         COALESCE(td.custom_name, s.name, m.h3_index) AS location_name,
         td.*,
         t.name AS terrain_name,
