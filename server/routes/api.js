@@ -303,7 +303,9 @@ module.exports = function (pool, config, logic) {
         b.name AS building_type,
         s.name AS settlement_name,
         s.type AS settlement_type,
-        td.*
+        td.*,
+        m.coord_x,
+        m.coord_y
       FROM h3_map m
       LEFT JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
       LEFT JOIN players p ON m.player_id = p.player_id
@@ -322,7 +324,7 @@ module.exports = function (pool, config, logic) {
         res.json({
             h3_index, terrain_type: cell.terrain_type, terrain_color: cell.terrain_color, food_output: cell.food_output || 0, wood_output: cell.wood_output || 0,
             player_id: cell.player_id, player_name: cell.player_name, building_type: cell.building_type, is_capital,
-            settlement_name: cell.settlement_name, territory: cell.population ? { population: cell.population, happiness: cell.happiness, food: cell.food_stored, wood: cell.wood_stored, stone: cell.discovered_resource ? cell.stone_stored : 0, iron: cell.discovered_resource ? cell.iron_stored : 0, gold: cell.discovered_resource ? cell.gold_stored : 0, discovered_resource: cell.discovered_resource, exploration_end_turn: cell.exploration_end_turn, farm_level: cell.farm_level, mine_level: cell.mine_level, lumber_level: cell.lumber_level, port_level: cell.port_level } : null
+            settlement_name: cell.settlement_name, coord_x: cell.coord_x, coord_y: cell.coord_y, territory: cell.population ? { population: cell.population, happiness: cell.happiness, food: cell.food_stored, wood: cell.wood_stored, stone: cell.discovered_resource ? cell.stone_stored : 0, iron: cell.discovered_resource ? cell.iron_stored : 0, gold: cell.discovered_resource ? cell.gold_stored : 0, discovered_resource: cell.discovered_resource, exploration_end_turn: cell.exploration_end_turn, farm_level: cell.farm_level, mine_level: cell.mine_level, lumber_level: cell.lumber_level, port_level: cell.port_level } : null
         });
     });
 

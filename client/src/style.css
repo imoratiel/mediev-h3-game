@@ -280,6 +280,23 @@ button {
   letter-spacing: 2px;
 }
 
+/* Caja de información del hexágono - ID y Coordenadas */
+.hex-info-box {
+  background: rgba(93, 78, 55, 0.08) !important;
+  border-bottom: 1px solid rgba(93, 78, 55, 0.2);
+  padding: 6px 15px !important;
+  margin: 0 !important;
+  text-align: center;
+}
+
+.hex-info-item {
+  margin: 0 !important;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #6b5d4f !important;
+  letter-spacing: 0.3px;
+}
+
 /* Contenido Principal */
 .cell-inspector {
   padding: 0;

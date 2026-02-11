@@ -35,6 +35,18 @@ export function generateCellPopupContent(cell, config) {
 
   popupContent += `<h3 class="popup-title">${titleIcon} ${title}</h3>`;
 
+  // HEXAGON INFO - ID and Coordinates in one line
+  popupContent += '<div class="hex-info-box">';
+
+  // Build single line: 📍 h3_index (coord_x, coord_y)
+  let hexInfo = `📍 ${h3_index}`;
+  if (cell.coord_x !== null && cell.coord_x !== undefined && cell.coord_y !== null && cell.coord_y !== undefined) {
+    hexInfo += ` (${cell.coord_x}, ${cell.coord_y})`;
+  }
+
+  popupContent += `<p class="hex-info-item">${hexInfo}</p>`;
+  popupContent += '</div>';
+
   // OWNER - Player name or "Sin reclamar"
   const ownerText = cell.player_name
     ? `<span class="popup-owner-name" style="color: #1a1612; border-bottom: 2px solid ${cell.player_color}">⚔️ ${cell.player_name}</span>`
@@ -43,11 +55,6 @@ export function generateCellPopupContent(cell, config) {
 
   // TERRAIN TYPE
   popupContent += `<p class="popup-stat-row"><strong>Terreno:</strong> ${cell.terrain_type}</p>`;
-
-  // COORDINATES (if available)
-  if (cell.coord_x !== null && cell.coord_x !== undefined && cell.coord_y !== null && cell.coord_y !== undefined) {
-    popupContent += `<p class="popup-stat-row"><strong>Coordenadas:</strong> (${cell.coord_x}, ${cell.coord_y})</p>`;
-  }
 
   // BUILDING (if any)
   if (cell.building_type) {
