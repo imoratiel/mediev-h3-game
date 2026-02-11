@@ -251,125 +251,81 @@ export function generateArmyPopup(armyData, config) {
         popupContent += '</div>';
       }
 
-      // LOGISTICS SECTION
-      popupContent += '<div class="army-logistics-section">';
-      popupContent += '<p class="army-section-title">📦 Logística</p>';
-      popupContent += '<div class="army-resources-grid">';
-
-      // Food provisions
+      // LOGISTICS SECTION (COMPACT - inline resources)
       const food = Math.round(Number(army.food_provisions) || 0);
-      popupContent += `<div class="army-resource-item">`;
-      popupContent += `<span class="resource-icon">🌾</span>`;
-      popupContent += `<span class="resource-label">Comida:</span>`;
-      popupContent += `<span class="resource-value">${food}</span>`;
-      popupContent += `</div>`;
-
-      // Gold provisions
       const gold = Number(army.gold_provisions || 0).toFixed(2);
-      popupContent += `<div class="army-resource-item">`;
-      popupContent += `<span class="resource-icon">💰</span>`;
-      popupContent += `<span class="resource-label">Oro:</span>`;
-      popupContent += `<span class="resource-value resource-gold">${gold}</span>`;
-      popupContent += `</div>`;
-
-      // Wood provisions (if any)
       const woodValue = Number(army.wood_provisions) || 0;
+
+      popupContent += '<div class="army-logistics-compact">';
+      popupContent += `<span class="resource-compact">🌾 ${food}</span>`;
+      popupContent += `<span class="resource-compact">💰 ${gold}</span>`;
       if (woodValue > 0) {
-        const wood = Math.round(woodValue);
-        popupContent += `<div class="army-resource-item">`;
-        popupContent += `<span class="resource-icon">🌲</span>`;
-        popupContent += `<span class="resource-label">Madera:</span>`;
-        popupContent += `<span class="resource-value">${wood}</span>`;
-        popupContent += `</div>`;
+        popupContent += `<span class="resource-compact">🌲 ${Math.round(woodValue)}</span>`;
       }
-
-      popupContent += '</div>';
       popupContent += '</div>';
 
-      // REST/STAMINA BAR
-      popupContent += '<div class="army-rest-section">';
-      popupContent += '<p class="army-section-title">💪 Estado Físico</p>';
-
+      // COMBINED STATUS SECTION (COMPACT - stamina + movement)
       const restLevel = army.rest_level || 0;
       const restPercentage = Math.max(0, Math.min(100, restLevel));
       const restColor = restPercentage < 30 ? '#ff6b6b' : (restPercentage < 60 ? '#ffd93d' : '#4caf50');
       const restLabel = restPercentage < 30 ? 'Agotado' : (restPercentage < 60 ? 'Cansado' : 'Descansado');
 
-      popupContent += '<div class="rest-bar-container">';
-      popupContent += `<div class="rest-bar-fill" style="width: ${restPercentage}%; background-color: ${restColor}"></div>`;
-      popupContent += `<span class="rest-bar-text">${restLabel} (${restPercentage}%)</span>`;
-      popupContent += '</div>';
-      popupContent += '</div>';
-
-      // MOVEMENT STATUS (Updated with destination and recovering)
-      popupContent += '<div class="army-status-section">';
-
       const isRecovering = army.recovering && Number(army.recovering) > 0;
       const isMoving = army.destination && army.destination !== null;
 
+      popupContent += '<div class="army-status-compact">';
+
+      // Stamina bar (thin, inline with label)
+      popupContent += '<div class="stamina-inline">';
+      popupContent += `<span class="stamina-label">💪 ${restLabel}</span>`;
+      popupContent += '<div class="rest-bar-thin">';
+      popupContent += `<div class="rest-bar-fill-thin" style="width: ${restPercentage}%; background-color: ${restColor}"></div>`;
+      popupContent += '</div>';
+      popupContent += '</div>';
+
+      // Movement status (compact)
       if (isRecovering) {
         const turnsLeft = Number(army.recovering);
-        popupContent += `<p class="army-status army-recovering"><strong>Estado:</strong> 🛌 Recuperándose (${turnsLeft} turno${turnsLeft !== 1 ? 's' : ''})</p>`;
+        popupContent += `<p class="status-text">🛌 Recuperando (${turnsLeft}t)</p>`;
       } else if (isMoving) {
-        popupContent += `<p class="army-status army-moving"><strong>Estado:</strong> 🏃 En marcha hacia: <span class="destination-hex">${army.destination}</span></p>`;
+        popupContent += `<p class="status-text">🏃 → ${army.destination}</p>`;
       } else {
-        popupContent += `<p class="army-status army-stationed"><strong>Estado:</strong> 📍 Estacionado</p>`;
+        popupContent += `<p class="status-text">📍 Estacionado</p>`;
       }
 
       popupContent += '</div>';
 
-      // ACTIONS SECTION (only for own armies)
+      // ACTIONS SECTION (COMPACT - only icons, single row)
       if (isOwnArmy) {
-        popupContent += '<div class="army-actions-section">';
-        popupContent += '<p class="army-section-title">⚙️ Acciones</p>';
-        popupContent += '<div class="army-actions-grid">';
+        popupContent += '<div class="army-actions-compact">';
 
         // Move button
         const canMove = !isRecovering;
-        const moveClass = canMove ? 'army-action-btn' : 'army-action-btn army-action-disabled';
+        const moveClass = canMove ? 'army-action-icon' : 'army-action-icon army-action-disabled';
         const moveTitle = !canMove
           ? `Recuperándose: ${army.recovering} turno${Number(army.recovering) !== 1 ? 's' : ''}`
-          : 'Mover ejército a nueva ubicación';
-        popupContent += `<button id="army-move-${army.army_id}" class="${moveClass}" ${!canMove ? 'disabled' : ''} title="${moveTitle}">`;
-        popupContent += `<span class="action-icon">📍</span>`;
-        popupContent += `<span class="action-label">Mover</span>`;
-        popupContent += `</button>`;
+          : 'Mover';
+        popupContent += `<button id="army-move-${army.army_id}" class="${moveClass}" ${!canMove ? 'disabled' : ''} title="${moveTitle}">📍</button>`;
 
         // Stop button
         const canStop = isMoving;
-        const stopClass = canStop ? 'army-action-btn' : 'army-action-btn army-action-disabled';
-        popupContent += `<button id="army-stop-${army.army_id}" class="${stopClass}" ${!canStop ? 'disabled' : ''} title="Detener movimiento actual">`;
-        popupContent += `<span class="action-icon">🛑</span>`;
-        popupContent += `<span class="action-label">Detener</span>`;
-        popupContent += `</button>`;
+        const stopClass = canStop ? 'army-action-icon' : 'army-action-icon army-action-disabled';
+        popupContent += `<button id="army-stop-${army.army_id}" class="${stopClass}" ${!canStop ? 'disabled' : ''} title="Detener">🛑</button>`;
 
         // Conquer button
-        popupContent += `<button id="army-conquer-${army.army_id}" class="army-action-btn" title="Asediar/Conquistar el feudo actual">`;
-        popupContent += `<span class="action-icon">⚔️</span>`;
-        popupContent += `<span class="action-label">Conquistar</span>`;
-        popupContent += `</button>`;
+        popupContent += `<button id="army-conquer-${army.army_id}" class="army-action-icon" title="Conquistar">⚔️</button>`;
 
         // Split button
-        popupContent += `<button id="army-split-${army.army_id}" class="army-action-btn" title="Dividir el ejército en dos">`;
-        popupContent += `<span class="action-icon">👥</span>`;
-        popupContent += `<span class="action-label">Separar</span>`;
-        popupContent += `</button>`;
+        popupContent += `<button id="army-split-${army.army_id}" class="army-action-icon" title="Separar">👥</button>`;
 
         // Merge button
         const canMerge = armyData.armies.length > 1;
-        const mergeClass = canMerge ? 'army-action-btn' : 'army-action-btn army-action-disabled';
-        popupContent += `<button id="army-merge-${army.army_id}" class="${mergeClass}" ${!canMerge ? 'disabled' : ''} title="Fusionar con otro ejército en esta ubicación">`;
-        popupContent += `<span class="action-icon">🔗</span>`;
-        popupContent += `<span class="action-label">Unir</span>`;
-        popupContent += `</button>`;
+        const mergeClass = canMerge ? 'army-action-icon' : 'army-action-icon army-action-disabled';
+        popupContent += `<button id="army-merge-${army.army_id}" class="${mergeClass}" ${!canMerge ? 'disabled' : ''} title="Unir">🔗</button>`;
 
         // Supply button
-        popupContent += `<button id="army-supply-${army.army_id}" class="army-action-btn" title="Recargar comida desde feudo adyacente">`;
-        popupContent += `<span class="action-icon">🌾</span>`;
-        popupContent += `<span class="action-label">Abastecer</span>`;
-        popupContent += `</button>`;
+        popupContent += `<button id="army-supply-${army.army_id}" class="army-action-icon" title="Abastecer">🌾</button>`;
 
-        popupContent += '</div>';
         popupContent += '</div>';
       }
 
