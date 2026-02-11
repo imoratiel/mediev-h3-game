@@ -42,6 +42,15 @@ export async function getCellDetails(h3_index) {
   return response.data;
 }
 
+/**
+ * Get detailed army information for a specific hex
+ * @param {string} h3_index - H3 index of the hex with armies
+ */
+export async function getArmyDetails(h3_index) {
+  const response = await axios.get(`${API_URL}/api/map/army-details/${h3_index}`);
+  return response.data;
+}
+
 // ============================================
 // PLAYER ENDPOINTS
 // ============================================

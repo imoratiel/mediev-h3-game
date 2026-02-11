@@ -718,7 +718,7 @@ import 'leaflet/dist/leaflet.css';
 
 // Import map utilities
 import { getHexagonStyles, getCapitalStarIconHTML } from '@/utils/mapStyles.js';
-import { generateCellPopupContent } from '@/utils/popupGenerator.js';
+import { generateCellPopupContent, generateArmyPopup } from '@/utils/popupGenerator.js';
 
 // Import API service
 import * as mapApi from '@/services/mapApi.js';
@@ -1517,22 +1517,17 @@ const renderArmyMarkers = (armies, currentPlayerId) => {
         iconAnchor: [12, 12]
       });
 
-      // Create marker with popup showing troop details
+      // Create marker with click event to show detailed popup
       const marker = L.marker([lat, lng], {
         icon: customIcon,
         pane: 'armyPane'
       });
 
-      // Add popup with army information
-      const popupContent = `
-        <div style="text-align: center;">
-          <strong>${isOwnTroops ? 'Tus Tropas' : 'Tropas Enemigas'}</strong><br>
-          <span>Ejércitos: ${army.army_count || 1}</span><br>
-          <span>Tropas: ${army.total_troops || 0}</span>
-        </div>
-      `;
+      // Add click event to show detailed army popup
+      marker.on('click', () => {
+        showArmyDetailsPopup(army.h3_index, [lat, lng]);
+      });
 
-      marker.bindPopup(popupContent);
       marker.addTo(armyMarkersLayer);
     } catch (err) {
       console.error(`Error rendering army marker for ${army.h3_index}:`, err);
@@ -2982,6 +2977,58 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
   } catch (error) {
     console.error('Error fetching cell details:', error);
     showToast('Error al cargar información del territorio', 'error');
+  }
+};
+
+/**
+ * Show detailed army information popup
+ * Fetches full army details from API and displays in Leaflet popup
+ */
+const showArmyDetailsPopup = async (h3_index, latLng) => {
+  try {
+    console.log(`[Army Popup] Fetching army details for ${h3_index}...`);
+
+    // Fetch detailed army information from API
+    const data = await mapApi.getArmyDetails(h3_index);
+
+    if (!data.success) {
+      showToast('Error al cargar información del ejército', 'error');
+      return;
+    }
+
+    console.log(`[Army Popup] Loaded ${data.armies.length} armies at ${h3_index}`);
+
+    // Get cell coordinates if available
+    let coord_x = null;
+    let coord_y = null;
+    try {
+      const cellData = await mapApi.getCellDetails(h3_index);
+      coord_x = cellData.coord_x;
+      coord_y = cellData.coord_y;
+    } catch (err) {
+      console.warn('[Army Popup] Could not fetch coordinates:', err);
+    }
+
+    // Build popup HTML content using external generator
+    const popupContent = generateArmyPopup(data, {
+      currentPlayerId: playerId.value,
+      h3_index,
+      coord_x,
+      coord_y
+    });
+
+    // Create and show popup
+    const popup = L.popup({
+      maxWidth: 350,
+      className: 'army-details-popup'
+    })
+      .setLatLng(latLng)
+      .setContent(popupContent)
+      .openOn(map);
+
+  } catch (error) {
+    console.error('Error fetching army details:', error);
+    showToast('Error al cargar información del ejército', 'error');
   }
 };
 

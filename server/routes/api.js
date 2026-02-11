@@ -417,7 +417,7 @@ module.exports = function (pool, config, logic) {
                     a.army_id, a.name, a.player_id, a.rest_level,
                     a.gold_provisions, a.food_provisions, a.wood_provisions,
                     p.username as player_name,
-                    p.id_color as player_color
+                    p.color as player_color
                 FROM armies a
                 JOIN players p ON a.player_id = p.player_id
                 WHERE a.h3_index = $1
@@ -431,7 +431,7 @@ module.exports = function (pool, config, logic) {
                 const unitsQuery = `
                     SELECT 
                         t.quantity, t.experience, t.morale,
-                        ut.name as unit_name, ut.attack, ut.defense
+                        ut.name as unit_name, ut.attack, ut.health_points
                     FROM troops t
                     JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
                     WHERE t.army_id = $1

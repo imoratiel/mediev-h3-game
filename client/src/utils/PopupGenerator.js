@@ -182,3 +182,161 @@ export function generateCellPopupContent(cell, config) {
 
   return popupContent;
 }
+
+/**
+ * Genera el contenido HTML del popup de detalles de ejército
+ * @param {Object} armyData - Datos del ejército desde la API
+ * @param {Object} config - Configuración del popup
+ * @returns {String} HTML content para el popup
+ */
+export function generateArmyPopup(armyData, config) {
+  const {
+    currentPlayerId,
+    h3_index,
+    coord_x,
+    coord_y
+  } = config;
+
+  let popupContent = '<div class="army-inspector">';
+
+  // Si hay múltiples ejércitos en el mismo hex, mostrarlos todos
+  if (armyData.armies && armyData.armies.length > 0) {
+
+    armyData.armies.forEach((army, index) => {
+      const isOwnArmy = army.player_id === currentPlayerId;
+      const armyClass = isOwnArmy ? 'army-own' : 'army-enemy';
+
+      // HEADER - Army name and owner
+      popupContent += `<div class="army-header ${armyClass}">`;
+      popupContent += `<h3 class="army-title">`;
+      popupContent += isOwnArmy ? '🛡️ ' : '⚔️ ';
+      popupContent += `${army.name || 'Ejército sin nombre'}`;
+      popupContent += `</h3>`;
+      popupContent += `<p class="army-owner" style="border-bottom: 2px solid ${army.player_color}">`;
+      popupContent += `👤 ${army.player_name}`;
+      popupContent += `</p>`;
+      popupContent += `</div>`;
+
+      // LOCATION INFO with coordinates
+      popupContent += '<div class="army-info-box">';
+      let locationInfo = `📍 ${h3_index}`;
+      if (coord_x !== null && coord_x !== undefined && coord_y !== null && coord_y !== undefined) {
+        locationInfo += ` (${coord_x}, ${coord_y})`;
+      }
+      popupContent += `<p class="army-location">${locationInfo}</p>`;
+      popupContent += '</div>';
+
+      // TROOPS SECTION
+      if (army.units && army.units.length > 0) {
+        popupContent += '<div class="army-troops-section">';
+        popupContent += '<p class="army-section-title">⚔️ Composición de Tropas</p>';
+        popupContent += '<div class="army-troops-list">';
+
+        army.units.forEach(unit => {
+          const unitIcon = getUnitIcon(unit.unit_name);
+          popupContent += `<div class="army-troop-item">`;
+          popupContent += `<span class="troop-icon">${unitIcon}</span>`;
+          popupContent += `<span class="troop-name">${unit.unit_name}:</span>`;
+          popupContent += `<span class="troop-quantity">${unit.quantity}</span>`;
+          popupContent += `</div>`;
+        });
+
+        // Total troops
+        const totalTroops = army.total_count || army.units.reduce((sum, u) => sum + u.quantity, 0);
+        popupContent += `<div class="army-troop-total">`;
+        popupContent += `<strong>Total:</strong> <span class="total-count">${totalTroops} soldados</span>`;
+        popupContent += `</div>`;
+
+        popupContent += '</div>';
+        popupContent += '</div>';
+      }
+
+      // LOGISTICS SECTION
+      popupContent += '<div class="army-logistics-section">';
+      popupContent += '<p class="army-section-title">📦 Logística</p>';
+      popupContent += '<div class="army-resources-grid">';
+
+      // Food provisions
+      const food = Math.round(Number(army.food_provisions) || 0);
+      popupContent += `<div class="army-resource-item">`;
+      popupContent += `<span class="resource-icon">🌾</span>`;
+      popupContent += `<span class="resource-label">Comida:</span>`;
+      popupContent += `<span class="resource-value">${food}</span>`;
+      popupContent += `</div>`;
+
+      // Gold provisions
+      const gold = Number(army.gold_provisions || 0).toFixed(2);
+      popupContent += `<div class="army-resource-item">`;
+      popupContent += `<span class="resource-icon">💰</span>`;
+      popupContent += `<span class="resource-label">Oro:</span>`;
+      popupContent += `<span class="resource-value resource-gold">${gold}</span>`;
+      popupContent += `</div>`;
+
+      // Wood provisions (if any)
+      const woodValue = Number(army.wood_provisions) || 0;
+      if (woodValue > 0) {
+        const wood = Math.round(woodValue);
+        popupContent += `<div class="army-resource-item">`;
+        popupContent += `<span class="resource-icon">🌲</span>`;
+        popupContent += `<span class="resource-label">Madera:</span>`;
+        popupContent += `<span class="resource-value">${wood}</span>`;
+        popupContent += `</div>`;
+      }
+
+      popupContent += '</div>';
+      popupContent += '</div>';
+
+      // REST/STAMINA BAR
+      popupContent += '<div class="army-rest-section">';
+      popupContent += '<p class="army-section-title">💪 Estado Físico</p>';
+
+      const restLevel = army.rest_level || 0;
+      const restPercentage = Math.max(0, Math.min(100, restLevel));
+      const restColor = restPercentage < 30 ? '#ff6b6b' : (restPercentage < 60 ? '#ffd93d' : '#4caf50');
+      const restLabel = restPercentage < 30 ? 'Agotado' : (restPercentage < 60 ? 'Cansado' : 'Descansado');
+
+      popupContent += '<div class="rest-bar-container">';
+      popupContent += `<div class="rest-bar-fill" style="width: ${restPercentage}%; background-color: ${restColor}"></div>`;
+      popupContent += `<span class="rest-bar-text">${restLabel} (${restPercentage}%)</span>`;
+      popupContent += '</div>';
+      popupContent += '</div>';
+
+      // MOVEMENT STATUS
+      popupContent += '<div class="army-status-section">';
+      // For now, all armies are static (could add is_moving field later)
+      const isMoving = false; // TODO: Get from database when movement system is implemented
+      const statusIcon = isMoving ? '🏃' : '📍';
+      const statusText = isMoving ? 'En marcha' : 'Estacionado';
+      popupContent += `<p class="army-status"><strong>Estado:</strong> ${statusIcon} ${statusText}</p>`;
+      popupContent += '</div>';
+
+      // Separator between armies (if multiple)
+      if (index < armyData.armies.length - 1) {
+        popupContent += '<hr class="army-separator">';
+      }
+    });
+
+  } else {
+    // No armies found
+    popupContent += '<p class="army-empty">⚠️ No se encontraron ejércitos en esta ubicación</p>';
+  }
+
+  popupContent += '</div>';
+
+  return popupContent;
+}
+
+/**
+ * Helper function to get appropriate icon for unit type
+ * @param {string} unitName - Name of the unit type
+ * @returns {string} Emoji icon
+ */
+function getUnitIcon(unitName) {
+  const name = unitName.toLowerCase();
+  if (name.includes('infanter') || name.includes('lancer')) return '⚔️';
+  if (name.includes('archer') || name.includes('arquer')) return '🏹';
+  if (name.includes('caball') || name.includes('knight')) return '🐴';
+  if (name.includes('siege') || name.includes('catapult')) return '🎯';
+  if (name.includes('scout') || name.includes('explor')) return '🔭';
+  return '🛡️'; // Default icon
+}
