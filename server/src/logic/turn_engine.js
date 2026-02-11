@@ -238,23 +238,7 @@ async function processMilitaryConsumption(client, turn, config) {
                                 WHERE h3_index = $2
                             `, [consumedFromFief, army.h3_index]);
 
-                            // Generate warning message if army started consuming from fief
-                            if (consumedFromFief > 0 && consumedFromArmy < totalConsumption) {
-                                const messageSubject = `⚠️ Suministros Agotados - Ejército ${army.name}`;
-                                const messageBody = `
-El Ejército **${army.name}** ha agotado sus provisiones propias y ha comenzado a consumir las reservas del feudo.
-
-📍 **Ubicación**: ${army.h3_index}
-🍖 **Consumido del feudo**: ${consumedFromFief.toFixed(1)} raciones
-
-⚠️ Reabastecer urgentemente para evitar hambruna.
-                                `.trim();
-
-                                await client.query(`
-                                    INSERT INTO messages (sender_id, receiver_id, subject, body, is_read, sent_at)
-                                    VALUES (NULL, $1, $2, $3, false, CURRENT_TIMESTAMP)
-                                `, [army.player_id, messageSubject, messageBody]);
-                            }
+                            // Mensaje eliminado: No se envían alertas de suministros agotados
                         }
                     }
                 }
@@ -271,27 +255,7 @@ El Ejército **${army.name}** ha agotado sus provisiones propias y ha comenzado 
                 // STEP 4: Check for starvation (deficit remains)
                 if (remainingConsumption > 0) {
                     Logger.engine(`[TURN ${turn}] ⚠️ HAMBRUNA - Ejército ${army.army_id} (${army.name}) de player ${army.player_id}: Deficit de ${remainingConsumption.toFixed(1)} raciones`);
-
-                    // Generate starvation message
-                    const messageSubject = `🚨 HAMBRUNA - Ejército ${army.name}`;
-                    const messageBody = `
-¡ALERTA CRÍTICA!
-
-El Ejército **${army.name}** está sufriendo **HAMBRUNA**.
-
-📊 **Situación**:
-• Consumo requerido: ${totalConsumption.toFixed(1)}
-• Consumido de provisiones: ${consumedFromArmy.toFixed(1)}
-• Consumido del feudo: ${consumedFromFief.toFixed(1)}
-• **Déficit**: ${remainingConsumption.toFixed(1)} ⚠️
-
-🩸 Las tropas están sufriendo bajas por inanición. Reabastecer INMEDIATAMENTE.
-                    `.trim();
-
-                    await client.query(`
-                        INSERT INTO messages (sender_id, receiver_id, subject, body, is_read, sent_at)
-                        VALUES (NULL, $1, $2, $3, false, CURRENT_TIMESTAMP)
-                    `, [army.player_id, messageSubject, messageBody]);
+                    // Mensaje eliminado: No se envían alertas de hambruna
                 } else {
                     Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} (${army.name}) de player ${army.player_id} (${army.username}) consumió ${totalConsumption.toFixed(1)} raciones. (Fuente: ${source})`);
                 }
