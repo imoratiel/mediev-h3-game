@@ -317,7 +317,13 @@ export function generateArmyPopup(armyData, config) {
         } else if (isRecovering) {
           moveTitle = `Recuperándose: ${army.recovering} turno${Number(army.recovering) !== 1 ? 's' : ''}`;
         }
-        popupContent += `<button id="army-move-${army.army_id}" class="${moveClass}" ${!canMove ? 'disabled' : ''} title="${moveTitle}">📍</button>`;
+
+        // Use onclick for immediate response (exposed global function from MapViewer)
+        const armyNameEscaped = (army.name || 'Ejército').replace(/'/g, "\\'");
+        const moveOnClick = canMove
+          ? `onclick="if(window.startArmyMovement) window.startArmyMovement(${army.army_id}, '${armyNameEscaped}')"`
+          : '';
+        popupContent += `<button id="army-move-${army.army_id}" class="${moveClass}" ${!canMove ? 'disabled' : ''} ${moveOnClick} title="${moveTitle}">📍</button>`;
 
         // Stop button
         const canStop = isMoving;

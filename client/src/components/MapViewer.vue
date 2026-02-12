@@ -718,6 +718,7 @@ import 'leaflet/dist/leaflet.css';
 // Import map utilities
 import { getHexagonStyles, getCapitalStarIconHTML } from '@/utils/mapStyles.js';
 import { generateCellPopupContent, generateArmyPopup } from '@/utils/popupGenerator.js';
+import MapInteractionController from '@/utils/MapInteractionController.js';
 
 // Import API service
 import * as mapApi from '@/services/mapApi.js';
@@ -2037,10 +2038,27 @@ const renderHexagons = (hexagons) => {
         });
       });
 
-      // Click interaction
+      // Click interaction - Delegated to MapInteractionController
       const [lat, lng] = cellToLatLng(hex.h3_index);
       fillPolygon.on('click', async function () {
-        await showCellDetailsPopup(hex.h3_index, [lat, lng]);
+        MapInteractionController.handleMapClick(hex.h3_index, {
+          // Modo normal: abrir popup del hexágono
+          onNormal: async (h3Index) => {
+            await showCellDetailsPopup(h3Index, [lat, lng]);
+          },
+          // Modo selección: procesar movimiento del ejército
+          onSelectDestination: async (armyId, targetH3, armyName) => {
+            await processArmyMovement(armyId, targetH3, armyName);
+          }
+        });
+      });
+
+      // Right-click to cancel selection
+      fillPolygon.on('contextmenu', function (e) {
+        L.DomEvent.preventDefault(e);
+        if (MapInteractionController.isSelectingDestination()) {
+          window.cancelArmyMovement();
+        }
       });
 
       fillPolygon.addTo(hexagonLayer);
@@ -3584,6 +3602,81 @@ watch(
   }
 );
 
+// ============================================
+// MAP INTERACTION CONTROLLER SETUP
+// ============================================
+
+/**
+ * Setup del controlador de interacción del mapa
+ * Expone funciones globales y configura callbacks
+ */
+const setupMapInteractionController = () => {
+  // Exponer función global para iniciar movimiento de ejército
+  window.startArmyMovement = (armyId, armyName) => {
+    console.log(`[MapViewer] Iniciando movimiento de ejército: ${armyName} (${armyId})`);
+
+    // Activar modo de selección en el controlador
+    MapInteractionController.startArmyMovement(armyId, armyName);
+
+    // Cambiar cursor y mostrar mensaje al usuario
+    if (map) {
+      map.getContainer().style.cursor = 'crosshair';
+    }
+
+    showToast(`🎯 Selecciona el destino para ${armyName}. Click derecho para cancelar.`, 'info');
+  };
+
+  // Exponer función global para cancelar selección
+  window.cancelArmyMovement = () => {
+    MapInteractionController.cancelSelection();
+    if (map) {
+      map.getContainer().style.cursor = '';
+    }
+    showToast('Movimiento cancelado', 'info');
+  };
+
+  // Registrar callback para cambios de modo
+  MapInteractionController.setOnModeChange((mode, data) => {
+    console.log(`[MapViewer] Modo de interacción cambió a: ${mode}`, data);
+
+    // Resetear cursor cuando vuelve a modo normal
+    if (mode === 'NORMAL' && map) {
+      map.getContainer().style.cursor = '';
+    }
+  });
+
+  console.log('[MapViewer] ✓ Map Interaction Controller configurado');
+};
+
+/**
+ * Procesa el movimiento de un ejército a un destino
+ * @param {number} armyId - ID del ejército a mover
+ * @param {string} targetH3 - Hexágono destino
+ * @param {string} armyName - Nombre del ejército (para feedback)
+ */
+const processArmyMovement = async (armyId, targetH3, armyName) => {
+  try {
+    console.log(`[MapViewer] Procesando movimiento: Ejército ${armyId} → ${targetH3}`);
+
+    // Llamar a API de movimiento
+    const response = await mapApi.moveArmy(armyId, targetH3);
+
+    if (response.success) {
+      showToast(`✅ ${response.message || `${armyName} en marcha hacia ${targetH3}`}`, 'success');
+
+      // Refrescar datos del mapa
+      await fetchHexagonData();
+    } else {
+      showToast(`⚠️ ${response.message || 'No se pudo mover el ejército'}`, 'warning');
+    }
+
+  } catch (error) {
+    console.error('[MapViewer] Error procesando movimiento:', error);
+    const errorMsg = error.response?.data?.message || error.message || 'Error al mover ejército';
+    showToast(`❌ ${errorMsg}`, 'error');
+  }
+};
+
 // Lifecycle hooks
 onMounted(() => {
   checkAuth(); // Check authentication first
@@ -3594,6 +3687,9 @@ onMounted(() => {
   updateFiefsUI(); // Load initial fiefs list
   loadMessages(); // Load initial messages
   startSync(); // Start server synchronization (polls every 30 seconds)
+
+  // Setup Map Interaction Controller
+  setupMapInteractionController();
 });
 
 onBeforeUnmount(() => {

@@ -176,7 +176,7 @@ async function recruitUnits(pool, params, playerId) {
 
         let armyId;
         if (armyQuery.rows.length === 0) {
-            // Create new army - USANDO army_id, rest_level
+            // Create new army - USANDO army_id
             const newArmyQuery = await client.query(
                 `INSERT INTO armies (name, player_id, h3_index)
                  VALUES ($1, $2, $3)
@@ -241,8 +241,7 @@ async function getTroops(pool, playerId) {
             ut.speed,
             a.army_id,
             a.name AS army_name,
-            a.h3_index,
-            a.rest_level
+            a.h3_index
         FROM troops t
         INNER JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
         INNER JOIN armies a ON t.army_id = a.army_id

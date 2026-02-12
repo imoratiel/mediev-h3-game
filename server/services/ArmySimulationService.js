@@ -11,7 +11,7 @@
  */
 
 const pool = require('../db');
-const Logger = require('../src/utils/logger');
+const { Logger } = require('../src/utils/logger');
 
 class ArmySimulationService {
   /**

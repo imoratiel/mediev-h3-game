@@ -11,6 +11,7 @@ module.exports = function (pool, config, logic) {
     const { logGameEvent, Logger } = require('../src/utils/logger');
     const { formatDaysToYearsAndDays, getTerrainColor } = logic.territory;
     const military = require('../src/logic/military');
+    const ArmySimulationService = require('../services/ArmySimulationService');
 
     // ============================================
     // AUTHENTICATION ENDPOINTS
@@ -695,6 +696,127 @@ module.exports = function (pool, config, logic) {
                 userId: req.user?.player_id
             });
             res.status(500).json({ success: false, message: 'Error al obtener tropas' });
+        }
+    });
+
+    router.post('/military/move-army', authenticateToken, async (req, res) => {
+        try {
+            const player_id = req.user.player_id;
+            const { army_id, target_h3 } = req.body;
+
+            if (!army_id || !target_h3) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Faltan parámetros requeridos (army_id, target_h3)'
+                });
+            }
+
+            // 1. Validate army exists and belongs to player
+            const armyCheck = await pool.query(
+                'SELECT army_id, name, h3_index, player_id FROM armies WHERE army_id = $1',
+                [army_id]
+            );
+
+            if (armyCheck.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Ejército no encontrado'
+                });
+            }
+
+            const army = armyCheck.rows[0];
+
+            if (army.player_id !== player_id) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No tienes permiso para mover este ejército'
+                });
+            }
+
+            // 2. Check if army can move (no force_rest)
+            const canMove = await ArmySimulationService.canArmyMove(army_id);
+            if (!canMove) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El ejército tiene unidades agotadas y debe descansar'
+                });
+            }
+
+            // 3. Calculate distance (for now, simple grid distance)
+            const distance = h3.gridDistance(army.h3_index, target_h3);
+
+            // 4. Validate destination is reachable (for now, just check it's not too far)
+            const MAX_DISTANCE = 10; // TODO: Configurable
+            if (distance > MAX_DISTANCE) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Destino demasiado lejano (${distance} hexágonos, máximo ${MAX_DISTANCE})`
+                });
+            }
+
+            // 5. Calculate stamina cost (10 per hex moved, configurable)
+            const STAMINA_COST_PER_HEX = 10; // TODO: Get from terrain modifiers
+            const totalStaminaCost = distance * STAMINA_COST_PER_HEX;
+
+            // 6. Consume stamina
+            const staminaResult = await ArmySimulationService.consumeStamina(army_id, totalStaminaCost);
+
+            if (!staminaResult.success) {
+                return res.status(500).json({
+                    success: false,
+                    message: 'Error al procesar consumo de stamina: ' + staminaResult.message
+                });
+            }
+
+            // 7. Update army destination and recovering turns
+            const recoveringTurns = Math.ceil(distance / 2); // 1 turn per 2 hexes
+            await pool.query(
+                `UPDATE armies
+                 SET destination = $1,
+                     recovering = $2
+                 WHERE army_id = $3`,
+                [target_h3, recoveringTurns, army_id]
+            );
+
+            // 8. Log action
+            Logger.action(
+                `Movió ejército "${army.name}" desde ${army.h3_index} hacia ${target_h3} (${distance} hexágonos)`,
+                player_id,
+                {
+                    army_id,
+                    from: army.h3_index,
+                    to: target_h3,
+                    distance,
+                    stamina_consumed: totalStaminaCost,
+                    recovering_turns: recoveringTurns
+                }
+            );
+
+            res.json({
+                success: true,
+                message: `${army.name} en marcha hacia ${target_h3} (${distance} hex, ${recoveringTurns} turnos)`,
+                data: {
+                    army_name: army.name,
+                    distance,
+                    stamina_consumed: totalStaminaCost,
+                    recovering_turns: recoveringTurns,
+                    exhausted_units: staminaResult.exhaustedUnits || 0
+                }
+            });
+
+        } catch (error) {
+            console.error('Error al mover ejército:', error);
+            Logger.error(error, {
+                endpoint: '/api/military/move-army',
+                method: 'POST',
+                userId: req.user?.player_id,
+                payload: req.body
+            });
+            res.status(500).json({
+                success: false,
+                message: 'Error al mover ejército',
+                error: error.message
+            });
         }
     });
 

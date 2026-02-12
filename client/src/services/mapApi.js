@@ -232,6 +232,19 @@ export async function recruitTroops(payload) {
   return response.data;
 }
 
+/**
+ * Move army to a destination
+ * @param {number} armyId - Army ID
+ * @param {string} targetH3 - Target H3 index
+ */
+export async function moveArmy(armyId, targetH3) {
+  const response = await axios.post(`${API_URL}/api/military/move-army`, {
+    army_id: armyId,
+    target_h3: targetH3
+  });
+  return response.data;
+}
+
 // ============================================
 // AUTH ENDPOINTS
 // ============================================
