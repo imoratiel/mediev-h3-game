@@ -3677,6 +3677,62 @@ const processArmyMovement = async (armyId, targetH3, armyName) => {
   }
 };
 
+// ============================================
+// KEYBOARD EVENT HANDLERS
+// ============================================
+
+/**
+ * Maneja eventos de teclado (principalmente ESC para cerrar paneles/estados)
+ * Implementa una lógica jerárquica de cierre
+ */
+const handleKeyDown = (event) => {
+  // Solo procesar la tecla ESC
+  if (event.key !== 'Escape') return;
+
+  console.log('[MapViewer] ESC presionado - Verificando estados...');
+
+  // PRIORIDAD 1: Cancelar modo de selección de destino
+  if (MapInteractionController.isInteracting()) {
+    console.log('[MapViewer] Cancelando modo de selección');
+    MapInteractionController.cancelSelection();
+
+    // Resetear cursor
+    if (map) {
+      map.getContainer().style.cursor = '';
+    }
+
+    showToast('Selección cancelada', 'info');
+    event.preventDefault();
+    return;
+  }
+
+  // PRIORIDAD 2: Cerrar popup de Leaflet si está abierto
+  if (map && map.isPopupOpen()) {
+    console.log('[MapViewer] Cerrando popup del mapa');
+    map.closePopup();
+    event.preventDefault();
+    return;
+  }
+
+  // PRIORIDAD 3: Cerrar paneles laterales/overlays
+  if (activeOverlay.value) {
+    console.log(`[MapViewer] Cerrando overlay: ${activeOverlay.value}`);
+    activeOverlay.value = null;
+    event.preventDefault();
+    return;
+  }
+
+  // PRIORIDAD 4: Cerrar panel de usuario si está abierto
+  if (showUserPanel.value) {
+    console.log('[MapViewer] Cerrando panel de usuario');
+    showUserPanel.value = false;
+    event.preventDefault();
+    return;
+  }
+
+  console.log('[MapViewer] ESC presionado pero no hay estados para cerrar');
+};
+
 // Lifecycle hooks
 onMounted(() => {
   checkAuth(); // Check authentication first
@@ -3690,9 +3746,17 @@ onMounted(() => {
 
   // Setup Map Interaction Controller
   setupMapInteractionController();
+
+  // Setup keyboard event listeners
+  window.addEventListener('keydown', handleKeyDown);
+  console.log('[MapViewer] ✓ Keyboard event listeners registered');
 });
 
 onBeforeUnmount(() => {
+  // Clear keyboard event listeners
+  window.removeEventListener('keydown', handleKeyDown);
+  console.log('[MapViewer] ✓ Keyboard event listeners removed');
+
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }

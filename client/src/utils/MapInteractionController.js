@@ -141,6 +141,14 @@ class MapInteractionController {
   }
 
   /**
+   * Verifica si hay algún modo especial activo (no está en modo normal)
+   * @returns {boolean} - true si hay interacción especial activa
+   */
+  isInteracting() {
+    return this.currentMode !== InteractionMode.NORMAL;
+  }
+
+  /**
    * Registra un callback para cuando cambie el modo
    * @param {Function} callback - Función a ejecutar cuando cambie el modo (mode, data) => void
    */
