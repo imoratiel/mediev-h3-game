@@ -10,6 +10,7 @@
  * - Liberación: Si stamina >= 25 y force_rest = TRUE, se libera (force_rest = FALSE)
  */
 
+const config = require('../config/constants.js');
 const pool = require('../db');
 const { Logger } = require('../src/utils/logger');
 const h3 = require('h3-js');

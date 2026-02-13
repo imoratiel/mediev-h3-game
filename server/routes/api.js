@@ -3,6 +3,11 @@ const router = express.Router();
 const h3 = require('h3-js');
 const { authenticateToken, requireAdmin, generateToken } = require('../src/middleware/auth');
 
+
+// Controllers
+const TurnController = require('../controllers/TurnController.js');
+
+
 // This file will contain all the endpoints moved from index.js
 // It expects to be passed the pool, config, and logic modules if needed
 // For now, I'll export a function that configures the router
@@ -1063,31 +1068,7 @@ module.exports = function (pool, config, logic) {
     // ============================================
     const { processGameTurn, isEngineActive, processHarvestManually } = require('../src/logic/turn_engine');
 
-    router.get('/admin/engine/status', authenticateToken, requireAdmin, async (req, res) => {
-        try {
-            Logger.action(`Acceso administrativo a /admin/engine/status - Consultando estado del motor`, req.user.player_id);
-
-            const worldState = await pool.query('SELECT current_turn, is_paused, last_updated FROM world_state WHERE id = 1');
-            const state = worldState.rows[0];
-
-            res.json({
-                success: true,
-                engine: {
-                    isRunning: isEngineActive(),
-                    isPaused: state.is_paused,
-                    currentTurn: state.current_turn,
-                    lastUpdate: state.last_updated
-                }
-            });
-        } catch (error) {
-            Logger.error(error, {
-                endpoint: '/admin/engine/status',
-                method: 'GET',
-                userId: req.user?.player_id
-            });
-            res.status(500).json({ success: false, message: 'Error al obtener estado del motor' });
-        }
-    });
+    router.get('/admin/engine/status', authenticateToken, requireAdmin, TurnController.GetEngineStatus);
 
     router.post('/admin/engine/pause', authenticateToken, requireAdmin, async (req, res) => {
         try {

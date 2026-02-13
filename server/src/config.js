@@ -52,3 +52,4 @@ module.exports = {
     CONFIG,
     loadGameConfig
 };
+
