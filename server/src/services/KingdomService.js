@@ -2,6 +2,7 @@ const { Logger, logGameEvent } = require('../utils/logger');
 const KingdomModel = require('../models/KingdomModel.js');
 const { CONFIG } = require('../config.js');
 const infrastructure = require('../logic/infrastructure.js');
+const conquest = require('../logic/conquest.js');
 const pool = require('../../db.js');
 
 class KingdomService {
@@ -108,6 +109,71 @@ class KingdomService {
         } catch (error) {
             Logger.error(error, { endpoint: '/game/my-fiefs', method: 'GET', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al obtener feudos' });
+        }
+    }
+    async ClaimTerritory(req, res) {
+        const client = await pool.connect();
+        try {
+            const player_id = req.user.player_id;
+            const { h3_index } = req.body;
+            if (!h3_index) return res.status(400).json({ success: false, message: 'Falta parámetro: h3_index' });
+
+            await client.query('BEGIN');
+
+            const territoryCount = await KingdomModel.GetTerritoryCount(client, player_id);
+            const isFirstTerritory = territoryCount === 0;
+
+            const hex = await KingdomModel.GetHexForClaim(client, h3_index);
+            if (!hex) { await client.query('ROLLBACK'); return res.status(404).json({ success: false, message: 'Hexágono no encontrado' }); }
+            if (hex.terrain_type_id === 1 || hex.terrain_type_id === 3) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '🌊 No puedes construir en el agua' }); }
+            if (hex.player_id !== null) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '🛡️ Este territorio ya está ocupado' }); }
+
+            const player = await KingdomModel.GetPlayerGoldForUpdate(client, player_id);
+            const CLAIM_COST = 100;
+            if (player.gold < CLAIM_COST) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '💰 Oro insuficiente' }); }
+
+            if (!isFirstTerritory && !(await conquest.checkContiguity(h3_index, player_id, pool))) {
+                await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '📍 Debes colonizar territorios contiguos' });
+            }
+
+            const eco = conquest.generateInitialEconomy();
+            await KingdomModel.ClaimHex(client, h3_index, player_id);
+            await KingdomModel.InsertTerritoryDetails(client, h3_index, eco);
+            await KingdomModel.DeductGold(client, player_id, CLAIM_COST);
+
+            if (isFirstTerritory) {
+                await KingdomModel.SetCapital(client, h3_index, player_id);
+                Logger.action(`Primera capital fundada en ${h3_index}`, player_id);
+            }
+
+            await client.query('COMMIT');
+            logGameEvent(`[Claim] Jugador ${player_id} reclamó ${h3_index}${isFirstTerritory ? ' (CAPITAL)' : ''}`);
+
+            const hasIron = hex.iron_output && hex.iron_output > 0;
+            const message = isFirstTerritory ? '👑 ¡Capital fundada!' : '🏰 ¡Territorio colonizado!';
+            res.json({
+                success: true,
+                is_capital: isFirstTerritory,
+                iron_vein_found: hasIron,
+                iron_message: hasIron ? `⛏️ ¡Filón de hierro descubierto! (+${hex.iron_output} hierro/mes)` : null,
+                message
+            });
+        } catch (error) {
+            if (client) await client.query('ROLLBACK');
+            Logger.error(error, { endpoint: '/game/claim', method: 'POST', userId: req.user?.player_id, payload: req.body });
+            res.status(500).json({ success: false, error: error.message });
+        } finally {
+            client.release();
+        }
+    }
+    async GetCapital(req, res) {
+        try {
+            const row = await KingdomModel.GetCapital(req.user.player_id);
+            if (!row || !row.capital_h3) return res.status(200).json({ success: false, message: 'No tienes capital' });
+            res.json({ success: true, h3_index: row.capital_h3 });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/game/capital', method: 'GET', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener información de capital' });
         }
     }
 }

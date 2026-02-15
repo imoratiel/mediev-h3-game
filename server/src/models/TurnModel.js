@@ -1,20 +1,19 @@
-const db = require('../../db.js'); // Tu conexión a DB
+const db = require('../../db.js');
 
 class TurnModel {
     async GetCurrentTurn() {
-        const worldState = await pool.query('SELECT current_turn, is_paused, last_updated FROM world_state WHERE id = 1');
-        
-        const turn = worldState.rows[0];
-        
-        return turn;
+        const result = await db.query('SELECT current_turn, is_paused, last_updated FROM world_state WHERE id = 1');
+        return result.rows[0];
+    }
+    async GetWorldState() {
+        const result = await db.query('SELECT current_turn, game_date, is_paused FROM world_state WHERE id = 1');
+        return result.rows[0];
     }
     async SetGamePaused() {
-        await pool.query('UPDATE world_state SET is_paused = true WHERE id = 1');        
-        return;
+        await db.query('UPDATE world_state SET is_paused = true WHERE id = 1');
     }
     async SetGameResumed() {
-        await pool.query('UPDATE world_state SET is_paused = false WHERE id = 1');        
-        return;
+        await db.query('UPDATE world_state SET is_paused = false WHERE id = 1');
     }
 }
 

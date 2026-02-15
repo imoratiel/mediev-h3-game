@@ -29,9 +29,7 @@ app.use(cookieParser()); // Parse cookies for JWT extraction
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes
-const apiRoutes = require('./routes/api')(pool, CONFIG, {
-  economy, territory, infrastructure, discovery, conquest
-});
+const apiRoutes = require('./routes/api')();
 app.use('/api', apiRoutes);
 
 // Health check

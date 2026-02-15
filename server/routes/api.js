@@ -6,116 +6,34 @@ const { authenticateToken, requireAdmin, generateToken } = require('../src/middl
 // It expects to be passed the pool, config, and logic modules if needed
 // For now, I'll export a function that configures the router
 
-module.exports = function (pool, config, logic) {
-    const { logGameEvent, Logger } = require('../src/utils/logger');
-    const { formatDaysToYearsAndDays, getTerrainColor } = logic.territory;
+module.exports = function () {
     const TurnService = require('../src/services/TurnService.js');
     const MessageService = require('../src/services/MessageService.js');
     const LoginService = require('../src/services/LoginService.js');
     const TerrainService = require('../src/services/TerrainService.js');
     const ArmyService = require('../src/services/ArmyService.js');
     const KingdomService = require('../src/services/KingdomService.js');
+    const AdminService = require('../src/services/AdminService.js');
+    const PlayerService = require('../src/services/PlayerService.js');
 
     // ============================================
     // AUTHENTICATION ENDPOINTS
     // ============================================
     router.post('/auth/login', LoginService.Login);
-
     router.post('/auth/logout', authenticateToken, LoginService.Logout);
-
     router.get('/auth/me', authenticateToken, LoginService.AuthMe);
 
     // ============================================
     // MAP AND GAME ENDPOINTS
     // ============================================
     router.get('/map/region', TerrainService.GetRegion );
-
     router.get('/terrain-types', TerrainService.GetTerrainTypes );
 
     // ============================================
     // GAME LOGIC ENDPOINTS
     // ============================================
-    router.post('/game/claim', authenticateToken, async (req, res) => {
-        const client = await pool.connect();
-        try {
-            const player_id = req.user.player_id;
-            const { h3_index } = req.body;
-            if (!h3_index) return res.status(400).json({ success: false, message: 'Falta parámetro: h3_index' });
-
-            await client.query('BEGIN');
-            const territoryCountResult = await client.query('SELECT COUNT(*) as count FROM h3_map WHERE player_id = $1', [player_id]);
-            const isFirstTerritory = parseInt(territoryCountResult.rows[0].count) === 0;
-
-            const hexResult = await client.query('SELECT m.h3_index, m.player_id, m.terrain_type_id, t.iron_output, t.name as terrain_name FROM h3_map m LEFT JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id WHERE m.h3_index = $1 FOR UPDATE OF m', [h3_index]);
-            if (hexResult.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ success: false, message: 'Hexágono no encontrado' }); }
-
-            const hex = hexResult.rows[0];
-            if (hex.terrain_type_id === 1 || hex.terrain_type_id === 3) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '🌊 No puedes construir en el agua' }); }
-            if (hex.player_id !== null) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '🛡️ Este territorio ya está ocupado' }); }
-
-            const playerResult = await client.query('SELECT gold FROM players WHERE player_id = $1 FOR UPDATE', [player_id]);
-            const CLAIM_COST = 100;
-            if (playerResult.rows[0].gold < CLAIM_COST) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '💰 Oro insuficiente' }); }
-
-            if (!isFirstTerritory && !(await logic.conquest.checkContiguity(h3_index, player_id, pool))) {
-                await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '📍 Debes colonizar territorios contiguos' });
-            }
-
-            const eco = logic.conquest.generateInitialEconomy();
-
-            // Update h3_map (removed is_capital column - now in players.capital_h3)
-            await client.query('UPDATE h3_map SET player_id = $1, building_type_id = 0, last_update = CURRENT_TIMESTAMP WHERE h3_index = $2', [player_id, h3_index]);
-
-            // Insert territory details
-            await client.query('INSERT INTO territory_details (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored, gold_stored) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (h3_index) DO UPDATE SET population = EXCLUDED.population, happiness = EXCLUDED.happiness, food_stored = EXCLUDED.food_stored, wood_stored = EXCLUDED.wood_stored, stone_stored = EXCLUDED.stone_stored, iron_stored = EXCLUDED.iron_stored, gold_stored = EXCLUDED.gold_stored', [h3_index, eco.population, eco.happiness, eco.food, eco.wood, eco.stone, 0, 0]);
-
-            // Update player's gold
-            await client.query('UPDATE players SET gold = gold - $1 WHERE player_id = $2', [CLAIM_COST, player_id]);
-
-            // If this is the first territory, set it as capital
-            if (isFirstTerritory) {
-                await client.query('UPDATE players SET capital_h3 = $1 WHERE player_id = $2', [h3_index, player_id]);
-                Logger.action(`Primera capital fundada en ${h3_index}`, player_id);
-            }
-
-            await client.query('COMMIT');
-
-            logGameEvent(`[Claim] Jugador ${player_id} reclamó ${h3_index}${isFirstTerritory ? ' (CAPITAL)' : ''}`);
-
-            // Check if terrain has iron output for discovery message
-            let message = isFirstTerritory ? '👑 ¡Capital fundada!' : '🏰 ¡Territorio colonizado!';
-            const hasIron = hex.iron_output && hex.iron_output > 0;
-
-            res.json({
-                success: true,
-                is_capital: isFirstTerritory,
-                iron_vein_found: hasIron,
-                iron_message: hasIron ? `⛏️ ¡Filón de hierro descubierto! (+${hex.iron_output} hierro/mes)` : null,
-                message
-            });
-        } catch (error) {
-            if (client) await client.query('ROLLBACK');
-            res.status(500).json({ success: false, error: error.message });
-        } finally { client.release(); }
-    });
-
-    router.get('/game/capital', authenticateToken, async (req, res) => {
-        try {
-            const result = await pool.query('SELECT capital_h3 FROM players WHERE player_id = $1', [req.user.player_id]);
-            if (result.rows.length === 0 || !result.rows[0].capital_h3) {
-                return res.status(200).json({ success: false, message: 'No tienes capital' });
-            }
-            res.json({ success: true, h3_index: result.rows[0].capital_h3 });
-        } catch (error) {
-            console.error('Get capital error:', error);
-            Logger.error(error, {
-                endpoint: '/game/capital',
-                method: 'GET',
-                userId: req.user?.player_id
-            });
-            res.status(500).json({ success: false, message: 'Error al obtener información de capital' });
-        }
-    });
+    router.post('/game/claim', authenticateToken, KingdomService.ClaimTerritory);
+    router.get('/game/capital', authenticateToken, KingdomService.GetCapital);
 
     router.get('/map/cell-details/:h3_index', TerrainService.GetCellDetails);
 
@@ -125,35 +43,15 @@ module.exports = function (pool, config, logic) {
     // Get detailed army info for a specific hex (for popup)
     router.get('/map/army-details/:h3_index', authenticateToken, ArmyService.GetArmyDetails);
 
-    router.get('/players/:id', async (req, res) => {
-        const result = await pool.query('SELECT player_id, username, gold, color FROM players WHERE player_id = $1', [req.params.id]);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Player not found' });
-        res.json(result.rows[0]);
-    });
+    router.get('/players/:id', PlayerService.GetById);
 
-    router.get('/game/world-state', async (req, res) => {
-        try {
-            const result = await pool.query('SELECT current_turn, game_date, is_paused FROM world_state WHERE id = 1');
-            res.json({ success: true, turn: result.rows[0].current_turn, date: result.rows[0].game_date, is_paused: result.rows[0].is_paused });
-        } catch (e) {
-            if (client)
-                await client.query('ROLLBACK');
-            Logger.error(error, {
-                endpoint: '/game/world-state',
-                method: 'GET',
-                userId: req.user?.player_id
-            });
-            res.status(500).json({ success: false, error: e.message });
-        }
-    });
-
+    router.get('/game/world-state', TurnService.GetWorldState);
     router.get('/game/my-fiefs', authenticateToken, KingdomService.GetMyFiefs);
 
     // ============================================
     // TERRITORY AND INFRASTRUCTURE
     // ============================================
     router.post('/territory/explore', authenticateToken, KingdomService.StartExploration);
-
     router.post('/territory/upgrade', authenticateToken, KingdomService.UpgradeBuilding);
 
     // ============================================
@@ -163,162 +61,23 @@ module.exports = function (pool, config, logic) {
     router.post('/military/recruit', authenticateToken, ArmyService.Recruit);
     router.get('/military/troops', authenticateToken, ArmyService.GetTroops);
     router.post('/military/move-army', authenticateToken, ArmyService.MoveArmy);
-
     router.get('/military/my-routes', authenticateToken, ArmyService.GetMyRoutes);
 
     // ============================================
     // ADMIN AND MESSAGES
     // ============================================
-    router.post('/admin/reset', authenticateToken, requireAdmin, async (req, res) => {
-        try {
-            // Log admin access
-            Logger.action(`Acceso administrativo a /admin/reset - Reseteando mundo`, req.user.player_id);
-
-            await pool.query("UPDATE world_state SET current_turn = 0, game_date = '1039-03-01' WHERE id = 1");
-
-            Logger.action(`Mundo reseteado exitosamente`, req.user.player_id);
-            res.json({ success: true, message: 'Mundo reseteado' });
-        } catch (error) {
-            console.error('Admin reset error:', error);
-            Logger.error(error, {
-                endpoint: '/admin/reset',
-                method: 'POST',
-                userId: req.user?.player_id,
-                payload: req.body
-            });
-            res.status(500).json({ success: false, message: 'Error al resetear mundo' });
-        }
-    });
-
-    router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => {
-        try {
-            // Log admin access
-            Logger.action(`Acceso administrativo a /admin/stats`, req.user.player_id);
-
-            const world = (await pool.query('SELECT current_turn, game_date FROM world_state WHERE id = 1')).rows[0];
-            const config = (await pool.query("SELECT value FROM game_config WHERE \"group\" = 'gameplay' and key = 'turn_duration_seconds'")).rows[0];
-            const players = (await pool.query('SELECT COUNT(*) FROM players')).rows[0].count;
-            const territories = (await pool.query('SELECT COUNT(*) FROM h3_map WHERE player_id IS NOT NULL')).rows[0].count;
-            const messages = (await pool.query('SELECT COUNT(*) FROM messages')).rows[0].count;
-
-            res.json({
-                success: true,
-                stats: {
-                    current_turn: world.current_turn,
-                    game_date: world.game_date,
-                    players: parseInt(players),
-                    territories: parseInt(territories),
-                    messages: parseInt(messages),
-                    turn_interval_seconds: config.value
-                }
-            });
-        } catch (error) {
-            console.error('Admin stats error:', error);
-            Logger.error(error, {
-                endpoint: '/admin/stats',
-                method: 'GET',
-                userId: req.user?.player_id
-            });
-            res.status(500).json({ success: false, message: 'Error al obtener estadísticas' });
-        }
-    });
-
-    router.post('/admin/reset-explorations', authenticateToken, requireAdmin, async (req, res) => {
-        try {
-            // Log admin access
-            Logger.action(`Acceso administrativo a /admin/reset-explorations - Reseteando exploraciones`, req.user.player_id);
-
-            await pool.query('UPDATE territory_details SET exploration_end_turn = NULL, discovered_resource = NULL');
-
-            Logger.action(`Exploraciones reseteadas exitosamente`, req.user.player_id);
-            res.json({ success: true, message: 'Todas las exploraciones han sido reseteadas' });
-        } catch (error) {
-            console.error('Admin reset-explorations error:', error);
-            Logger.error(error, {
-                endpoint: '/admin/reset-explorations',
-                method: 'POST',
-                userId: req.user?.player_id,
-                payload: req.body
-            });
-            res.status(500).json({ success: false, message: 'Error al resetear exploraciones' });
-        }
-    });
-
-    router.post('/admin/config', authenticateToken, requireAdmin, async (req, res) => {
-        try {
-            const { turn_interval_seconds } = req.body;
-            if (!turn_interval_seconds) return res.status(400).json({ success: false, message: 'turn_interval_seconds requerido' });
-
-            // Log admin access
-            Logger.action(`Acceso administrativo a /admin/config - Actualizando intervalo de turnos a ${turn_interval_seconds}s`, req.user.player_id);
-
-            // Also update in game_config for persistence across reloads if applicable
-            await pool.query('INSERT INTO game_config ("group", "key", "value") VALUES ($1, $2, $3) ON CONFLICT ("group", "key") DO UPDATE SET value = EXCLUDED.value', ['gameplay', 'turn_duration_seconds', turn_interval_seconds.toString()]);
-
-            Logger.action(`Configuración actualizada: turn_interval_seconds = ${turn_interval_seconds}`, req.user.player_id);
-            res.json({ success: true, message: 'Configuración actualizada. Reinicie el servidor para aplicar el nuevo intervalo de tiempo.' });
-        } catch (error) {
-            console.error('Admin config error:', error);
-            Logger.error(error, {
-                endpoint: '/api/admin/config',
-                method: 'POST',
-                userId: req.user?.player_id,
-                payload: req.body
-            });
-            res.status(500).json({ success: false, message: 'Error al actualizar configuración', error: error.message });
-        }
-    });
-
-    router.get('/admin/game-config', authenticateToken, requireAdmin, async (req, res) => {
-        try {
-            // Log admin access
-            Logger.action(`Acceso administrativo a /admin/game-config - Consultando configuración`, req.user.player_id);
-
-            res.json({ success: true, config: config });
-        } catch (error) {
-            Logger.error(error, {
-                endpoint: '/admin/game-config',
-                method: 'GET',
-                userId: req.user?.player_id
-            });
-            res.status(500).json({ success: false, message: 'Error al obtener configuración' });
-        }
-    });
-
-    router.put('/admin/game-config', authenticateToken, requireAdmin, async (req, res) => {
-        try {
-            const { group, key, value } = req.body;
-            if (!group || !key || value === undefined) return res.status(400).json({ success: false, message: 'Faltan parámetros' });
-
-            // Log admin access
-            Logger.action(`Acceso administrativo a /admin/game-config - Actualizando ${group}.${key} = ${value}`, req.user.player_id);
-
-            await pool.query('INSERT INTO game_config ("group", "key", "value") VALUES ($1, $2, $3) ON CONFLICT ("group", "key") DO UPDATE SET value = EXCLUDED.value', [group, key, value.toString()]);
-
-            // Dynamically update the in-memory config object
-            if (!config[group]) config[group] = {};
-            config[group][key] = !isNaN(value) ? Number(value) : value;
-
-            Logger.action(`Configuración actualizada: ${group}.${key} = ${value}`, req.user.player_id);
-            res.json({ success: true, message: 'Configuración de juego actualizada' });
-        } catch (error) {
-            console.error('Admin update-game-config error:', error);
-            Logger.error(error, {
-                endpoint: '/admin/game-config',
-                method: 'PUT',
-                userId: req.user?.player_id,
-                payload: req.body
-            });
-            res.status(500).json({ success: false, message: 'Error al actualizar configuración de juego' });
-        }
-    });
+    router.post('/admin/reset', authenticateToken, requireAdmin, AdminService.ResetWorld);
+    router.get('/admin/stats', authenticateToken, requireAdmin, AdminService.GetStats);
+    router.post('/admin/reset-explorations', authenticateToken, requireAdmin, AdminService.ResetExplorations);
+    router.post('/admin/config', authenticateToken, requireAdmin, AdminService.UpdateConfig);
+    router.get('/admin/game-config', authenticateToken, requireAdmin, AdminService.GetGameConfig);
+    router.put('/admin/game-config', authenticateToken, requireAdmin, AdminService.UpdateGameConfig);
 
     // ============================================
     // MESSAGES
     // ============================================
 
     router.get('/messages', authenticateToken,  MessageService.GetMessagesByUserId );
-
     router.post('/messages', authenticateToken, MessageService.SendMessage );
 
     // Mark message as read

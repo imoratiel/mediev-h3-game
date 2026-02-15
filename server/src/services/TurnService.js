@@ -1,7 +1,17 @@
+const { Logger } = require('../utils/logger');
 const WorldStateModel = require('../models/TurnModel.js');
 const { processGameTurn, processHarvestManually } = require('../logic/turn_engine');
 
 class TurnService {
+    async GetWorldState(req, res) {
+        try {
+            const state = await WorldStateModel.GetWorldState();
+            res.json({ success: true, turn: state.current_turn, date: state.game_date, is_paused: state.is_paused });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/game/world-state', method: 'GET', userId: req.user?.player_id });
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
     async GetGlobalStatus() {
         try {
             Logger.action(`Acceso administrativo a /admin/engine/status - Consultando estado del motor`, req.user.player_id);

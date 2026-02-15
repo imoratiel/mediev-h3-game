@@ -36,6 +36,52 @@ class KingdomModel {
         await client.query('UPDATE players SET gold = gold - $1 WHERE player_id = $2', [cost, player_id]);
         await client.query(`UPDATE territory_details SET ${building_type}_level = $1 WHERE h3_index = $2`, [new_level, h3_index]);
     }
+    async GetTerritoryCount(client, player_id) {
+        const result = await client.query('SELECT COUNT(*) as count FROM h3_map WHERE player_id = $1', [player_id]);
+        return parseInt(result.rows[0].count);
+    }
+    async GetHexForClaim(client, h3_index) {
+        const result = await client.query(
+            `SELECT m.h3_index, m.player_id, m.terrain_type_id, t.iron_output, t.name as terrain_name
+             FROM h3_map m
+             LEFT JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
+             WHERE m.h3_index = $1 FOR UPDATE OF m`,
+            [h3_index]
+        );
+        return result.rows[0];
+    }
+    async GetPlayerGoldForUpdate(client, player_id) {
+        const result = await client.query('SELECT gold FROM players WHERE player_id = $1 FOR UPDATE', [player_id]);
+        return result.rows[0];
+    }
+    async ClaimHex(client, h3_index, player_id) {
+        await client.query(
+            'UPDATE h3_map SET player_id = $1, building_type_id = 0, last_update = CURRENT_TIMESTAMP WHERE h3_index = $2',
+            [player_id, h3_index]
+        );
+    }
+    async InsertTerritoryDetails(client, h3_index, eco) {
+        await client.query(
+            `INSERT INTO territory_details (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored, gold_stored)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (h3_index) DO UPDATE SET
+                 population = EXCLUDED.population, happiness = EXCLUDED.happiness,
+                 food_stored = EXCLUDED.food_stored, wood_stored = EXCLUDED.wood_stored,
+                 stone_stored = EXCLUDED.stone_stored, iron_stored = EXCLUDED.iron_stored,
+                 gold_stored = EXCLUDED.gold_stored`,
+            [h3_index, eco.population, eco.happiness, eco.food, eco.wood, eco.stone, 0, 0]
+        );
+    }
+    async DeductGold(client, player_id, amount) {
+        await client.query('UPDATE players SET gold = gold - $1 WHERE player_id = $2', [amount, player_id]);
+    }
+    async SetCapital(client, h3_index, player_id) {
+        await client.query('UPDATE players SET capital_h3 = $1 WHERE player_id = $2', [h3_index, player_id]);
+    }
+    async GetCapital(player_id) {
+        const result = await pool.query('SELECT capital_h3 FROM players WHERE player_id = $1', [player_id]);
+        return result.rows[0];
+    }
     async GetMyFiefs(player_id) {
         const query = `
             SELECT
