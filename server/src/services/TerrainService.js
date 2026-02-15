@@ -54,6 +54,49 @@ class TerrainService {
             res.status(500).json({ error: 'Failed to fetch terrain types', message: error.message });
         }
     }
+    async GetCellDetails(req, res) {
+        try {
+            const { h3_index } = req.params;
+            const result = await TerrainModel.GetCellDetails(h3_index);
+            if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Hexágono no encontrado' });
+            const cell = result.rows[0];
+
+            const is_capital = cell.player_id && cell.capital_h3 === h3_index;
+
+            res.json({
+                h3_index,
+                terrain_type: cell.terrain_type,
+                terrain_color: cell.terrain_color,
+                food_output: cell.food_output || 0,
+                wood_output: cell.wood_output || 0,
+                player_id: cell.player_id,
+                player_name: cell.player_name,
+                building_type: cell.building_type,
+                is_capital,
+                settlement_name: cell.settlement_name,
+                coord_x: cell.coord_x,
+                coord_y: cell.coord_y,
+                territory: cell.population ? {
+                    population: cell.population,
+                    happiness: cell.happiness,
+                    food: cell.food_stored,
+                    wood: cell.wood_stored,
+                    stone: cell.discovered_resource ? cell.stone_stored : 0,
+                    iron: cell.discovered_resource ? cell.iron_stored : 0,
+                    gold: cell.discovered_resource ? cell.gold_stored : 0,
+                    discovered_resource: cell.discovered_resource,
+                    exploration_end_turn: cell.exploration_end_turn,
+                    farm_level: cell.farm_level,
+                    mine_level: cell.mine_level,
+                    lumber_level: cell.lumber_level,
+                    port_level: cell.port_level
+                } : null
+            });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/cell-details', h3_index: req.params?.h3_index });
+            res.status(500).json({ error: 'Error al obtener detalles de celda', message: error.message });
+        }
+    }
 }
 
 module.exports = new TerrainService();
