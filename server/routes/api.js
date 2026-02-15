@@ -17,6 +17,7 @@ module.exports = function (pool, config, logic) {
     const MessageService = require('../src/services/MessageService.js');
     const LoginService = require('../src/services/LoginService.js');
     const TerrainService = require('../src/services/TerrainService.js');
+    const ArmyService = require('../src/services/ArmyService.js');
 
     // ============================================
     // AUTHENTICATION ENDPOINTS
@@ -122,82 +123,7 @@ module.exports = function (pool, config, logic) {
     router.get('/map/cell-details/:h3_index', TerrainService.GetCellDetails);
 
     // Get armies in visible extent (for map icons)
-    router.get('/map/armies', authenticateToken, async (req, res) => {
-        try {
-            const { minLat, maxLat, minLng, maxLng } = req.query;
-
-            // Validate geographic bounds
-            if (!minLat || !maxLat || !minLng || !maxLng) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Missing bounding box parameters'
-                });
-            }
-
-            const bounds = {
-                minLat: parseFloat(minLat),
-                maxLat: parseFloat(maxLat),
-                minLng: parseFloat(minLng),
-                maxLng: parseFloat(maxLng)
-            };
-
-            if (Object.values(bounds).some(isNaN)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid bounding box parameters'
-                });
-            }
-
-            // Convert geographic bounds to H3 cells (same resolution as map)
-            const H3_RESOLUTION = 8;
-            const polygon = [
-                [bounds.minLat, bounds.minLng],
-                [bounds.minLat, bounds.maxLng],
-                [bounds.maxLat, bounds.maxLng],
-                [bounds.maxLat, bounds.minLng]
-            ];
-            const h3CellsArray = Array.from(h3.polygonToCells(polygon, H3_RESOLUTION)).slice(0, 50000);
-
-            if (h3CellsArray.length === 0) {
-                return res.json({
-                    success: true,
-                    armies: [],
-                    current_player_id: req.user.player_id
-                });
-            }
-
-            // Query armies table directly - group by location and player
-            const query = `
-                SELECT
-                    a.h3_index,
-                    a.player_id,
-                    COUNT(DISTINCT a.army_id) as army_count,
-                    SUM(t.quantity) as total_troops
-                FROM armies a
-                LEFT JOIN troops t ON a.army_id = t.army_id
-                WHERE a.h3_index = ANY($1::text[])
-                GROUP BY a.h3_index, a.player_id
-                ORDER BY a.h3_index
-            `;
-
-            const result = await pool.query(query, [h3CellsArray]);
-
-            res.json({
-                success: true,
-                armies: result.rows,
-                current_player_id: req.user.player_id
-            });
-
-        } catch (error) {
-            Logger.error(error, {
-                endpoint: '/map/armies',
-                method: 'GET',
-                userId: req.user?.player_id,
-                payload: req.query
-            });
-            res.status(500).json({ success: false, message: 'Error al obtener ejércitos' });
-        }
-    });
+    router.get('/map/armies', authenticateToken, ArmyService.GetArmiesInRegion);
 
     // Get detailed army info for a specific hex (for popup)
     router.get('/map/army-details/:h3_index', authenticateToken, async (req, res) => {
