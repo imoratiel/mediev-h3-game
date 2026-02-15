@@ -16,6 +16,7 @@ module.exports = function (pool, config, logic) {
     const TurnService = require('../src/services/TurnService.js');
     const MessageService = require('../src/services/MessageService.js');
     const LoginService = require('../src/services/LoginService.js');
+    const TerrainService = require('../src/services/TerrainService.js');
 
     // ============================================
     // AUTHENTICATION ENDPOINTS
@@ -29,81 +30,9 @@ module.exports = function (pool, config, logic) {
     // ============================================
     // MAP AND GAME ENDPOINTS
     // ============================================
-    router.get('/map/region', async (req, res) => {
-        try {
-            const { minLat, maxLat, minLng, maxLng, res: resolution } = req.query;
-            if (!minLat || !maxLat || !minLng || !maxLng) return res.status(400).json({ error: 'Missing bounding box parameters' });
+    router.get('/map/region', TerrainService.GetRegion );
 
-            const bounds = { minLat: parseFloat(minLat), maxLat: parseFloat(maxLat), minLng: parseFloat(minLng), maxLng: parseFloat(maxLng) };
-            if (Object.values(bounds).some(isNaN)) return res.status(400).json({ error: 'Invalid bounding box parameters' });
-
-            const H3_RESOLUTION = resolution ? parseInt(resolution, 10) : 8;
-            const polygon = [[bounds.minLat, bounds.minLng], [bounds.minLat, bounds.maxLng], [bounds.maxLat, bounds.maxLng], [bounds.maxLat, bounds.minLng]];
-            const h3CellsArray = Array.from(h3.polygonToCells(polygon, H3_RESOLUTION)).slice(0, 50000);
-
-            if (h3CellsArray.length === 0) return res.json([]);
-
-            const query = `
-        SELECT h3_index, terrain_type_id, terrain_color, has_road, player_id, player_color, building_type_id, icon_slug, location_name, settlement_type, coord_x, coord_y
-        FROM v_map_display WHERE h3_index = ANY($1::text[])
-      `;
-            const result = await pool.query(query, [h3CellsArray]);
-
-            const hexagons = result.rows.map(row => ({
-                h3_index: row.h3_index,
-                terrain_type_id: row.terrain_type_id,
-                terrain_color: row.terrain_color || '#9e9e9e',
-                has_road: row.has_road || false,
-                player_id: row.player_id || null,
-                player_color: row.player_color || null,
-                building_type_id: row.building_type_id || 0,
-                icon_slug: row.icon_slug || null,
-                location_name: row.location_name || null,
-                settlement_type: row.settlement_type || null,
-                coord_x: row.coord_x,
-                coord_y: row.coord_y
-            }));
-
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.json(hexagons);
-        } catch (error) {
-            console.error('❌ Error fetching map data:', error);
-            res.status(500).json({ error: 'Failed to fetch map data', message: error.message });
-        }
-    });
-
-    router.get('/settlements', async (req, res) => {
-        try {
-            const result = await pool.query('SELECT name, h3_index, type, population_rank FROM settlements ORDER BY name ASC');
-            if (!result.rows) return res.json([]);
-
-            const settlements = result.rows.map((row) => {
-                try {
-                    const [lat, lng] = h3.cellToLatLng(row.h3_index);
-                    return { name: row.name, h3_index: row.h3_index, lat, lng, type: row.type, population_rank: row.population_rank };
-                } catch (e) { return null; }
-            }).filter(s => s !== null);
-
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.json(settlements);
-        } catch (error) {
-            res.status(500).json({ error: 'Failed to fetch settlements', message: error.message });
-        }
-    });
-
-    router.get('/terrain-types', async (req, res) => {
-        try {
-            const result = await pool.query('SELECT terrain_type_id, name, color FROM terrain_types ORDER BY terrain_type_id');
-            const terrainTypes = result.rows.map(row => ({
-                terrain_type_id: row.terrain_type_id,
-                name: row.name,
-                color: getTerrainColor(row.name, row.color)
-            }));
-            res.json(terrainTypes);
-        } catch (error) {
-            res.status(500).json({ error: 'Failed to fetch terrain types', message: error.message });
-        }
-    });
+    router.get('/terrain-types', TerrainService.GetTerrainTypes );
 
     // ============================================
     // GAME LOGIC ENDPOINTS

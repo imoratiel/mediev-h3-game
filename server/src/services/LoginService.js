@@ -1,5 +1,4 @@
 const { Logger } = require('../utils/logger');
-const LoginModel = require('../models/PlayerModel.js');
 const PlayerModel = require('../models/PlayerModel.js');
 const { generateToken } = require('../middleware/auth');
 
