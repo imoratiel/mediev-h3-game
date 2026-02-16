@@ -104,6 +104,7 @@
         >
           <span class="nav-icon">🔔</span>
           <span class="nav-label">Notificaciones</span>
+          <span v-if="unreadNotifCount > 0" class="nav-badge">{{ unreadNotifCount }}</span>
         </button>
       </nav>
 
@@ -796,6 +797,7 @@ const loadingMessages = ref(false);
 const selectedMessage = ref(null); // Currently selected message for detail view
 const threadMessages = ref([]); // Messages in the current thread
 const unreadCount = computed(() => myMessages.value.filter(m => !m.is_read && m.receiver_id === playerId.value).length);
+const unreadNotifCount = computed(() => notifications.value.filter(n => !n.is_read).length);
 const messageFilter = ref('received'); // 'received', 'sent', 'all'
 
 // Filtered messages based on current tab
@@ -3701,11 +3703,11 @@ watch(
  */
 const setupMapInteractionController = () => {
   // Exponer función global para iniciar movimiento de ejército
-  window.startArmyMovement = (armyId, armyName) => {
-    console.log(`[MapViewer] Iniciando movimiento de ejército: ${armyName} (${armyId})`);
+  window.startArmyMovement = (armyId, armyName, armyH3) => {
+    console.log(`[MapViewer] Iniciando movimiento de ejército: ${armyName} (${armyId}) desde ${armyH3}`);
 
-    // Activar modo de selección en el controlador
-    MapInteractionController.startArmyMovement(armyId, armyName);
+    // Activar modo de selección en el controlador (guarda armyH3 para la validación de distancia)
+    MapInteractionController.startArmyMovement(armyId, armyName, armyH3);
 
     // Cambiar cursor y mostrar mensaje al usuario
     if (map) {

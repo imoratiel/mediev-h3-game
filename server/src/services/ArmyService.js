@@ -1,7 +1,6 @@
 const { Logger } = require('../utils/logger');
 const ArmyModel = require('../models/ArmyModel.js');
 const ArmySimulationService = require('./ArmySimulationService.js');
-const NotificationService = require('./NotificationService.js');
 const h3 = require('h3-js');
 const pool = require('../../db.js');
 const GAME_CONFIG = require('../config/constants.js');
@@ -335,13 +334,6 @@ class ArmyService {
             }
 
             Logger.action(`Detuvo ejército "${army.name}" (id: ${army_id})`, player_id);
-            await NotificationService.createSystemNotification(
-                player_id,
-                'army_stop',
-                `El ejército "${army.name}" se ha detenido y su ruta ha sido cancelada.`,
-                null
-            );
-
             res.json({ success: true, message: `Ejército "${army.name}" detenido correctamente` });
         } catch (error) {
             Logger.error(error, { endpoint: '/military/stop', method: 'POST', userId: req.user?.player_id, payload: req.body });

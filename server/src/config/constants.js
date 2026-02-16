@@ -6,7 +6,7 @@
 const GAME_CONFIG = {
     // 🌍 Configuración del Mapa y Navegación
     MAP: {
-        MAX_MOVEMENT_DISTANCE: 100,      // Rango máximo para elegir destino (hexágonos)
+        MAX_MOVEMENT_DISTANCE: 100,      // Máximo de hexágonos para seleccionar destino (radio)
         H3_RESOLUTION: 8,               // Resolución de celdas H3 usada en el sistema
     },
 
@@ -17,6 +17,7 @@ const GAME_CONFIG = {
         FORCE_REST_THRESHOLD: 25,       // % de stamina necesario para salir de 'force_rest'
         STAMINA_MIN_FOR_MOVE: 0.1,      // Stamina mínima para intentar el "Último Esfuerzo"
         STAMINA_COST_PER_HEX: 10,       // Coste de stamina por hexágono recorrido
+        MAX_CELLS_PER_TURN: 4,          // Máximo de hexágonos que puede recorrer un ejército por turno
     },
 
     // ⏱️ Sistema de Turnos y Recuperación

@@ -124,11 +124,12 @@ class MapInteractionController {
    * @param {number} armyId - ID del ejército a mover
    * @param {string} armyName - Nombre del ejército (para feedback)
    */
-  startArmyMovement(armyId, armyName) {
-    console.log(`[MapInteraction] Iniciando movimiento de ejército: ${armyName} (ID: ${armyId})`);
+  startArmyMovement(armyId, armyName, armyH3) {
+    console.log(`[MapInteraction] Iniciando movimiento de ejército: ${armyName} (ID: ${armyId}) desde ${armyH3}`);
     this.setMode(InteractionMode.SELECT_DESTINATION, {
       armyId,
-      armyName
+      armyName,
+      armyH3
     });
   }
 

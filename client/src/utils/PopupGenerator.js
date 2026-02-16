@@ -321,7 +321,7 @@ export function generateArmyPopup(armyData, config) {
         // Use onclick for immediate response (exposed global function from MapViewer)
         const armyNameEscaped = (army.name || 'Ejército').replace(/'/g, "\\'");
         const moveOnClick = canMove
-          ? `onclick="if(window.startArmyMovement) window.startArmyMovement(${army.army_id}, '${armyNameEscaped}')"`
+          ? `onclick="if(window.startArmyMovement) window.startArmyMovement(${army.army_id}, '${armyNameEscaped}', '${army.h3_index}')"`
           : '';
         popupContent += `<button id="army-move-${army.army_id}" class="${moveClass}" ${!canMove ? 'disabled' : ''} ${moveOnClick} title="${moveTitle}">📍</button>`;
 

@@ -210,13 +210,21 @@ class ArmySimulationService {
       const MAX_STAMINA = config.MILITARY.STAMINA_MAX;
 
       // Calcular stamina mínima antes de la recuperación
-      const minStaminaBefore = Math.min(...troopsResult.rows.map(t => t.stamina));
+      // parseFloat: troops.stamina es DECIMAL(5,2) → pg lo devuelve como string → hay que parsear antes de operar
+      const minStaminaBefore = Math.min(...troopsResult.rows.map(t => parseFloat(t.stamina)));
       const unitsInForceRest = troopsResult.rows.filter(t => t.force_rest).length;
 
       // Procesar recuperación de cada unidad
       for (const troop of troopsResult.rows) {
-        const newStamina = Math.min(MAX_STAMINA, troop.stamina + RECOVERY_RATE);
+        // CRÍTICO: parseFloat evita concatenación de strings ("0.00" + 4 = "0.004" en lugar de 4)
+        const currentStamina = parseFloat(troop.stamina);
+        const newStamina = Math.min(MAX_STAMINA, currentStamina + RECOVERY_RATE);
         const shouldRelease = troop.force_rest && newStamina >= RELEASE_THRESHOLD;
+
+        Logger.army(armyId, 'STAMINA_TICK',
+          `Troop ${troop.troop_id} | Actual: ${currentStamina} | Nueva: ${newStamina} | ForceRest: ${troop.force_rest} | Liberar: ${shouldRelease}`,
+          { troop_id: troop.troop_id, stamina_before: currentStamina, stamina_after: newStamina, force_rest: troop.force_rest, will_release: shouldRelease }
+        );
 
         await client.query(
           `UPDATE troops
@@ -229,8 +237,8 @@ class ArmySimulationService {
         if (shouldRelease) {
           releasedCount++;
           Logger.army(armyId, 'UNIT_RELEASED',
-            `Troop ${troop.troop_id} liberado de force_rest (stamina: ${troop.stamina} → ${newStamina})`,
-            { troop_id: troop.troop_id, stamina_before: troop.stamina, stamina_after: newStamina }
+            `Troop ${troop.troop_id} liberado de force_rest (stamina: ${currentStamina} → ${newStamina})`,
+            { troop_id: troop.troop_id, stamina_before: currentStamina, stamina_after: newStamina }
           );
         }
       }
@@ -621,11 +629,13 @@ class ArmySimulationService {
       }
 
       // ── PASO 2: Procesar desplazamiento siguiendo la ruta ─────────────────────
-      let currentPos   = army.h3_index;
-      let stepsCount   = 0;
+      const MAX_CELLS_PER_TURN = config.MILITARY.MAX_CELLS_PER_TURN;
+      let currentPos     = army.h3_index;
+      let stepsCount     = 0;
       let forceExhausted = false;
+      let cellLimitReached = false;
 
-      while (pm > 0 && remainingPath.length > 0) {
+      while (pm > 0 && remainingPath.length > 0 && stepsCount < MAX_CELLS_PER_TURN) {
         const nextHex  = remainingPath[0];
         const rawCost  = costMap[nextHex];
 
@@ -680,6 +690,15 @@ class ArmySimulationService {
         );
 
         if (forceExhausted) break;
+      }
+
+      // Detectar si el bucle terminó por límite de casillas (no por PM ni llegada)
+      cellLimitReached = stepsCount >= MAX_CELLS_PER_TURN && remainingPath.length > 0 && !forceExhausted;
+      if (cellLimitReached) {
+        Logger.army(armyId, 'MOVE_LIMIT',
+          `Army ${armyId} restricted to ${MAX_CELLS_PER_TURN} cells this turn`,
+          { army_name: army.name, steps_taken: stepsCount, steps_remaining: remainingPath.length }
+        );
       }
 
       // ── Actualizar/limpiar ruta ───────────────────────────────────────────────
