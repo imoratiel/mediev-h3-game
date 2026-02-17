@@ -335,19 +335,23 @@ class KingdomService {
                 return res.status(400).json({ success: false, message: '⚔️ Hay ejércitos enemigos en este hexágono. ¡Atácalos primero!' });
             }
 
-            // 4. Calcular poder atacante (tropas reales)
-            const troopsResult = await client.query(
-                `SELECT t.quantity, t.morale, t.stamina, t.force_rest, ut.attack
+            // 4. SNAPSHOT ANTES: tropas con cantidad actual
+            const troopsBefore = await client.query(
+                `SELECT t.troop_id, t.quantity, t.morale, t.stamina, t.force_rest,
+                        ut.unit_type_id, ut.name AS unit_name, ut.attack
                  FROM troops t JOIN unit_types ut ON ut.unit_type_id = t.unit_type_id
                  WHERE t.army_id = $1`,
                 [armyId]
             );
-            const troops = troopsResult.rows;
+            const troops = troopsBefore.rows;
             if (troops.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'El ejército no tiene tropas' });
             }
+            // Mapa id → cantidad antes del combate
+            const snapshotBefore = new Map(troops.map(t => [t.troop_id, t.quantity]));
 
+            // 5. Calcular poder atacante
             let attackerPower = 0;
             let attackerTotal = 0;
             for (const t of troops) {
@@ -356,9 +360,9 @@ class KingdomService {
                 attackerPower += t.quantity * t.attack * moraleFactor * staminaFactor;
                 attackerTotal += t.quantity;
             }
-            attackerPower *= (0.85 + Math.random() * 0.30); // ±15% azar
+            attackerPower *= (0.85 + Math.random() * 0.30);
 
-            // 5. Calcular poder defensor (milicia local)
+            // 6. Calcular poder defensor (milicia local)
             const population = parseInt(hex.population) || 200;
             const defenseLevel = parseInt(hex.defense_level) || 0;
             const militiaCount = Math.floor(population * 0.1) + defenseLevel * 10;
@@ -366,38 +370,51 @@ class KingdomService {
             let defenderPower = militiaCount * MILITIA_ATTACK;
             defenderPower *= (0.85 + Math.random() * 0.30);
 
-            // 6. Determinar resultado
+            // 7. Determinar resultado
             const ratio = attackerPower / (defenderPower || 1);
             let result;
             if (ratio >= 1.1) result = 'victory';
             else if (ratio <= 0.9) result = 'defeat';
             else result = 'draw';
 
-            // 7. Calcular bajas
+            // 8. Calcular bajas totales
             const attackerLossFraction = result === 'victory' ? 0.05 + (1 / ratio) * 0.10 : 0.20 + Math.random() * 0.15;
             const defenderLossFraction = result === 'defeat' ? 0.30 + Math.random() * 0.20 : 0.70 + Math.random() * 0.30;
             const attacker_losses = Math.min(attackerTotal, Math.floor(attackerTotal * attackerLossFraction));
             const defender_losses = Math.min(militiaCount, Math.floor(militiaCount * defenderLossFraction));
 
-            // 8. Aplicar bajas al atacante proporcionalmente
+            // 9. Aplicar bajas en DB (proporcional por tipo) y limpiar vacíos
             if (attacker_losses > 0) {
-                let remaining = attacker_losses;
                 for (const t of troops) {
-                    if (remaining <= 0) break;
                     const deduct = Math.min(t.quantity, Math.floor(attacker_losses * (t.quantity / attackerTotal)));
                     if (deduct > 0) {
                         await client.query(
-                            'UPDATE troops SET quantity = GREATEST(0, quantity - $1) WHERE army_id = $2 AND unit_type_id = (SELECT unit_type_id FROM unit_types WHERE unit_type_id = (SELECT unit_type_id FROM troops WHERE army_id = $2 AND quantity = $3 LIMIT 1))',
-                            [deduct, armyId, t.quantity]
+                            'UPDATE troops SET quantity = quantity - $1 WHERE troop_id = $2',
+                            [deduct, t.troop_id]
                         );
-                        remaining -= deduct;
                     }
                 }
-                // Limpiar tropas vacías
                 await client.query('DELETE FROM troops WHERE army_id = $1 AND quantity <= 0', [armyId]);
             }
 
-            // 9. Aplicar resultado
+            // 10. SNAPSHOT DESPUÉS: leer cantidades reales post-combate
+            const troopsAfter = await client.query(
+                'SELECT troop_id, quantity FROM troops WHERE army_id = $1',
+                [armyId]
+            );
+            const snapshotAfter = new Map(troopsAfter.rows.map(t => [t.troop_id, t.quantity]));
+
+            // 11. Construir desglose real (antes - después = perdidos reales)
+            const desgloseAtacante = troops.map(t => ({
+                nombre: t.unit_name,
+                perdidos: snapshotBefore.get(t.troop_id) - (snapshotAfter.get(t.troop_id) ?? 0)
+            }));
+            const desglose = {
+                Atacante: desgloseAtacante,
+                Milicia: [{ nombre: 'Milicia del Feudo', perdidos: defender_losses }]
+            };
+
+            // 9. Aplicar resultado territorial
             const previousOwner = hex.player_id;
             if (result === 'victory' || result === 'draw') {
                 await client.query('UPDATE h3_map SET player_id = $1 WHERE h3_index = $2', [player_id, h3_index]);
@@ -422,13 +439,15 @@ class KingdomService {
                 success: true,
                 result,
                 fief_name: hex.fief_name,
+                attacker_total: attackerTotal,
                 attacker_losses,
                 defender_losses,
                 militia_count: militiaCount,
+                desglose,
                 territory_claimed: result === 'victory' || result === 'draw',
-                message: result === 'victory' ? '🏴 ¡Victoria! El feudo es tuyo.'
-                        : result === 'draw'    ? '⚔️ Empate — el feudo cambia de manos por desgaste.'
-                                               : '💀 Derrota — tus tropas se retiran.'
+                message: result === 'victory' ? 'El feudo ahora es tuyo.'
+                        : result === 'draw'    ? 'El feudo cambia de manos por desgaste.'
+                                               : 'Tus tropas se retiran en derrota.'
             });
 
         } catch (error) {

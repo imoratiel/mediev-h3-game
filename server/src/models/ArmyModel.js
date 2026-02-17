@@ -246,6 +246,29 @@ class ArmyModel {
         return result.rows[0];
     }
 
+    async GetArmyFullDetail(armyId, playerId) {
+        const armyResult = await db.query(
+            `SELECT army_id, name, h3_index, destination, recovering,
+                    gold_provisions, food_provisions, wood_provisions
+             FROM armies
+             WHERE army_id = $1 AND player_id = $2`,
+            [armyId, playerId]
+        );
+        if (armyResult.rows.length === 0) return null;
+
+        const troopsResult = await db.query(
+            `SELECT t.quantity, t.experience, t.morale, t.stamina, t.force_rest,
+                    ut.name AS unit_name, ut.attack, ut.health_points, ut.speed
+             FROM troops t
+             JOIN unit_types ut ON ut.unit_type_id = t.unit_type_id
+             WHERE t.army_id = $1
+             ORDER BY ut.name`,
+            [armyId]
+        );
+
+        return { army: armyResult.rows[0], troops: troopsResult.rows };
+    }
+
     async stopArmy(armyId, playerId) {
         // Verify ownership and clear movement state atomically
         const result = await db.query(

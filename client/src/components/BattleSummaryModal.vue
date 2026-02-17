@@ -1,196 +1,327 @@
 <template>
   <Teleport to="body">
-    <div v-if="show" class="bsm-backdrop" @click.self="$emit('close')">
-      <div class="bsm-box" role="dialog" aria-modal="true">
+    <Transition name="bsm-fade">
+      <div v-if="show" class="bsm-backdrop" @click.self="$emit('close')">
+        <div class="bsm-box" :class="`bsm-${battle.result}`" role="dialog" aria-modal="true">
 
-        <!-- Título dinámico -->
-        <div class="bsm-header" :class="headerClass">
-          <span class="bsm-icon">{{ resultIcon }}</span>
-          <span class="bsm-title">{{ resultLabel }}</span>
+          <!-- Decoración lateral -->
+          <div class="bsm-deco bsm-deco-left">⚔</div>
+          <div class="bsm-deco bsm-deco-right">⚔</div>
+
+          <!-- Header épico -->
+          <div class="bsm-header">
+            <div class="bsm-crest">{{ resultCrest }}</div>
+            <h1 class="bsm-title" :class="`bsm-title-${battle.result}`">{{ resultLabel }}</h1>
+            <p class="bsm-fief">{{ battle.fief_name }}</p>
+          </div>
+
+          <!-- Bloque atacante -->
+          <div class="bsm-divider"><span>⚔ TUS TROPAS</span></div>
+          <div class="bsm-table-wrap">
+            <table class="bsm-table">
+              <thead>
+                <tr>
+                  <th class="bsm-th-unit">Unidad</th>
+                  <th class="bsm-th-num">Perdidos</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in battle.desglose?.Atacante ?? []"
+                  :key="row.nombre"
+                  :class="{ 'bsm-row-zero': row.perdidos === 0 }"
+                >
+                  <td class="bsm-td-unit">{{ row.nombre }}</td>
+                  <td class="bsm-td-num" :class="row.perdidos > 0 ? 'bsm-red' : 'bsm-zero'">
+                    {{ row.perdidos > 0 ? `−${row.perdidos}` : '—' }}
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="bsm-tfoot">
+                  <td>TOTAL BAJAS</td>
+                  <td class="bsm-td-num bsm-red">{{ battle.attacker_losses > 0 ? `−${battle.attacker_losses}` : '—' }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Bloque milicia -->
+          <div class="bsm-divider"><span>🛡 MILICIA DEL FEUDO</span></div>
+          <div class="bsm-table-wrap">
+            <table class="bsm-table">
+              <thead>
+                <tr>
+                  <th class="bsm-th-unit">Unidad</th>
+                  <th class="bsm-th-num">Perdidos</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in battle.desglose?.Milicia ?? []"
+                  :key="row.nombre"
+                  :class="{ 'bsm-row-zero': row.perdidos === 0 }"
+                >
+                  <td class="bsm-td-unit">{{ row.nombre }}</td>
+                  <td class="bsm-td-num" :class="row.perdidos > 0 ? 'bsm-orange' : 'bsm-zero'">
+                    {{ row.perdidos > 0 ? `−${row.perdidos}` : '—' }}
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="bsm-tfoot">
+                  <td>TOTAL BAJAS</td>
+                  <td class="bsm-td-num bsm-orange">{{ battle.defender_losses > 0 ? `−${battle.defender_losses}` : '—' }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Frase de resultado -->
+          <div class="bsm-outcome">
+            <span class="bsm-outcome-icon">{{ resultOutcomeIcon }}</span>
+            <span class="bsm-outcome-text">{{ battle.message }}</span>
+          </div>
+
+          <!-- Botón cerrar -->
+          <button class="bsm-btn" @click="$emit('close')">Cerrar</button>
+
         </div>
-
-        <!-- Nombre del feudo -->
-        <p class="bsm-fief-name">{{ battle.fief_name }}</p>
-
-        <!-- Tabla comparativa -->
-        <table class="bsm-table">
-          <thead>
-            <tr>
-              <th>Concepto</th>
-              <th>Tus Tropas</th>
-              <th>Milicia del Feudo</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Efectivos</td>
-              <td>{{ battle.attacker_total ?? '—' }}</td>
-              <td>{{ battle.militia_count ?? '—' }}</td>
-            </tr>
-            <tr class="bsm-losses-row">
-              <td>Bajas</td>
-              <td class="bsm-losses-attacker">{{ battle.attacker_losses }}</td>
-              <td class="bsm-losses-defender">{{ battle.defender_losses }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <!-- Pie -->
-        <p class="bsm-summary-text">{{ battle.message }}</p>
-        <button class="bsm-close-btn" @click="$emit('close')">Cerrar</button>
-
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed, watch, onUnmounted } from 'vue';
 
 const props = defineProps({
-  show: { type: Boolean, default: false },
-  battle: { type: Object, default: () => ({}) }
+  show:   { type: Boolean, default: false },
+  battle: { type: Object,  default: () => ({}) }
 });
-
 const emit = defineEmits(['close']);
 
-const headerClass = computed(() => {
-  switch (props.battle?.result) {
-    case 'victory': return 'bsm-victory';
-    case 'defeat':  return 'bsm-defeat';
-    case 'draw':    return 'bsm-draw';
-    default:        return '';
-  }
-});
+const resultLabel = computed(() => ({
+  victory: 'VICTORIA',
+  defeat:  'DERROTA',
+  draw:    'TABLAS',
+}[props.battle?.result] ?? '—'));
 
-const resultIcon = computed(() => {
-  switch (props.battle?.result) {
-    case 'victory': return '🏆';
-    case 'defeat':  return '💀';
-    case 'draw':    return '⚖️';
-    default:        return '⚔️';
-  }
-});
+const resultCrest = computed(() => ({
+  victory: '🏆',
+  defeat:  '💀',
+  draw:    '⚖️',
+}[props.battle?.result] ?? '⚔️'));
 
-const resultLabel = computed(() => {
-  switch (props.battle?.result) {
-    case 'victory': return 'VICTORIA';
-    case 'defeat':  return 'DERROTA';
-    case 'draw':    return 'TABLAS';
-    default:        return '—';
-  }
-});
+const resultOutcomeIcon = computed(() => ({
+  victory: '🏴',
+  defeat:  '🏳️',
+  draw:    '⚔️',
+}[props.battle?.result] ?? ''));
 
+// ── Sonido (hook preparado) ───────────────────────────────────────────────
+// Para activar: descomenta las líneas y coloca los archivos en /public/sounds/
+// const sounds = { victory: '/sounds/fanfare.mp3', defeat: '/sounds/drums.mp3', draw: '/sounds/neutral.mp3' };
+// function playResultSound(result) { try { new Audio(sounds[result])?.play(); } catch(_) {} }
+
+// ── Tecla Escape ─────────────────────────────────────────────────────────
 const handleEsc = (e) => { if (e.key === 'Escape') emit('close'); };
-
 watch(() => props.show, (val) => {
   if (val) {
     document.addEventListener('keydown', handleEsc);
+    // playResultSound(props.battle?.result);   // ← descomentar para sonido
   } else {
     document.removeEventListener('keydown', handleEsc);
   }
-});
-
-onUnmounted(() => { document.removeEventListener('keydown', handleEsc); });
+}, { immediate: false });
+onUnmounted(() => document.removeEventListener('keydown', handleEsc));
 </script>
 
 <style scoped>
+/* ── Transición de entrada ─────────────────────────────────────────────── */
+.bsm-fade-enter-active, .bsm-fade-leave-active { transition: opacity 0.25s ease; }
+.bsm-fade-enter-from, .bsm-fade-leave-to { opacity: 0; }
+
+/* ── Fondo ────────────────────────────────────────────────────────────── */
 .bsm-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.82) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
 }
 
+/* ── Caja principal ───────────────────────────────────────────────────── */
 .bsm-box {
-  background: #1a1a2e;
-  border: 1px solid #3a3a5c;
-  border-radius: 10px;
+  position: relative;
   width: 100%;
-  max-width: 380px;
-  padding: 0;
+  max-width: 460px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  font-family: inherit;
+  font-family: 'Georgia', serif;
+  box-shadow: 0 0 60px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.06);
+  background: #0d0d14;
 }
 
-/* Header */
+/* ── Gradiente lateral por resultado ──────────────────────────────────── */
+.bsm-victory { border-top: 3px solid #22c55e; box-shadow: 0 0 60px rgba(0,0,0,0.9), 0 0 30px rgba(34,197,94,0.25); }
+.bsm-defeat  { border-top: 3px solid #dc2626; box-shadow: 0 0 60px rgba(0,0,0,0.9), 0 0 30px rgba(220,38,38,0.25); }
+.bsm-draw    { border-top: 3px solid #d97706; box-shadow: 0 0 60px rgba(0,0,0,0.9), 0 0 30px rgba(217,119,6,0.25); }
+
+/* ── Decoraciones laterales ───────────────────────────────────────────── */
+.bsm-deco {
+  position: absolute;
+  top: 18px;
+  font-size: 1.1rem;
+  opacity: 0.25;
+  pointer-events: none;
+  user-select: none;
+}
+.bsm-deco-left  { left: 16px;  transform: scaleX(-1); }
+.bsm-deco-right { right: 16px; }
+
+/* ── Header ───────────────────────────────────────────────────────────── */
 .bsm-header {
+  text-align: center;
+  padding: 28px 24px 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 100%);
+}
+
+.bsm-crest {
+  font-size: 2.8rem;
+  line-height: 1;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 0 12px currentColor);
+}
+
+.bsm-title {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+  line-height: 1;
+}
+.bsm-title-victory { color: #4ade80; text-shadow: 0 0 20px rgba(74,222,128,0.7), 0 0 40px rgba(74,222,128,0.3); }
+.bsm-title-defeat  { color: #f87171; text-shadow: 0 0 20px rgba(248,113,113,0.7), 0 0 40px rgba(248,113,113,0.3); }
+.bsm-title-draw    { color: #fbbf24; text-shadow: 0 0 20px rgba(251,191,36,0.7),  0 0 40px rgba(251,191,36,0.3); }
+
+.bsm-fief {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #6b7280;
+  font-family: sans-serif;
+}
+
+/* ── Divisor ──────────────────────────────────────────────────────────── */
+.bsm-divider {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 20px;
-  font-size: 1.2rem;
-  font-weight: 700;
+  padding: 0 20px;
+  margin: 4px 0 0;
+  color: #4b5563;
+  font-family: sans-serif;
+  font-size: 0.65rem;
   letter-spacing: 2px;
-}
-.bsm-icon { font-size: 1.5rem; }
-.bsm-title { flex: 1; }
-
-.bsm-victory { background: #14532d; color: #4ade80; border-bottom: 2px solid #16a34a; }
-.bsm-defeat  { background: #450a0a; color: #f87171; border-bottom: 2px solid #dc2626; }
-.bsm-draw    { background: #422006; color: #fbbf24; border-bottom: 2px solid #d97706; }
-
-/* Body */
-.bsm-fief-name {
-  margin: 14px 20px 4px;
-  font-size: 0.85rem;
-  color: #9ca3af;
   text-transform: uppercase;
-  letter-spacing: 1px;
 }
+.bsm-divider::before, .bsm-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #2d2d4a);
+}
+.bsm-divider::after { background: linear-gradient(90deg, #2d2d4a, transparent); }
 
+/* ── Tabla ────────────────────────────────────────────────────────────── */
+.bsm-table-wrap { padding: 12px 20px 4px; }
 .bsm-table {
-  width: calc(100% - 40px);
-  margin: 8px 20px 12px;
+  width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-family: sans-serif;
+  font-size: 0.85rem;
 }
-.bsm-table th {
-  color: #6b7280;
-  font-weight: 600;
+.bsm-th-unit, .bsm-th-num {
   padding: 6px 8px;
-  text-align: center;
-  border-bottom: 1px solid #2d2d4a;
-  font-size: 0.78rem;
+  color: #4b5563;
+  font-size: 0.7rem;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-}
-.bsm-table th:first-child { text-align: left; }
-.bsm-table td {
-  padding: 8px 8px;
-  text-align: center;
-  color: #e2e8f0;
   border-bottom: 1px solid #1e1e38;
+  font-weight: 600;
 }
-.bsm-table td:first-child { text-align: left; color: #9ca3af; }
+.bsm-th-num { text-align: center; }
 
-.bsm-losses-row td { font-weight: 700; }
-.bsm-losses-attacker { color: #f87171; }
-.bsm-losses-defender { color: #fb923c; }
-
-/* Footer */
-.bsm-summary-text {
-  margin: 4px 20px 16px;
-  font-size: 0.9rem;
+.bsm-td-unit {
+  padding: 8px 8px;
   color: #d1d5db;
-  font-style: italic;
 }
+.bsm-td-num {
+  text-align: center;
+  padding: 8px 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.bsm-table tbody tr { border-bottom: 1px solid #13131f; }
+.bsm-table tbody tr:last-child { border-bottom: none; }
 
-.bsm-close-btn {
+/* Fila sin bajas — gris apagado */
+.bsm-row-zero .bsm-td-unit { color: #374151; }
+
+/* Colores de bajas */
+.bsm-red    { color: #f87171; }
+.bsm-orange { color: #fb923c; }
+.bsm-zero   { color: #374151; }
+
+/* Fila total */
+.bsm-tfoot td {
+  padding: 8px 8px;
+  border-top: 1px solid #2d2d4a;
+  font-family: sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #4b5563;
+  font-weight: 700;
+}
+.bsm-tfoot .bsm-td-num { font-size: 0.9rem; }
+
+/* ── Resultado final ──────────────────────────────────────────────────── */
+.bsm-outcome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 20px 8px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid #1e1e38;
+  border-radius: 8px;
+  font-family: sans-serif;
+}
+.bsm-outcome-icon { font-size: 1.3rem; flex-shrink: 0; }
+.bsm-outcome-text { font-size: 0.9rem; color: #9ca3af; font-style: italic; }
+
+/* ── Botón cerrar ─────────────────────────────────────────────────────── */
+.bsm-btn {
   display: block;
   width: calc(100% - 40px);
-  margin: 0 20px 20px;
-  padding: 10px;
-  background: #2d2d4a;
-  border: 1px solid #3a3a5c;
+  margin: 12px 20px 20px;
+  padding: 11px;
+  background: #111827;
+  border: 1px solid #374151;
   border-radius: 6px;
-  color: #e2e8f0;
-  font-size: 0.9rem;
+  color: #9ca3af;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: background 0.15s;
+  font-family: sans-serif;
+  transition: background 0.15s, color 0.15s;
 }
-.bsm-close-btn:hover { background: #3a3a5c; }
+.bsm-btn:hover { background: #1f2937; color: #e5e7eb; }
 </style>

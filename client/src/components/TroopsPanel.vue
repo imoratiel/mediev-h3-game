@@ -98,6 +98,13 @@
               </td>
               <td class="actions-cell">
                 <button
+                  class="btn-inspect"
+                  @click="openInspect(army)"
+                  title="Ver detalle del ejército"
+                >
+                  👁 Inspeccionar
+                </button>
+                <button
                   class="btn-locate"
                   @click="handleLocate(army)"
                   title="Centrar mapa en esta ubicación"
@@ -129,11 +136,19 @@
       </div>
     </div>
   </div>
+
+  <!-- Army Detail Modal -->
+  <ArmyDetailModal
+    :show="inspectModalVisible"
+    :army="inspectArmy"
+    @close="inspectModalVisible = false"
+  />
 </template>
 
 <script setup>
 import { ref, computed } from 'vue';
 import { stopArmy, attackArmy } from '../services/mapApi.js';
+import ArmyDetailModal from './ArmyDetailModal.vue';
 
 const props = defineProps({
   armies: {
@@ -150,6 +165,11 @@ const emit = defineEmits(['locate', 'armyStopped', 'armyStopFailed', 'armyAttack
 
 const stoppingArmies = ref(new Set());
 const attackingArmies = ref(new Set());
+
+// Army detail modal
+const inspectModalVisible = ref(false);
+const inspectArmy = ref(null);
+const openInspect = (army) => { inspectArmy.value = army; inspectModalVisible.value = true; };
 
 const totalUnits = computed(() => {
   return props.armies.reduce((sum, a) => sum + (a.total_troops || 0), 0);
@@ -572,6 +592,25 @@ const handleAttack = async (army) => {
 /* Actions Column */
 .actions-cell {
   text-align: center;
+}
+
+.btn-inspect {
+  background: transparent;
+  border: 1px solid #4b7bbf;
+  color: #7eb3f5;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  width: 100%;
+  transition: all 0.2s;
+}
+
+.btn-inspect:hover {
+  background: rgba(75,123,191,0.2);
+  border-color: #7eb3f5;
 }
 
 .btn-locate {

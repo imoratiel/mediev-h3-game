@@ -159,6 +159,34 @@ class ArmyService {
             res.status(500).json({ success: false, message: 'Error al obtener ejércitos' });
         }
     }
+    async GetArmyDetail(req, res) {
+        try {
+            const player_id = req.user.player_id;
+            const armyId = parseInt(req.params.id);
+            if (!armyId) return res.status(400).json({ success: false, message: 'ID inválido' });
+
+            const detail = await ArmyModel.GetArmyFullDetail(armyId, player_id);
+            if (!detail) return res.status(404).json({ success: false, message: 'Ejército no encontrado' });
+
+            // Normalizar decimales
+            detail.troops = detail.troops.map(t => ({
+                ...t,
+                quantity:   parseInt(t.quantity)          || 0,
+                experience: parseFloat(t.experience).toFixed(1),
+                morale:     parseFloat(t.morale).toFixed(1),
+                stamina:    parseFloat(t.stamina).toFixed(1),
+            }));
+            detail.army.gold_provisions = parseFloat(detail.army.gold_provisions) || 0;
+            detail.army.food_provisions = parseFloat(detail.army.food_provisions) || 0;
+            detail.army.wood_provisions = parseFloat(detail.army.wood_provisions) || 0;
+
+            res.json({ success: true, ...detail });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/military/armies/:id', method: 'GET', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener detalle del ejército' });
+        }
+    }
+
     async MoveArmy(req, res) {
         try {
             const player_id = req.user.player_id;

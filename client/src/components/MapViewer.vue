@@ -3050,6 +3050,22 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
 };
 
 /**
+ * Activa el modo de movimiento para un ejército desde el popup del mapa.
+ * Cierra el popup y cualquier overlay para dejar el mapa despejado.
+ * Definida antes de showArmyDetailsPopup para evitar falsos positivos de TypeScript.
+ */
+const handleArmyMove = (army) => {
+  map.closePopup();
+  if (activeOverlay.value === 'troops') activeOverlay.value = null;
+  window.startArmyMovement(army.army_id, army.name, army.h3_index);
+};
+
+// Stubs para acciones de ejército aún no implementadas
+const handleArmySplit  = (_army) => showToast('⚙️ Función "Separar" próximamente', 'info');
+const handleArmyMerge  = (_army, _armies) => showToast('⚙️ Función "Unir" próximamente', 'info');
+const handleArmySupply = (_army) => showToast('⚙️ Función "Abastecer" próximamente', 'info');
+
+/**
  * Show detailed army information popup
  * Fetches full army details from API and displays in Leaflet popup
  */
