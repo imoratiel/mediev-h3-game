@@ -97,38 +97,32 @@
                 </div>
               </td>
               <td class="actions-cell">
-                <button
-                  class="btn-inspect"
-                  @click="openInspect(army)"
-                  title="Ver detalle del ejército"
-                >
-                  👁 Inspeccionar
-                </button>
-                <button
-                  class="btn-locate"
-                  @click="handleLocate(army)"
-                  title="Centrar mapa en esta ubicación"
-                >
-                  🔍 Localizar
-                </button>
-                <button
-                  v-if="army.destination"
-                  class="btn-stop"
-                  @click="handleStop(army)"
-                  :disabled="stoppingArmies.has(army.army_id)"
-                  title="Cancelar movimiento"
-                >
-                  {{ stoppingArmies.has(army.army_id) ? '...' : '⏹ Detener' }}
-                </button>
-                <button
-                  v-if="army.enemy_count > 0"
-                  class="btn-attack"
-                  @click="handleAttack(army)"
-                  :disabled="attackingArmies.has(army.army_id)"
-                  :title="`Atacar (${army.enemy_count} ejército(s) enemigo(s) en este hexágono)`"
-                >
-                  {{ attackingArmies.has(army.army_id) ? '⏳ Atacando...' : `⚔️ Atacar (${army.enemy_count})` }}
-                </button>
+                <div class="action-buttons">
+                  <button
+                    class="btn-icon btn-icon-inspect"
+                    @click="openInspect(army)"
+                    title="Detalles"
+                  >👁</button>
+                  <button
+                    class="btn-icon btn-icon-locate"
+                    @click="handleLocate(army)"
+                    title="Localizar"
+                  >🔍</button>
+                  <button
+                    v-if="army.destination"
+                    class="btn-icon btn-icon-stop"
+                    @click="handleStop(army)"
+                    :disabled="stoppingArmies.has(army.army_id)"
+                    title="Detener movimiento"
+                  >{{ stoppingArmies.has(army.army_id) ? '⏳' : '⏹' }}</button>
+                  <button
+                    v-if="army.enemy_count > 0"
+                    class="btn-icon btn-icon-attack"
+                    @click="handleAttack(army)"
+                    :disabled="attackingArmies.has(army.army_id)"
+                    :title="`Atacar (${army.enemy_count} ejército(s) enemigo(s))`"
+                  >{{ attackingArmies.has(army.army_id) ? '⏳' : '⚔️' }}</button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -592,98 +586,74 @@ const handleAttack = async (army) => {
 /* Actions Column */
 .actions-cell {
   text-align: center;
+  white-space: nowrap;
 }
 
-.btn-inspect {
-  background: transparent;
-  border: 1px solid #4b7bbf;
-  color: #7eb3f5;
-  padding: 6px 12px;
+.action-buttons {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  align-items: center;
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-bottom: 6px;
-  width: 100%;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.2s;
+  padding: 0;
+  background: transparent;
+  flex-shrink: 0;
 }
 
-.btn-inspect:hover {
-  background: rgba(75,123,191,0.2);
+.btn-icon-inspect {
+  border: 1px solid #4b7bbf;
+  color: #7eb3f5;
+}
+.btn-icon-inspect:hover {
+  background: rgba(75, 123, 191, 0.25);
   border-color: #7eb3f5;
 }
 
-.btn-locate {
-  background: #c5a059;
-  border: none;
-  color: #111;
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-weight: 700;
-  cursor: pointer;
-  font-size: 0.95rem;
-  transition: all 0.2s;
-  font-family: 'Cinzel', serif;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+.btn-icon-locate {
+  border: 1px solid #c5a059;
+  color: #c5a059;
+}
+.btn-icon-locate:hover {
+  background: rgba(197, 160, 89, 0.2);
+  border-color: #ffd700;
+  color: #ffd700;
 }
 
-.btn-locate:hover {
-  background: #ffd700;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
-}
-
-.btn-locate:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.btn-stop {
-  background: transparent;
+.btn-icon-stop {
   border: 1px solid #e53935;
   color: #e53935;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-top: 6px;
-  width: 100%;
-  transition: all 0.2s;
 }
-
-.btn-stop:hover:not(:disabled) {
+.btn-icon-stop:hover:not(:disabled) {
   background: #e53935;
   color: #fff;
 }
-
-.btn-stop:disabled {
+.btn-icon-stop:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.btn-attack {
-  background: transparent;
+.btn-icon-attack {
   border: 1px solid #e53935;
   color: #e53935;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-top: 6px;
-  width: 100%;
-  transition: all 0.2s;
   animation: pulse-border 1.5s infinite;
 }
-
-.btn-attack:hover:not(:disabled) {
+.btn-icon-attack:hover:not(:disabled) {
   background: #e53935;
   color: #fff;
   animation: none;
 }
-
-.btn-attack:disabled {
+.btn-icon-attack:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   animation: none;
