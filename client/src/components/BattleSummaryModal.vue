@@ -83,6 +83,12 @@
             <span class="bsm-outcome-text">{{ battle.message }}</span>
           </div>
 
+          <!-- Experiencia ganada -->
+          <div v-if="battle.experience_gained > 0" class="bsm-exp">
+            <span class="bsm-exp-icon">⭐</span>
+            <span class="bsm-exp-text">Tus tropas han ganado <strong>+{{ battle.experience_gained }}</strong> de experiencia</span>
+          </div>
+
           <!-- Botón cerrar -->
           <button class="bsm-btn" @click="$emit('close')">Cerrar</button>
 
@@ -305,6 +311,22 @@ onUnmounted(() => document.removeEventListener('keydown', handleEsc));
 }
 .bsm-outcome-icon { font-size: 1.3rem; flex-shrink: 0; }
 .bsm-outcome-text { font-size: 0.9rem; color: #9ca3af; font-style: italic; }
+
+/* ── Experiencia ganada ───────────────────────────────────────────────── */
+.bsm-exp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 20px 12px;
+  padding: 10px 14px;
+  background: rgba(251,191,36,0.07);
+  border: 1px solid rgba(251,191,36,0.2);
+  border-radius: 8px;
+  font-family: sans-serif;
+}
+.bsm-exp-icon { font-size: 1.1rem; flex-shrink: 0; }
+.bsm-exp-text { font-size: 0.88rem; color: #d1d5db; }
+.bsm-exp-text strong { color: #fbbf24; }
 
 /* ── Botón cerrar ─────────────────────────────────────────────────────── */
 .bsm-btn {

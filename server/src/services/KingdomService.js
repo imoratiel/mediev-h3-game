@@ -414,7 +414,25 @@ class KingdomService {
                 Milicia: [{ nombre: 'Milicia del Feudo', perdidos: defender_losses }]
             };
 
-            // 9. Aplicar resultado territorial
+            // 12. Calcular y aplicar experiencia a supervivientes
+            // EXP_Total = (milicianos_muertos × 1) + (propios_muertos × 2)
+            const expTotal = (defender_losses * 1) + (attacker_losses * 2);
+            const totalSurvivors = troopsAfter.rows.reduce((s, r) => s + parseInt(r.quantity), 0);
+            // Reparto equitativo por soldado superviviente
+            const experience_gained = (expTotal > 0 && totalSurvivors > 0)
+                ? Math.round(expTotal / totalSurvivors * 100) / 100
+                : 0;
+
+            if (experience_gained > 0) {
+                await client.query(
+                    `UPDATE troops
+                     SET experience = LEAST(100.00, experience + $1)
+                     WHERE army_id = $2`,
+                    [experience_gained, armyId]
+                );
+            }
+
+            // 13. Aplicar resultado territorial
             const previousOwner = hex.player_id;
             if (result === 'victory' || result === 'draw') {
                 await client.query('UPDATE h3_map SET player_id = $1 WHERE h3_index = $2', [player_id, h3_index]);
@@ -444,6 +462,7 @@ class KingdomService {
                 defender_losses,
                 militia_count: militiaCount,
                 desglose,
+                experience_gained,
                 territory_claimed: result === 'victory' || result === 'draw',
                 message: result === 'victory' ? 'El feudo ahora es tuyo.'
                         : result === 'draw'    ? 'El feudo cambia de manos por desgaste.'
