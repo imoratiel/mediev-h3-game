@@ -102,3 +102,9 @@
 - content (TEXT)
 - is_read (BOOLEAN)
 - created_at (TIMESTAMP)
+
+## Tabla: army_routes
+- army_id (SERIAL PK)
+- path (jsonb)
+- created_at (timestamp)
+- updated_at (timestamp)

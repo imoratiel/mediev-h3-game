@@ -732,16 +732,20 @@ async function processGameTurn(pool, config) {
         // Process completed explorations (every turn)
         await processExplorations(client, newTurn, config);
 
-        // Military food consumption (every turn)
-        await processMilitaryConsumption(client, newTurn, config);
-
-        // Army automatic movements (every turn, before recovery)
+        // Army automatic movements (every turn, before consumption)
+        // IMPORTANT: Must run BEFORE processMilitaryConsumption to avoid a deadlock.
+        // processMilitaryConsumption holds row-level locks on armies (food_provisions UPDATE via T1).
+        // executeArmyTurn opens its own transaction (T2) and tries to UPDATE armies.h3_index.
+        // T2 would block waiting for T1's lock, while T1 awaits T2 in JS → application-level deadlock.
         await processArmyMovements(client, newTurn, config);
 
         // Army passive stamina recovery (every turn, after movements)
         // Ejecutar DESPUÉS del movimiento para que el esfuerzo extra de este turno
         // no sea inmediatamente cancelado por la recuperación del mismo turno.
         await processArmyRecovery(client, newTurn, config);
+
+        // Military food consumption (every turn, after movements so no lock conflict)
+        await processMilitaryConsumption(client, newTurn, config);
 
         // Monthly production (day 1 of each month)
         const gameDate = new Date(newDate);
