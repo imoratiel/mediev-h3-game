@@ -72,6 +72,7 @@ module.exports = function () {
     router.patch('/military/rename', authenticateToken, (req, res) => ArmyService.renameArmy(req, res));
     router.post('/military/stop', authenticateToken, (req, res) => ArmyService.StopArmy(req, res));
     router.post('/military/attack', authenticateToken, (req, res) => CombatService.manualAttack(req, res));
+    router.post('/military/attack-army', authenticateToken, (req, res) => CombatService.attackSpecificArmy(req, res));
     router.post('/military/conquer', authenticateToken, (req, res) => KingdomService.conquestTerritory(req, res));
     router.post('/military/conquer-fief', authenticateToken, (req, res) => KingdomService.conquerFief(req, res));
     router.post('/military/merge', authenticateToken, (req, res) => ArmyService.MergeArmies(req, res));

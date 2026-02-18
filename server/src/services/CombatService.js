@@ -113,6 +113,153 @@ class CombatService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // ENDPOINT HTTP: POST /api/military/attack-army
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Ataca un ejército enemigo concreto desde el popup del mapa.
+     * El jugador elige explícitamente qué ejército propio ataca (attackerArmyId)
+     * y qué ejército enemigo es el objetivo (targetArmyId).
+     * Devuelve el resultado en el formato del BattleSummaryModal.
+     */
+    async attackSpecificArmy(req, res) {
+        const player_id = req.user.player_id;
+        const { attackerArmyId, targetArmyId } = req.body;
+
+        if (!attackerArmyId || !targetArmyId) {
+            return res.status(400).json({ success: false, message: 'attackerArmyId y targetArmyId son requeridos' });
+        }
+        if (Number(attackerArmyId) === Number(targetArmyId)) {
+            return res.status(400).json({ success: false, message: 'No puedes atacar tu propio ejército' });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Verificar que el atacante pertenece al jugador
+            const attackerResult = await client.query(
+                'SELECT army_id, name, h3_index FROM armies WHERE army_id = $1 AND player_id = $2',
+                [attackerArmyId, player_id]
+            );
+            if (attackerResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Ejército atacante no encontrado o no te pertenece' });
+            }
+            const attacker = attackerResult.rows[0];
+
+            // 2. Verificar que el objetivo es enemigo
+            const defenderResult = await client.query(
+                'SELECT army_id, name, h3_index FROM armies WHERE army_id = $1 AND player_id != $2',
+                [targetArmyId, player_id]
+            );
+            if (defenderResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Ejército objetivo no encontrado' });
+            }
+            const defender = defenderResult.rows[0];
+
+            // 3. Verificar mismo hexágono
+            if (attacker.h3_index !== defender.h3_index) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'El ejército objetivo no está en el mismo hexágono' });
+            }
+
+            // 4. Tropas PRE-combate para desglose
+            const preTroops = (armyId) => client.query(
+                `SELECT t.quantity, ut.name AS unit_name
+                 FROM troops t
+                 JOIN unit_types ut ON ut.unit_type_id = t.unit_type_id
+                 WHERE t.army_id = $1 AND t.quantity > 0`,
+                [armyId]
+            );
+            const [preAttacker, preDefender] = await Promise.all([
+                preTroops(attackerArmyId),
+                preTroops(targetArmyId)
+            ]);
+
+            // 5. Turno actual
+            const worldResult = await client.query('SELECT current_turn FROM world_state LIMIT 1');
+            const turn = worldResult.rows[0]?.current_turn ?? 0;
+
+            // 6. Resolver combate — defensor recibe +10% de PC
+            const battle = await this.resolveCombat(
+                client, attackerArmyId, targetArmyId,
+                attacker.h3_index, turn,
+                attackerArmyId
+            );
+
+            await client.query('COMMIT');
+
+            if (!battle) {
+                return res.status(400).json({ success: false, message: 'Combate no pudo resolverse (ejércitos sin tropas)' });
+            }
+
+            // 7. Identificar sides desde la perspectiva del jugador
+            const playerBattle = battle.armyA.id === Number(attackerArmyId) ? battle.armyA : battle.armyB;
+            const enemyBattle  = battle.armyA.id === Number(targetArmyId)   ? battle.armyA : battle.armyB;
+
+            // 8. Resultado
+            let result;
+            if (battle.isDraw)                                     result = 'draw';
+            else if (battle.winner?.id === Number(attackerArmyId)) result = 'victory';
+            else                                                   result = 'defeat';
+
+            // 9. Desglose por unidad proporcional a la tasa de bajas de la batalla
+            const makeDesglose = (preTroopsResult, lossRate) =>
+                preTroopsResult.rows.map(t => ({
+                    nombre: t.unit_name,
+                    perdidos: Math.ceil(t.quantity * lossRate)
+                }));
+
+            // 10. Mensaje de resultado
+            const lootLine = battle.loot
+                ? ` · Botín: 🪙${battle.loot.gold} 🍖${battle.loot.food} 🪵${battle.loot.wood}`
+                : '';
+
+            let message;
+            if (result === 'draw') {
+                message = 'Ambos ejércitos mantienen sus posiciones. Nadie avanza.';
+            } else if (result === 'victory') {
+                if (enemyBattle.destroyed)            message = `¡"${enemyBattle.name}" ha sido aniquilado!` + lootLine;
+                else if (enemyBattle.retreat?.retreated) message = `"${enemyBattle.name}" huye hasta ${enemyBattle.retreat.newHex}.` + lootLine;
+                else                                  message = 'El enemigo ha sido derrotado.' + lootLine;
+            } else {
+                if (playerBattle.destroyed)            message = `¡"${playerBattle.name}" ha sido aniquilado en el campo de batalla!`;
+                else if (playerBattle.retreat?.retreated) message = `Tus tropas se retiran hacia ${playerBattle.retreat.newHex}.`;
+                else                                   message = 'Tus tropas han sido derrotadas.';
+            }
+
+            Logger.action(
+                `Player ${player_id} attacked army ${targetArmyId} with ${attackerArmyId} at ${attacker.h3_index} → ${result}`,
+                { player_id, attackerArmyId, targetArmyId, result }
+            );
+
+            return res.json({
+                success: true,
+                result,
+                fief_name: `${attacker.h3_index} · vs "${defender.name}"`,
+                defender_label: `⚔️ ${defender.name}`,
+                attacker_losses: playerBattle.dead,
+                defender_losses: enemyBattle.dead,
+                desglose: {
+                    Atacante: makeDesglose(preAttacker, playerBattle.lossRate),
+                    Milicia:  makeDesglose(preDefender, enemyBattle.lossRate)
+                },
+                message,
+                experience_gained: 0
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(error, { context: 'CombatService.attackSpecificArmy', player_id, attackerArmyId, targetArmyId });
+            return res.status(500).json({ success: false, message: 'Error al procesar el combate' });
+        } finally {
+            client.release();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // RESOLUCIÓN DE BATALLA INDIVIDUAL
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -347,7 +494,7 @@ class CombatService {
         const totalQty = survivors.reduce((s, t) => s + t.quantity, 0) || 1;
         for (const troop of survivors) {
             const share  = (troop.quantity / totalQty) * totalExp;
-            const newExp = Math.min(100, parseFloat(troop.experience) + share);
+            const newExp = Math.min(100, Math.round(parseFloat(troop.experience) + share));
             await CombatModel.updateTroopExperience(client, troop.troop_id, newExp);
         }
     }
@@ -368,41 +515,54 @@ class CombatService {
             return { retreated: false, destroyed: true };
         }
 
+        // Obtener player_id y capital_h3 del ejército en una sola query
+        const armyRow = await client.query(
+            `SELECT a.player_id, p.capital_h3
+             FROM armies a
+             JOIN players p ON p.player_id = a.player_id
+             WHERE a.army_id = $1`,
+            [armyId]
+        );
+        const playerId  = armyRow.rows[0]?.player_id;
+        const capitalH3 = armyRow.rows[0]?.capital_h3 ?? null;
+
         // Obtener hexes pasables del mapa
         const passableResult = await client.query(`
-            SELECT hm.h3_index, tt.movement_cost
+            SELECT hm.h3_index
             FROM h3_map hm
             JOIN terrain_types tt ON hm.terrain_type_id = tt.terrain_type_id
             WHERE hm.h3_index = ANY($1) AND tt.movement_cost > 0
-            ORDER BY tt.movement_cost ASC
         `, [neighbors]);
 
         if (passableResult.rows.length === 0) {
-            // Sin salida — el ejército es destruido
             await this._destroyArmy(client, armyId);
             return { retreated: false, destroyed: true };
         }
 
-        // Preferir hexes sin ejércitos enemigos
-        // Obtener hexes ocupados por enemigos
-        const armyRow = await client.query(
-            'SELECT player_id FROM armies WHERE army_id = $1',
-            [armyId]
-        );
-        const playerId = armyRow.rows[0]?.player_id;
-
-        let retreatHex = passableResult.rows[0].h3_index; // fallback: primer pasable
-
-        for (const row of passableResult.rows) {
+        // Para cada hex pasable: verificar enemigos y calcular distancia a la capital
+        const candidates = await Promise.all(passableResult.rows.map(async (row) => {
             const enemyCheck = await client.query(
                 'SELECT 1 FROM armies WHERE h3_index = $1 AND player_id != $2 LIMIT 1',
                 [row.h3_index, playerId]
             );
-            if (enemyCheck.rows.length === 0) {
-                retreatHex = row.h3_index;
-                break;
+            const hasEnemy = enemyCheck.rows.length > 0;
+
+            let distToCapital = Infinity;
+            if (capitalH3) {
+                try { distToCapital = h3.gridDistance(row.h3_index, capitalH3); }
+                catch (_) { /* hexes en diferente resolución — ignorar */ }
             }
-        }
+
+            return { h3_index: row.h3_index, hasEnemy, distToCapital };
+        }));
+
+        // Prioridad: (1) sin enemigos, (2) más cercano a la capital
+        candidates.sort((a, b) => {
+            if (a.hasEnemy !== b.hasEnemy) return a.hasEnemy ? 1 : -1;
+            return a.distToCapital - b.distToCapital;
+        });
+
+        const retreatHex = candidates[0].h3_index;
 
         // Mover el ejército y cancelar ruta
         await client.query(
@@ -411,7 +571,7 @@ class CombatService {
         );
         await client.query('DELETE FROM army_routes WHERE army_id = $1', [armyId]);
 
-        Logger.engine(`[COMBAT] Army ${armyId} retreated from ${fromH3} to ${retreatHex}`);
+        Logger.engine(`[COMBAT] Army ${armyId} retreated from ${fromH3} to ${retreatHex} (capital: ${capitalH3})`);
         return { retreated: true, destroyed: false, newHex: retreatHex };
     }
 

@@ -279,6 +279,11 @@ export async function attackArmy(armyId) {
   return response.data;
 }
 
+export async function attackSpecificArmy(attackerArmyId, targetArmyId) {
+  const response = await axios.post(`${API_URL}/api/military/attack-army`, { attackerArmyId, targetArmyId });
+  return response.data;
+}
+
 export async function conquerTerritory(armyId, h3_index) {
   const response = await axios.post(`${API_URL}/api/military/conquer`, { armyId, h3_index });
   return response.data;

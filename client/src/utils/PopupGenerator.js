@@ -178,9 +178,10 @@ export function generateArmyPopup(armyData, config) {
     coord_x,
     coord_y,
     hexOwnerId = null,
-    currentIndex = 0,       // índice del ejército actualmente visible
+    currentIndex = 0,          // índice del ejército actualmente visible
     hasExplorersAtHex = false, // el jugador tiene Exploradores en el mismo hex
-    scoutingArmyId = null      // army_id del ejército propio con exploradores
+    scoutingArmyId = null,     // army_id del ejército propio con exploradores
+    attackingArmyId = null     // army_id del ejército propio en el mismo hex (para atacar)
   } = config;
 
   _ensureFadeAnimation();
@@ -319,7 +320,20 @@ export function generateArmyPopup(armyData, config) {
       if (isMoving) popupContent += `<p style="margin:7px 0 0;font-size:0.78rem;color:#f87171;">🏃 En movimiento</p>`;
       popupContent += `</div>`;
 
-      // ── SCOUT ACTION ──────────────────────────────────────────────────────
+      // ── ACCIONES SOBRE EJÉRCITO ENEMIGO ───────────────────────────────────
+      popupContent += `<div class="army-actions-compact" style="margin-top:8px;display:flex;gap:6px;align-items:center;">`;
+
+      // Botón ATACAR
+      const attackEnabled = attackingArmyId !== null;
+      const attackTitle = attackEnabled
+        ? `Atacar con tu ejército (mismo hexágono)`
+        : 'Necesitas un ejército propio en el mismo hexágono';
+      const attackClass = attackEnabled
+        ? 'army-action-icon army-action-attack'
+        : 'army-action-icon army-action-disabled';
+      popupContent += `<button id="army-attack-${army.army_id}" class="${attackClass}" ${!attackEnabled ? 'disabled' : ''} data-attacking-army="${attackingArmyId ?? ''}" title="${attackTitle}">⚔️</button>`;
+
+      // Botón ESPIONAJE
       const scoutEnabled = hasExplorersAtHex && scoutingArmyId !== null;
       const scoutTitle = scoutEnabled
         ? 'Enviar exploradores (100💰 provisiones · 1000💰 si no hay provisiones)'
@@ -327,9 +341,9 @@ export function generateArmyPopup(armyData, config) {
       const scoutClass = scoutEnabled
         ? 'army-action-icon army-action-scout'
         : 'army-action-icon army-action-disabled';
-      popupContent += `<div class="army-actions-compact" style="margin-top:8px;">`;
       popupContent += `<button id="army-scout-${army.army_id}" class="${scoutClass}" ${!scoutEnabled ? 'disabled' : ''} data-scouting-army="${scoutingArmyId ?? ''}" title="${scoutTitle}">🔭</button>`;
-      popupContent += `<span style="font-size:0.72rem;color:#6b7280;margin-left:6px;">${scoutTitle}</span>`;
+
+      popupContent += `<span style="font-size:0.72rem;color:#6b7280;margin-left:4px;">${attackEnabled ? attackTitle : scoutEnabled ? scoutTitle : 'Sin acciones disponibles'}</span>`;
       popupContent += `</div>`;
     }
 

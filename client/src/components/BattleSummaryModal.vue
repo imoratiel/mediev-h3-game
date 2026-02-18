@@ -46,8 +46,8 @@
             </table>
           </div>
 
-          <!-- Bloque milicia -->
-          <div class="bsm-divider"><span>🛡 MILICIA DEL FEUDO</span></div>
+          <!-- Bloque milicia / ejército enemigo -->
+          <div class="bsm-divider"><span>{{ battle.defender_label ?? '🛡 MILICIA DEL FEUDO' }}</span></div>
           <div class="bsm-table-wrap">
             <table class="bsm-table">
               <thead>

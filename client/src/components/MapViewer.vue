@@ -3141,19 +3141,30 @@ const attachArmyListeners = (army, h3_index) => {
   if (supplyBtn) supplyBtn.addEventListener('click', () => handleArmySupply(army));
 };
 
-/** Retorna si hay un ejército propio con Exploradores en el hex y su army_id. */
+/** Retorna si hay un ejército propio con Exploradores en el hex y su army_id, y el primer ejército propio para atacar. */
 const _getScoutingInfo = (armies) => {
   const EXPLORER = 'Explorador';
   const scout = armies.find(a =>
     a.player_id === playerId.value &&
     a.units?.some(u => u.unit_name === EXPLORER)
   );
-  return { hasExplorersAtHex: !!scout, scoutingArmyId: scout?.army_id ?? null };
+  const ownArmy = armies.find(a => a.player_id === playerId.value);
+  return {
+    hasExplorersAtHex: !!scout,
+    scoutingArmyId: scout?.army_id ?? null,
+    attackingArmyId: ownArmy?.army_id ?? null
+  };
 };
 
 /** Adjunta listeners a los botones de un ejército ENEMIGO en el popup. */
 const attachEnemyListeners = (army) => {
   if (army.player_id === playerId.value) return;
+
+  const attackBtn = document.getElementById(`army-attack-${army.army_id}`);
+  if (attackBtn && !attackBtn.disabled) {
+    attackBtn.addEventListener('click', () => handleArmyAttackFromPopup(army));
+  }
+
   const scoutBtn = document.getElementById(`army-scout-${army.army_id}`);
   if (scoutBtn && !scoutBtn.disabled) {
     scoutBtn.addEventListener('click', () => handleArmyScout(army));
@@ -3165,7 +3176,7 @@ window.armyPopupNavigate = (delta) => {
   const newIndex = _pp_index + delta;
   if (newIndex < 0 || newIndex >= _pp_armies.length || !_pp_ref) return;
   _pp_index = newIndex;
-  const { hasExplorersAtHex, scoutingArmyId } = _getScoutingInfo(_pp_armies);
+  const { hasExplorersAtHex, scoutingArmyId, attackingArmyId } = _getScoutingInfo(_pp_armies);
   const newContent = generateArmyPopup({ armies: _pp_armies }, {
     currentPlayerId: playerId.value,
     h3_index: _pp_h3,
@@ -3174,7 +3185,8 @@ window.armyPopupNavigate = (delta) => {
     hexOwnerId: _pp_coords.ownerId,
     currentIndex: _pp_index,
     hasExplorersAtHex,
-    scoutingArmyId
+    scoutingArmyId,
+    attackingArmyId
   });
   _pp_ref.setContent(newContent);
   setTimeout(() => {
@@ -3221,7 +3233,7 @@ const showArmyDetailsPopup = async (h3_index, latLng) => {
     _pp_coords = { x: coord_x, y: coord_y, ownerId: cellData?.player_id ?? null };
 
     // Compute scouting info for the enemy popup button
-    const { hasExplorersAtHex, scoutingArmyId } = _getScoutingInfo(_pp_armies);
+    const { hasExplorersAtHex, scoutingArmyId, attackingArmyId } = _getScoutingInfo(_pp_armies);
 
     // Build popup HTML content using external generator
     const popupContent = generateArmyPopup(data, {
@@ -3232,7 +3244,8 @@ const showArmyDetailsPopup = async (h3_index, latLng) => {
       hexOwnerId: _pp_coords.ownerId,
       currentIndex: 0,
       hasExplorersAtHex,
-      scoutingArmyId
+      scoutingArmyId,
+      attackingArmyId
     });
 
     // Create and show popup — store reference for navigation
@@ -3555,6 +3568,32 @@ const handleArmyScout = async (enemyArmy) => {
     map.closePopup();
   } catch (err) {
     const msg = err?.response?.data?.error || err?.response?.data?.message || '❌ Error en la misión de espionaje';
+    showToast(msg, 'error');
+    if (btn) btn.disabled = false;
+  }
+};
+
+/**
+ * Ataca un ejército enemigo desde el popup del mapa.
+ * Llamado por el listener del botón army-attack-{id} en attachEnemyListeners.
+ */
+const handleArmyAttackFromPopup = async (enemyArmy) => {
+  const btn = document.getElementById(`army-attack-${enemyArmy.army_id}`);
+  const rawId = btn ? parseInt(btn.dataset.attackingArmy, 10) : NaN;
+  const attackerArmyId = Number.isFinite(rawId) ? rawId : null;
+  if (!attackerArmyId) {
+    showToast('No se encontró un ejército atacante válido', 'error');
+    return;
+  }
+  try {
+    if (btn) btn.disabled = true;
+    map.closePopup();
+    const result = await mapApi.attackSpecificArmy(attackerArmyId, enemyArmy.army_id);
+    battleSummaryData.value = result;
+    battleSummaryVisible.value = true;
+    await Promise.all([fetchHexagonData(), fetchTroops(), fetchArmyData()]);
+  } catch (err) {
+    const msg = err?.response?.data?.message || '❌ Error al atacar el ejército';
     showToast(msg, 'error');
     if (btn) btn.disabled = false;
   }
