@@ -330,3 +330,8 @@ export async function logout() {
   const response = await axios.post(`${API_URL}/api/auth/logout`);
   return response.data;
 }
+
+export async function updateProfile(display_name) {
+  const response = await axios.put(`${API_URL}/api/auth/profile`, { display_name });
+  return response.data;
+}

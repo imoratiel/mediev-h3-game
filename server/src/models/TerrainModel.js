@@ -21,7 +21,7 @@ class TerrainModel {
                 t.color AS terrain_color,
                 t.food_output,
                 t.wood_output,
-                p.username AS player_name,
+                p.display_name AS player_name,
                 p.color AS player_color,
                 p.capital_h3,
                 b.name AS building_type,

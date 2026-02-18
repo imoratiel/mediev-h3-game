@@ -57,7 +57,7 @@ class ScoutingService {
 
             // ── 2. Verificar que el objetivo existe y es enemigo ──────────
             const targetResult = await client.query(
-                `SELECT a.army_id, a.name, a.h3_index, a.player_id, p.username AS player_name
+                `SELECT a.army_id, a.name, a.h3_index, a.player_id, p.display_name AS player_name
                  FROM armies a
                  JOIN players p ON p.player_id = a.player_id
                  WHERE a.army_id = $1 AND a.player_id != $2`,
@@ -192,7 +192,7 @@ class ScoutingService {
             await NotificationService.createSystemNotification(player_id, 'COMBAT', notifContent, turn);
 
             if (detected) {
-                const scoutName = req.user.username;
+                const scoutName = req.user.display_name || req.user.username;
                 await NotificationService.createSystemNotification(
                     targetArmy.player_id,
                     'COMBAT',

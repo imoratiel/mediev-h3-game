@@ -3,7 +3,7 @@ const pool = require('../../db.js');
 class PlayerModel {
     async GetById(player_id) {
         const result = await pool.query(
-            'SELECT player_id, username, gold, color FROM players WHERE player_id = $1',
+            'SELECT player_id, username, display_name, gold, color FROM players WHERE player_id = $1',
             [player_id]
         );
         return result.rows[0];
@@ -21,7 +21,7 @@ class PlayerModel {
         return result;
     }
     async GetPlayerByUsername(username){
-        const result = await pool.query('SELECT player_id, username, password, role, capital_h3, gold FROM players WHERE username = $1', [username]);
+        const result = await pool.query('SELECT player_id, username, display_name, password, role, capital_h3, gold FROM players WHERE username = $1', [username]);
         return result;
     }
 }

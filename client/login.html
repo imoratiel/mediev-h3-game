@@ -264,7 +264,7 @@
           // Store user data in localStorage for quick access
           localStorage.setItem('user', JSON.stringify(data.user));
 
-          showAlert('success', `¡Bienvenido, ${data.user.username}!`);
+          showAlert('success', `¡Bienvenido, ${data.user.display_name || data.user.username}!`);
 
           // Fetch player's capital to center map on login
           try {

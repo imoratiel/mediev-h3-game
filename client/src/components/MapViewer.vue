@@ -110,9 +110,15 @@
 
       <!-- Sidebar Footer -->
       <div class="sidebar-footer">
-        <div v-if="currentUser" class="user-info-footer">
-          <span class="username">{{ currentUser.username }}</span>
-        </div>
+        <button
+          v-if="currentUser"
+          class="user-info-footer"
+          :class="{ active: activePanel === 'profile' }"
+          @click="togglePanel('profile')"
+          title="Editar perfil"
+        >
+          <span class="username">{{ currentUser.display_name || currentUser.username }}</span>
+        </button>
         <a
           v-if="currentUser && currentUser.role === 'admin'"
           href="/admin.html"
@@ -395,6 +401,33 @@
             :loading="loadingNotifications"
             @read="handleNotificationRead"
           />
+        </div>
+
+        <!-- Profile Panel -->
+        <div v-if="activePanel === 'profile'" class="panel-section profile-panel">
+          <div class="profile-info">
+            <p class="profile-field-label">Usuario de acceso</p>
+            <p class="profile-username">{{ currentUser?.username }}</p>
+          </div>
+          <div class="profile-edit-section">
+            <p class="profile-field-label">Nombre de personaje</p>
+            <input
+              v-model="profileDisplayName"
+              class="profile-input"
+              type="text"
+              maxlength="20"
+              placeholder="Nombre visible en el mapa..."
+              @keyup.enter="saveProfile"
+            />
+            <p class="profile-hint">3–20 caracteres. Solo letras, números y espacios. Visible para todos los jugadores.</p>
+            <button
+              class="profile-save-button"
+              :disabled="savingProfile || profileDisplayName.trim().length < 3"
+              @click="saveProfile"
+            >
+              {{ savingProfile ? 'Guardando...' : '💾 Guardar nombre' }}
+            </button>
+          </div>
         </div>
       </div>
     </aside>
@@ -878,6 +911,10 @@ const loadingTroops = ref(false);
 const notifications = ref([]);
 const loadingNotifications = ref(false);
 
+// Profile panel state
+const profileDisplayName = ref('');
+const savingProfile = ref(false);
+
 // Battle summary modal state
 const battleSummaryVisible = ref(false);
 const battleSummaryData = ref({});
@@ -895,7 +932,8 @@ const panelTitle = computed(() => {
     market: '🏪 Mercado',
     kingdom: '🏰 Reino',
     messages: '📜 Mensajes',
-    notifications: '🔔 Notificaciones'
+    notifications: '🔔 Notificaciones',
+    profile: '👤 Perfil'
   };
   return titles[activePanel.value] || '';
 });
@@ -3779,6 +3817,25 @@ const checkAuth = async () => {
  * Handle user logout
  * Calls logout API, clears local storage, and redirects to login
  */
+const saveProfile = async () => {
+  if (savingProfile.value || profileDisplayName.value.trim().length < 2) return;
+  savingProfile.value = true;
+  try {
+    const result = await mapApi.updateProfile(profileDisplayName.value.trim());
+    if (result.success) {
+      currentUser.value = result.user;
+      localStorage.setItem('user', JSON.stringify(result.user));
+      showToast(`Nombre actualizado: ${result.user.display_name}`, 'success');
+    } else {
+      showToast(result.error || 'Error al guardar el nombre', 'error');
+    }
+  } catch (err) {
+    showToast(err?.response?.data?.error || 'Error de conexión', 'error');
+  } finally {
+    savingProfile.value = false;
+  }
+};
+
 const handleLogout = async () => {
   try {
     console.log('[Auth] Logging out...');
@@ -3812,6 +3869,15 @@ const handleLogout = async () => {
 };
 
 // Watchers
+watch(
+  () => activePanel.value,
+  (newPanel) => {
+    if (newPanel === 'profile') {
+      profileDisplayName.value = currentUser.value?.display_name || currentUser.value?.username || '';
+    }
+  }
+);
+
 watch(
   () => activeOverlay.value,
   async (newValue) => {
@@ -4338,14 +4404,106 @@ onBeforeUnmount(() => {
   font-size: 10px;
   color: var(--color-text-dim);
   text-align: center;
-  padding: 4px;
+  padding: 4px 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  width: 100%;
+}
+
+.user-info-footer:hover,
+.user-info-footer.active {
+  border-color: rgba(197, 160, 89, 0.4);
+  color: var(--color-accent-gold);
 }
 
 .username {
   font-family: var(--font-sans);
+}
+
+/* Profile panel */
+.profile-panel {
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.profile-info {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(197, 160, 89, 0.2);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.profile-field-label {
+  font-size: 0.72rem;
+  color: #a89875;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 4px;
+}
+
+.profile-username {
+  font-size: 0.95rem;
+  color: #e8d5b5;
+  font-family: monospace;
+}
+
+.profile-edit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  border-radius: 6px;
+  color: #e8d5b5;
+  font-size: 0.95rem;
+  font-family: var(--font-sans);
+  transition: border-color 0.2s;
+}
+
+.profile-input:focus {
+  outline: none;
+  border-color: rgba(197, 160, 89, 0.7);
+}
+
+.profile-hint {
+  font-size: 0.75rem;
+  color: #a89875;
+  line-height: 1.4;
+}
+
+.profile-save-button {
+  padding: 10px 14px;
+  background: rgba(197, 160, 89, 0.15);
+  border: 1px solid rgba(197, 160, 89, 0.5);
+  border-radius: 6px;
+  color: #ffd700;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.profile-save-button:hover:not(:disabled) {
+  background: rgba(197, 160, 89, 0.28);
+  border-color: rgba(197, 160, 89, 0.8);
+}
+
+.profile-save-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .footer-button {

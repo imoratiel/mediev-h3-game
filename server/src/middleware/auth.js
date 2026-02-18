@@ -35,6 +35,7 @@ const authenticateToken = (req, res, next) => {
         req.user = {
             player_id: decoded.player_id,
             username: decoded.username,
+            display_name: decoded.display_name,
             role: decoded.role
         };
 

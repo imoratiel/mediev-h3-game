@@ -25,6 +25,7 @@ module.exports = function () {
     router.post('/auth/login', LoginService.Login);
     router.post('/auth/logout', authenticateToken, LoginService.Logout);
     router.get('/auth/me', authenticateToken, LoginService.AuthMe);
+    router.put('/auth/profile', authenticateToken, (req, res) => LoginService.UpdateProfile(req, res));
 
     // ============================================
     // MAP AND GAME ENDPOINTS

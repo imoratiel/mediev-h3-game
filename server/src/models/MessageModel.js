@@ -2,7 +2,7 @@ const pool = require('../../db.js');
 
 class MessageModel {    
     async GetMessagesByUserId(player_id) {
-        const result = await pool.query('SELECT m.*, s.username as sender_username FROM messages m LEFT JOIN players s ON m.sender_id = s.player_id WHERE m.receiver_id = $1 OR m.sender_id = $1 ORDER BY m.sent_at DESC', [player_id]);
+        const result = await pool.query('SELECT m.*, s.display_name as sender_username FROM messages m LEFT JOIN players s ON m.sender_id = s.player_id WHERE m.receiver_id = $1 OR m.sender_id = $1 ORDER BY m.sent_at DESC', [player_id]);
         return result;
     }
     async GetMessagesById(messageId) {
@@ -14,8 +14,8 @@ class MessageModel {
         // Get all messages in thread where user is sender or receiver
         const result = await pool.query(`
                 SELECT m.*,
-                       s.username as sender_username,
-                       r.username as receiver_username
+                       s.display_name as sender_username,
+                       r.display_name as receiver_username
                 FROM messages m
                 LEFT JOIN players s ON m.sender_id = s.player_id
                 LEFT JOIN players r ON m.receiver_id = r.player_id
