@@ -6,6 +6,15 @@
         Reclutando en <strong>{{ fief.name }}</strong>
       </p>
       <p v-else class="recruitment-subtitle">Selecciona un feudo desde la tabla para reclutar</p>
+      <div class="army-capacity-bar">
+        <span class="army-capacity-label">Capacidad de Ejércitos:</span>
+        <span class="army-capacity-value" :class="{ 'at-limit': armyCount >= armyLimit }">
+          {{ armyCount }}/{{ armyLimit }}
+        </span>
+        <span v-if="armyCount >= armyLimit" class="army-capacity-hint">
+          — Necesitas más feudos para comandar más ejércitos
+        </span>
+      </div>
     </div>
 
     <div class="recruitment-content" v-if="fief">
@@ -123,7 +132,8 @@
       </div>
       <button
         class="btn-recruit"
-        :disabled="!canBulkRecruit || isRecruiting"
+        :disabled="!canBulkRecruit || isRecruiting || armyCount >= armyLimit"
+        :title="armyCount >= armyLimit ? 'Necesitas más feudos para comandar más ejércitos' : ''"
         @click="handleBulkRecruit"
       >
         {{ isRecruiting ? 'Reclutando...' : `⚔️ Reclutar Lote (${totalSelectedTroops} tropas)` }}
@@ -140,7 +150,9 @@ const props = defineProps({
   unitTypes: Array,
   loading: Boolean,
   playerGold: Number,
-  isRecruiting: Boolean
+  isRecruiting: Boolean,
+  armyCount: { type: Number, default: 0 },
+  armyLimit: { type: Number, default: 2 },
 });
 
 const emit = defineEmits(['bulkRecruit', 'back']);

@@ -67,6 +67,7 @@ module.exports = function () {
     router.get('/military/troops', authenticateToken, ArmyService.GetTroops);
     router.get('/military/armies', authenticateToken, (req, res) => ArmyService.GetArmies(req, res));
     router.get('/military/armies/:id', authenticateToken, (req, res) => ArmyService.GetArmyDetail(req, res));
+    router.get('/military/capacity', authenticateToken, (req, res) => ArmyService.GetCapacity(req, res));
     router.post('/military/bulk-recruit', authenticateToken, (req, res) => ArmyService.BulkRecruit(req, res));
     router.post('/military/move-army', authenticateToken, ArmyService.MoveArmy);
     router.get('/military/my-routes', authenticateToken, ArmyService.GetMyRoutes);

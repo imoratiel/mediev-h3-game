@@ -368,6 +368,19 @@ class ArmyModel {
         return result;
     }
 
+    /**
+     * Returns the current army count and fief count for a player in one query.
+     * Used to enforce army limits server-side.
+     */
+    async GetPlayerArmyCapacity(client, player_id) {
+        const result = await client.query(`
+            SELECT
+                (SELECT COUNT(*) FROM armies WHERE player_id = $1)::int AS army_count,
+                (SELECT COUNT(*) FROM h3_map  WHERE player_id = $1)::int AS fief_count
+        `, [player_id]);
+        return result.rows[0];
+    }
+
     async stopArmy(armyId, playerId) {
         // Verify ownership and clear movement state atomically
         const result = await db.query(

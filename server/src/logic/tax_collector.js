@@ -40,6 +40,7 @@ async function processTaxCollection(client, turn, config, gameDate) {
 
     // Tax rate: 1–10 (percentage). Default 5 if not configured.
     const taxRate = Math.min(10, Math.max(1, config.gameplay?.tax_rate ?? 5));
+    const effectiveRate = taxRate;
 
     Logger.engine(`[TURN ${turn}] Tax collection started — game month ${gameYearMonth} (rate: ${taxRate}%)`);
 
@@ -73,8 +74,9 @@ async function processTaxCollection(client, turn, config, gameDate) {
                     const goldStock = parseFloat(territory.gold_stored) || 0;
                     if (goldStock <= 0) continue;
 
-                    // FLOOR to avoid decimal issues in INTEGER columns
-                    const taxAmount = Math.floor(goldStock * taxRate / 100);
+                    // FLOOR to avoid decimal issues in INTEGER columns.
+                    // Clamped to goldStock so the fief can never go negative.
+                    const taxAmount = Math.min(goldStock, Math.floor(goldStock * effectiveRate / 100));
                     if (taxAmount <= 0) continue;
 
                     // Deduct from fief storehouse

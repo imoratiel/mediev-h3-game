@@ -4,6 +4,7 @@ const ArmySimulationService = require('./ArmySimulationService.js');
 const h3 = require('h3-js');
 const pool = require('../../db.js');
 const GAME_CONFIG = require('../config/constants.js');
+const { getArmyLimit } = require('../config/constants.js');
 const NameGenerator = require('../logic/NameGenerator.js');
 
 class ArmyService {
@@ -362,6 +363,17 @@ class ArmyService {
             if (totalCost.stone_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'stone_stored', totalCost.stone_stored);
             if (totalCost.iron_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'iron_stored', totalCost.iron_stored);
 
+            // ── Army limit check (server-side, cannot be bypassed from client) ──
+            const capacity = await ArmyModel.GetPlayerArmyCapacity(client, player_id);
+            const armyLimit = getArmyLimit(capacity.fief_count);
+            if (capacity.army_count >= armyLimit) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false,
+                    message: `Has alcanzado el límite de ejércitos (${capacity.army_count}/${armyLimit}). Necesitas más feudos para comandar más ejércitos.`
+                });
+            }
+
             // Create army
             const resolvedName = (army_name || '').trim() || NameGenerator.generate();
             const armyResult = await ArmyModel.CreateArmy(client, resolvedName, player_id, h3_index);
@@ -386,6 +398,26 @@ class ArmyService {
             client.release();
         }
     }
+    async GetCapacity(req, res) {
+        const client = await pool.connect();
+        try {
+            const player_id = req.user.player_id;
+            const capacity = await ArmyModel.GetPlayerArmyCapacity(client, player_id);
+            const army_limit = getArmyLimit(capacity.fief_count);
+            res.json({
+                success: true,
+                army_count: capacity.army_count,
+                fief_count: capacity.fief_count,
+                army_limit,
+            });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/military/capacity', method: 'GET', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener capacidad de ejércitos' });
+        } finally {
+            client.release();
+        }
+    }
+
     async StopArmy(req, res) {
         try {
             const player_id = req.user.player_id;

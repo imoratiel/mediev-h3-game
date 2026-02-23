@@ -65,8 +65,10 @@ async function processHarvest(client, turn, config) {
                     stoneProduction = Math.floor(stoneProduction * mineMultiplier);
                     ironProduction = Math.floor(ironProduction * mineMultiplier);
 
-                    // Gold production (10% of population)
-                    const goldProduction = Math.floor((territory.population || 0) * 0.1);
+                    // Gold production (10% of population).
+                    // BALANCE TEST MULTIPLIER: set to 1 to restore normal behaviour.
+                    const GOLD_BALANCE_MULTIPLIER = 10;
+                    const goldProduction = Math.floor((territory.population || 0) * 0.1 * GOLD_BALANCE_MULTIPLIER);
 
                     // Update territory storage
                     await client.query(`

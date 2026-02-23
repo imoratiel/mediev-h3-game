@@ -704,6 +704,8 @@
               :loading="loadingUnitTypes"
               :playerGold="playerGold"
               :isRecruiting="isRecruiting"
+              :armyCount="armyCount"
+              :armyLimit="armyLimit"
               @bulkRecruit="handleRecruitmentEmit"
               @back="activeKingdomTab = 'fiefs'"
             />
@@ -907,6 +909,10 @@ const isColonizing = ref(false); // Track colonization state to prevent multiple
 // Troops panel state
 const armies = ref([]);
 const loadingTroops = ref(false);
+
+// Army capacity (limit based on fief count)
+const armyCount = ref(0);
+const armyLimit = ref(2);
 
 // Notifications panel state
 const notifications = ref([]);
@@ -3471,6 +3477,18 @@ const fetchTroops = async () => {
   }
 };
 
+const fetchArmyCapacity = async () => {
+  try {
+    const data = await mapApi.getArmyCapacity();
+    if (data.success) {
+      armyCount.value = data.army_count;
+      armyLimit.value = data.army_limit;
+    }
+  } catch (err) {
+    console.error('❌ Error fetching army capacity:', err);
+  }
+};
+
 /**
  * Handle locate event from TroopsPanel
  * Centers the map on the specified troop location
@@ -3704,6 +3722,7 @@ const handleRecruitmentEmit = async ({ fief, army_name, units }) => {
       const totalTroops = units.reduce((s, u) => s + u.quantity, 0);
       showToast(`✅ Batallón "${response.army_name}" reclutado con ${totalTroops} tropas en ${fief.name}`, 'success');
       await fetchPlayerData();
+      await fetchArmyCapacity();
       await updateFiefsUI();
       activeKingdomTab.value = 'fiefs';
       selectedRecruitmentFief.value = null;
@@ -4142,6 +4161,7 @@ onMounted(() => {
   fetchWorldState();
   loadExplorationConfig(); // Load exploration configuration
   updateFiefsUI(); // Load initial fiefs list
+  fetchArmyCapacity(); // Load army limit based on fief count
   loadMessages(); // Load initial messages
   startSync(); // Start server synchronization (polls every 30 seconds)
   // Pre-fetch capital so the "Fundar Capital" button condition is reliable from the first click

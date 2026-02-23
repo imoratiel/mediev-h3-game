@@ -261,6 +261,11 @@ export async function bulkRecruit(payload) {
   return response.data;
 }
 
+export async function getArmyCapacity() {
+  const response = await axios.get(`${API_URL}/api/military/capacity`);
+  return response.data;
+}
+
 /**
  * Move army to a destination
  * @param {number} armyId - Army ID

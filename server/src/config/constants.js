@@ -35,6 +35,12 @@ const GAME_CONFIG = {
         MIN_FIEF_POPULATION: 200,       // Población mínima garantizada por feudo (reclutamiento y hambruna no pueden reducirla más)
     },
 
+    // 🏰 Límite de Ejércitos por Jugador
+    ARMY_LIMITS: {
+        BASE: 2,            // Ejércitos garantizados sin importar los feudos
+        FIEFS_PER_SLOT: 25, // Feudos adicionales necesarios para desbloquear cada ejército extra
+    },
+
     // 👥 Límites de Población por Tipo de Terreno
     POPULATION: {
         CAP_CAPITAL:      6000,         // Capital del jugador
@@ -58,6 +64,17 @@ function getPopulationCap(terrainName, isCapital) {
     return PLAINS_COAST_TERRAINS.some(n => t.includes(n)) ? CAP_PLAINS_COAST : CAP_DEFAULT;
 }
 
+/**
+ * Calcula el límite máximo de ejércitos de un jugador.
+ * @param {number} numFiefs - Número de feudos que posee el jugador
+ * @returns {number} Límite de ejércitos
+ */
+function getArmyLimit(numFiefs) {
+    const { BASE, FIEFS_PER_SLOT } = GAME_CONFIG.ARMY_LIMITS;
+    return BASE + Math.floor((numFiefs || 0) / FIEFS_PER_SLOT);
+}
+
 // Exportar para Node.js (CommonJS) o ESModules según tu setup
 module.exports = GAME_CONFIG;
 module.exports.getPopulationCap = getPopulationCap;
+module.exports.getArmyLimit = getArmyLimit;
