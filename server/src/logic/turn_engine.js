@@ -3,6 +3,7 @@ const { determineDiscoveredResource } = require('./discovery');
 const { processTaxCollection } = require('./tax_collector');
 const { processTithe } = require('./tithe_system');
 const GAME_CONFIG = require('../config/constants');
+const { getPopulationCap } = require('../config/constants');
 const { Logger } = require('../utils/logger');
 const ArmySimulationService = require('../services/ArmySimulationService');
 const NotificationService = require('../services/NotificationService');
@@ -59,7 +60,7 @@ async function processHarvest(client, turn, config) {
                     const lumberMultiplier = 1 + ((territory.lumber_level || 0) * (config.infrastructure?.prod_multiplier_per_level || 0.20));
                     const mineMultiplier = 1 + ((territory.mine_level || 0) * (config.infrastructure?.prod_multiplier_per_level || 0.20));
 
-                    foodProduction = Math.floor(foodProduction * farmMultiplier);
+                    foodProduction = Math.floor(foodProduction * farmMultiplier * 2); // x2 food bonus
                     woodProduction = Math.floor(woodProduction * lumberMultiplier);
                     stoneProduction = Math.floor(stoneProduction * mineMultiplier);
                     ironProduction = Math.floor(ironProduction * mineMultiplier);
@@ -691,10 +692,11 @@ async function processGameTurn(pool, config) {
         if (((newTurn - 1) % 30) === 0) {
             try {
                 const territories = await client.query(`
-                    SELECT td.*, t.name as terrain_type, m.player_id
+                    SELECT td.*, t.name as terrain_type, m.player_id, p.capital_h3
                     FROM territory_details td
                     JOIN h3_map m ON td.h3_index = m.h3_index
                     JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
+                    JOIN players p ON m.player_id = p.player_id
                     WHERE m.player_id IS NOT NULL
                 `);
 
@@ -726,10 +728,12 @@ async function processGameTurn(pool, config) {
                                 );
                             }
                         } else {
-                            // Normal census: 1% population growth
+                            // Normal census: 1% population growth, capped by terrain limit
+                            const isCapital = t.h3_index === t.capital_h3;
+                            const popCap = getPopulationCap(t.terrain_type, isCapital);
                             await client.query(
-                                'UPDATE territory_details SET population = FLOOR(population * 1.01) WHERE h3_index = $1',
-                                [t.h3_index]
+                                'UPDATE territory_details SET population = LEAST($1, FLOOR(population * 1.01)) WHERE h3_index = $2',
+                                [popCap, t.h3_index]
                             );
                         }
                         successCount++;

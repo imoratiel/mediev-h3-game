@@ -59,9 +59,15 @@ class ArmyModel {
             `SELECT a.army_id, a.player_id, a.h3_index,
                     a.food_provisions, a.gold_provisions,
                     a.wood_provisions, a.stone_provisions, a.iron_provisions,
-                    m.player_id AS fief_owner
+                    m.player_id AS fief_owner,
+                    td.population AS fief_population,
+                    t.name AS terrain_name,
+                    p.capital_h3
              FROM armies a
              JOIN h3_map m ON a.h3_index = m.h3_index
+             JOIN territory_details td ON a.h3_index = td.h3_index
+             JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
+             JOIN players p ON m.player_id = p.player_id
              WHERE a.army_id = $1`,
             [army_id]
         );
@@ -313,16 +319,23 @@ class ArmyModel {
 
     async GetArmyFullDetail(armyId, playerId) {
         const armyResult = await db.query(
-            `SELECT army_id, name, h3_index, destination, recovering,
-                    gold_provisions, food_provisions, wood_provisions
-             FROM armies
-             WHERE army_id = $1 AND player_id = $2`,
+            `SELECT a.army_id, a.name, a.h3_index, a.destination, a.recovering,
+                    a.gold_provisions, a.food_provisions, a.wood_provisions,
+                    COALESCE(td.population, 0) AS fief_population,
+                    t.name AS terrain_name,
+                    pl.capital_h3
+             FROM armies a
+             LEFT JOIN h3_map m ON a.h3_index = m.h3_index
+             LEFT JOIN territory_details td ON a.h3_index = td.h3_index
+             LEFT JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
+             LEFT JOIN players pl ON a.player_id = pl.player_id
+             WHERE a.army_id = $1 AND a.player_id = $2`,
             [armyId, playerId]
         );
         if (armyResult.rows.length === 0) return null;
 
         const troopsResult = await db.query(
-            `SELECT t.quantity, t.experience, t.morale, t.stamina, t.force_rest,
+            `SELECT t.unit_type_id, t.quantity, t.experience, t.morale, t.stamina, t.force_rest,
                     ut.name AS unit_name, ut.attack, ut.health_points, ut.speed
              FROM troops t
              JOIN unit_types ut ON ut.unit_type_id = t.unit_type_id

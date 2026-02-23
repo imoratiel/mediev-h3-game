@@ -71,6 +71,9 @@
                           @click="handleDismiss(t)"
                         >{{ dismissing.has(t.unit_type_id) ? '⏳' : 'Licenciar' }}</button>
                       </div>
+                      <div v-if="dismissSurplus[t.unit_type_id] > 0" class="adm-dismiss-warn">
+                        ⚠️ Se perderán {{ dismissSurplus[t.unit_type_id] }} personas
+                      </div>
                     </td>
                   </tr>
                 </tbody>
@@ -113,7 +116,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import axios from 'axios';
 import { dismissTroops } from '../services/mapApi.js';
 
@@ -131,6 +134,18 @@ const armyDetail = ref(null);  // army con provisiones
 const troops     = ref([]);
 const dismissQty  = ref({});   // { [unit_type_id]: quantity }
 const dismissing  = ref(new Set());
+
+// Calculates how many people would be lost per unit type if dismissed (cap overflow)
+const dismissSurplus = computed(() => {
+  const fiefPop = parseInt(armyDetail.value?.fief_population) || 0;
+  const fiefCap = parseInt(armyDetail.value?.fief_pop_cap) || 1000;
+  const result = {};
+  for (const t of troops.value) {
+    const qty = dismissQty.value[t.unit_type_id] ?? 1;
+    result[t.unit_type_id] = Math.max(0, fiefPop + qty - fiefCap);
+  }
+  return result;
+});
 
 const handleDismiss = async (troop) => {
   const qty = dismissQty.value[troop.unit_type_id] ?? 1;
@@ -368,6 +383,13 @@ onUnmounted(() => document.removeEventListener('keydown', handleEsc));
 }
 .adm-dismiss-btn:hover:not(:disabled) { background: #5c1c1c; }
 .adm-dismiss-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.adm-dismiss-warn {
+  margin-top: 4px;
+  font-size: 0.68rem;
+  color: #f97316;
+  text-align: center;
+  white-space: nowrap;
+}
 
 /* Provisiones */
 .adm-provisions {

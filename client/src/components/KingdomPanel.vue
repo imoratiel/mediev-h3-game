@@ -27,7 +27,9 @@
               <span v-if="fief.is_capital" class="capital-icon" title="Capital del Reino">👑 </span>{{ fief.name }}
             </td>
             <td class="terrain-cell">{{ fief.terrain }}</td>
-            <td class="text-right">{{ formatNumber(fief.population) }}</td>
+            <td class="text-right pop-cell">
+              {{ formatNumber(fief.population) }}
+            </td>
             <td class="text-right">{{ fief.happiness }}%</td>
             <td class="text-right">{{ formatNumber(fief.food) }}</td>
             <td class="text-right">{{ formatNumber(fief.wood) }}</td>
@@ -105,6 +107,7 @@ const formatGold = (val) => {
   if (val === null || val === undefined || isNaN(val)) return '0.00';
   return Number(val).toFixed(2);
 };
+
 </script>
 
 <style scoped>
@@ -197,6 +200,12 @@ const formatGold = (val) => {
 }
 
 .text-right { text-align: right; }
+
+/* Population cap display */
+.pop-cell { white-space: nowrap; }
+.pop-sep { color: rgba(255,255,255,0.25); font-size: 0.75rem; margin: 0 1px; }
+.pop-cap-val { color: rgba(255,255,255,0.35); font-size: 0.78rem; }
+.pop-at-cap { color: #f97316; font-weight: 700; }
 .text-center { text-align: center; }
 .text-gold { color: #ffd700; }
 .text-danger { color: #ff6b6b; }

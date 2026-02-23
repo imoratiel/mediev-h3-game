@@ -212,6 +212,11 @@ class ArmyService {
             detail.army.gold_provisions = parseFloat(detail.army.gold_provisions) || 0;
             detail.army.food_provisions = parseFloat(detail.army.food_provisions) || 0;
             detail.army.wood_provisions = parseFloat(detail.army.wood_provisions) || 0;
+            detail.army.fief_population = parseInt(detail.army.fief_population) || 0;
+            // Compute population cap for dismiss-warning in the UI
+            const { getPopulationCap } = require('../config/constants.js');
+            const isCapital = detail.army.h3_index === detail.army.capital_h3;
+            detail.army.fief_pop_cap = getPopulationCap(detail.army.terrain_name, isCapital);
 
             res.json({ success: true, ...detail });
         } catch (error) {
@@ -664,10 +669,16 @@ class ArmyService {
                 await client.query('UPDATE troops SET quantity = $1 WHERE army_id = $2 AND unit_type_id = $3', [remaining, army_id, unit_type_id]);
             }
 
-            // Soldiers return to local population
+            // Soldiers return to local population, capped by terrain limit
+            const { getPopulationCap } = require('../config/constants.js');
+            const isCapital = army.h3_index === army.capital_h3;
+            const popCap = getPopulationCap(army.terrain_name, isCapital);
+            const currentPop = parseInt(army.fief_population) || 0;
+            const newPop = Math.min(currentPop + qty, popCap);
+            const surplus = (currentPop + qty) - newPop; // people discarded (no room)
             await client.query(
-                'UPDATE territory_details SET population = population + $1 WHERE h3_index = $2',
-                [qty, army.h3_index]
+                'UPDATE territory_details SET population = $1 WHERE h3_index = $2',
+                [newPop, army.h3_index]
             );
 
             // Check if the army is now empty
@@ -703,13 +714,16 @@ class ArmyService {
 
             await client.query('COMMIT');
 
-            Logger.action(`Licenció ${qty} tropas (tipo ${unit_type_id}) del ejército ${army_id}`, player_id, { h3_index: army.h3_index });
+            Logger.action(`Licenció ${qty} tropas (tipo ${unit_type_id}) del ejército ${army_id}`, player_id, { h3_index: army.h3_index, surplus });
+            const baseMsg = totalLeft === 0
+                ? `${qty} soldados licenciados. El ejército se ha disuelto y los suministros han vuelto al feudo.`
+                : `${qty} soldados licenciados y devueltos a la población civil.`;
+            const surplusMsg = surplus > 0 ? ` ${surplus} personas no encontraron acomodo y se dispersaron.` : '';
             res.json({
                 success: true,
                 army_dissolved: totalLeft === 0,
-                message: totalLeft === 0
-                    ? `${qty} soldados licenciados. El ejército se ha disuelto y los suministros han vuelto al feudo.`
-                    : `${qty} soldados licenciados y devueltos a la población civil.`
+                surplus,
+                message: baseMsg + surplusMsg,
             });
         } catch (error) {
             await client.query('ROLLBACK');

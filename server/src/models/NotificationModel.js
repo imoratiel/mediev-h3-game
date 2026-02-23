@@ -24,6 +24,14 @@ class NotificationModel {
         );
         return result.rows[0];
     }
+
+    async markAllAsRead(player_id) {
+        const result = await pool.query(
+            'UPDATE notifications SET is_read = true WHERE player_id = $1 AND is_read = false RETURNING id',
+            [player_id]
+        );
+        return result.rowCount; // número de filas actualizadas
+    }
 }
 
 module.exports = new NotificationModel();

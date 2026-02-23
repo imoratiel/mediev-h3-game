@@ -238,6 +238,11 @@ export async function markNotificationRead(id) {
   return response.data;
 }
 
+export async function markAllNotificationsRead() {
+  const response = await axios.put(`${API_URL}/api/notifications/read-all`);
+  return response.data;
+}
+
 /**
  * Recruit troops
  * @param {Object} payload - { h3_index, unit_type_id, quantity, army_name?, army_id? }

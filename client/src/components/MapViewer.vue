@@ -398,6 +398,7 @@
             :notifications="notifications"
             :loading="loadingNotifications"
             @read="handleNotificationRead"
+            @readAll="handleNotificationsReadAll"
           />
         </div>
 
@@ -3668,6 +3669,11 @@ const handleNotificationRead = async (notif) => {
   } catch (err) {
     console.error('❌ Error marking notification as read:', err);
   }
+};
+
+const handleNotificationsReadAll = () => {
+  // The API call was already made inside NotificationsPanel; just sync local state
+  notifications.value.forEach(n => { n.is_read = true; });
 };
 
 /**

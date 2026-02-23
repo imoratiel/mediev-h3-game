@@ -15,6 +15,12 @@
           @click="showOnlyUnread = true"
         >No leídas <span class="filter-count unread-count">{{ unreadCount }}</span></button>
       </div>
+      <button
+        class="mark-all-btn"
+        :disabled="unreadCount === 0 || markingAll"
+        @click="handleMarkAll"
+        title="Marcar todas como leídas"
+      >{{ markingAll ? '⏳' : '✓ Marcar todas' }}</button>
     </div>
 
     <div v-if="loading" class="notif-loading">Cargando notificaciones...</div>
@@ -45,15 +51,17 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { markAllNotificationsRead } from '../services/mapApi.js';
 
 const props = defineProps({
   notifications: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['read']);
+const emit = defineEmits(['read', 'readAll']);
 
 const showOnlyUnread = ref(false);
+const markingAll = ref(false);
 
 const unreadCount = computed(() => props.notifications.filter(n => !n.is_read).length);
 
@@ -75,6 +83,19 @@ const typeLabel = (type) => TYPE_LABELS[type] || `📢 ${type || 'Sistema'}`;
 
 const handleRead = (notif) => {
   emit('read', notif);
+};
+
+const handleMarkAll = async () => {
+  if (unreadCount.value === 0 || markingAll.value) return;
+  markingAll.value = true;
+  try {
+    await markAllNotificationsRead();
+    emit('readAll');
+  } catch (err) {
+    console.error('❌ Error al marcar todas como leídas:', err);
+  } finally {
+    markingAll.value = false;
+  }
 };
 </script>
 
@@ -99,6 +120,31 @@ const handleRead = (notif) => {
 .notif-filter-toggle {
   display: flex;
   gap: 6px;
+}
+
+.mark-all-btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  background: rgba(197, 160, 89, 0.08);
+  color: #a89875;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.mark-all-btn:hover:not(:disabled) {
+  background: rgba(197, 160, 89, 0.18);
+  border-color: rgba(197, 160, 89, 0.6);
+  color: #ffd700;
+}
+
+.mark-all-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .filter-pill {

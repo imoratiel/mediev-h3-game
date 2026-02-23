@@ -2,6 +2,7 @@ const { Logger, logGameEvent } = require('../utils/logger');
 const KingdomModel = require('../models/KingdomModel.js');
 const ArmyModel = require('../models/ArmyModel.js');
 const { CONFIG } = require('../config.js');
+const { getPopulationCap } = require('../config/constants.js');
 const infrastructure = require('../logic/infrastructure.js');
 const conquest = require('../logic/conquest.js');
 const pool = require('../../db.js');
@@ -102,10 +103,14 @@ class KingdomService {
         try {
             const result = await KingdomModel.GetMyFiefs(req.user.player_id);
 
-            const fiefs = result.rows.map(row => ({
-                ...row,
-                is_capital: (row.h3_index === row.capital_h3)
-            }));
+            const fiefs = result.rows.map(row => {
+                const is_capital = (row.h3_index === row.capital_h3);
+                return {
+                    ...row,
+                    is_capital,
+                    pop_cap: getPopulationCap(row.terrain_name, is_capital),
+                };
+            });
 
             res.json({ success: true, fiefs });
         } catch (error) {

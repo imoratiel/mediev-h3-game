@@ -34,7 +34,30 @@ const GAME_CONFIG = {
     ECONOMY: {
         MIN_FIEF_POPULATION: 200,       // Población mínima garantizada por feudo (reclutamiento y hambruna no pueden reducirla más)
     },
+
+    // 👥 Límites de Población por Tipo de Terreno
+    POPULATION: {
+        CAP_CAPITAL:      6000,         // Capital del jugador
+        CAP_PLAINS_COAST: 2000,         // Llanuras y costa (terrenos llanos productivos)
+        CAP_DEFAULT:      1000,         // Resto de terrenos (montaña, pantano, bosque, etc.)
+        // Fragmentos de terrain_types.name que califican como llanura/costa (comparación lowercase)
+        PLAINS_COAST_TERRAINS: ['costa', 'llanura', 'llano', 'pradera', 'planicie', 'prado'],
+    },
 };
+
+/**
+ * Calcula el límite máximo de población de un feudo.
+ * @param {string}  terrainName - Valor de terrain_types.name
+ * @param {boolean} isCapital   - true si este hex es la capital del jugador
+ * @returns {number} Límite de población (hard cap)
+ */
+function getPopulationCap(terrainName, isCapital) {
+    if (isCapital) return GAME_CONFIG.POPULATION.CAP_CAPITAL;
+    const t = (terrainName || '').toLowerCase();
+    const { PLAINS_COAST_TERRAINS, CAP_PLAINS_COAST, CAP_DEFAULT } = GAME_CONFIG.POPULATION;
+    return PLAINS_COAST_TERRAINS.some(n => t.includes(n)) ? CAP_PLAINS_COAST : CAP_DEFAULT;
+}
 
 // Exportar para Node.js (CommonJS) o ESModules según tu setup
 module.exports = GAME_CONFIG;
+module.exports.getPopulationCap = getPopulationCap;
