@@ -1216,9 +1216,8 @@ const updateURLParams = () => {
 };
 
 // Base map layers
-let osmLayer = null;
-let satelliteLayer = null;
-let terrainLayer = null;
+let reliefLayer = null;
+let smoothLayer = null;
 
 /**
  * Initialize Leaflet map
@@ -1315,38 +1314,33 @@ const initMap = () => {
   // Inicializar visualizador de rutas (crea su propio pane routePane z-600)
   RouteVisualizer.init(map);
 
-  // OpenStreetMap layer
-  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 18,
-  });
+  // Esri World Shaded Relief — ideal para temática medieval (sin infraestructura moderna)
+  reliefLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
+    {
+      attribution: 'Tiles © Esri',
+      maxZoom: 13,
+    }
+  );
 
-  // Satellite layer (Esri World Imagery)
-  satelliteLayer = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  // Esri World Physical Map — relieve físico mudo, sin etiquetas modernas
+  // maxNativeZoom=8 permite upscaling: encaja con filtro sepia como mapa antiguo
+  smoothLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}',
     {
       attribution: '© Esri',
-      maxZoom: 18,
+      maxNativeZoom: 8,
+      maxZoom: 16,
     }
   );
 
-  // Terrain layer (OpenTopoMap - muestra relieve topográfico)
-  terrainLayer = L.tileLayer(
-    'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    {
-      attribution: '© OpenTopoMap contributors',
-      maxZoom: 17,
-    }
-  );
+  // Add Relief layer as default
+  reliefLayer.addTo(map);
 
-  // Add Terrain layer as default
-  terrainLayer.addTo(map);
-
-  // Layer control
+  // Layer control (medieval-themed labels)
   const baseMaps = {
-    'OpenStreetMap': osmLayer,
-    'Satélite': satelliteLayer,
-    'Relieve': terrainLayer,
+    'Relieve': reliefLayer,
+    'Físico': smoothLayer,
   };
   L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
 
@@ -5997,6 +5991,11 @@ onBeforeUnmount(() => {
 #map {
   width: 100%;
   height: 100%;
+}
+
+/* Filtro medieval: sepia suave + contraste ligero sobre los tiles de fondo */
+#map :deep(.leaflet-layer) {
+  filter: sepia(0.4) contrast(1.05) brightness(0.97);
 }
 
 .loading-overlay {
