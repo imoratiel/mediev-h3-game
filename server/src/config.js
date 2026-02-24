@@ -31,8 +31,12 @@ async function loadGameConfig(pool, logGameEvent) {
                 CONFIG[group] = {};
             }
 
-            // Parse numeric values
-            if (!isNaN(value)) {
+            // Parse booleans first, then numbers, then leave as string
+            if (value === 'true') {
+                CONFIG[group][key] = true;
+            } else if (value === 'false') {
+                CONFIG[group][key] = false;
+            } else if (value !== '' && !isNaN(value)) {
                 CONFIG[group][key] = Number(value);
             } else {
                 CONFIG[group][key] = value;
