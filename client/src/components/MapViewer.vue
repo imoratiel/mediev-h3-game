@@ -1218,6 +1218,7 @@ const updateURLParams = () => {
 // Base map layers
 let reliefLayer = null;
 let smoothLayer = null;
+let referenceLayer = null;
 
 /**
  * Initialize Leaflet map
@@ -1334,13 +1335,26 @@ const initMap = () => {
     }
   );
 
+  // Referencia: satélite Esri + overlay de etiquetas/fronteras (para orientación)
+  referenceLayer = L.layerGroup([
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: '© Esri', maxZoom: 19 }
+    ),
+    L.tileLayer(
+      'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      { attribution: '', maxZoom: 19, opacity: 0.85 }
+    ),
+  ]);
+
   // Add Relief layer as default
   reliefLayer.addTo(map);
 
-  // Layer control (medieval-themed labels)
+  // Layer control
   const baseMaps = {
     'Relieve': reliefLayer,
     'Físico': smoothLayer,
+    'Referencia': referenceLayer,
   };
   L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
 
