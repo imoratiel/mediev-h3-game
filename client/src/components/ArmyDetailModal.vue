@@ -99,7 +99,7 @@
                 </span>
               </div>
               <div class="adm-prov-item">
-                <span class="adm-prov-icon">🪵</span>
+                <span class="adm-prov-icon">🌲</span>
                 <span class="adm-prov-label">Madera</span>
                 <span class="adm-prov-val" :class="{ 'adm-zero': !armyDetail?.wood_provisions }">
                   {{ armyDetail?.wood_provisions ?? 0 }}
@@ -127,7 +127,7 @@
                 <!-- Recursos disponibles -->
                 <div class="adm-reinforce-resources">
                   <span>👥 Pob. disponible: <b>{{ Math.max(0, armyDetail.fief_population - 20) }}</b></span>
-                  <span>🪵 Madera: <b>{{ armyDetail.fief_wood }}</b></span>
+                  <span>🌲 Madera: <b>{{ armyDetail.fief_wood }}</b></span>
                   <span>⛰️ Piedra: <b>{{ armyDetail.fief_stone }}</b></span>
                   <span>⛏️ Hierro: <b>{{ armyDetail.fief_iron }}</b></span>
                 </div>
@@ -145,7 +145,7 @@
                       <td class="adm-td-name">{{ ut.name }}</td>
                       <td class="adm-td-num adm-gold" style="font-size:0.75rem; white-space:nowrap;">
                         <span v-for="req in (ut.requirements || [])" :key="req.resource_type">
-                          {{ req.resource_type === 'gold' ? '💰' : req.resource_type === 'wood_stored' ? '🪵' : req.resource_type === 'stone_stored' ? '⛰️' : '⛏️' }}{{ req.amount }}
+                          {{ req.resource_type === 'gold' ? '💰' : req.resource_type === 'wood_stored' ? '🌲' : req.resource_type === 'stone_stored' ? '⛰️' : '⛏️' }}{{ req.amount }}
                         </span>
                         <span v-if="!(ut.requirements && ut.requirements.length)">—</span>
                       </td>
@@ -165,7 +165,7 @@
                 <div class="adm-reinforce-summary" v-if="totalReinforceQty > 0">
                   <span>Total: <b>{{ totalReinforceQty }}</b> tropas</span>
                   <span v-if="totalReinforceCost.gold  > 0">💰 {{ totalReinforceCost.gold }}</span>
-                  <span v-if="totalReinforceCost.wood  > 0">🪵 {{ totalReinforceCost.wood }}</span>
+                  <span v-if="totalReinforceCost.wood  > 0">🌲 {{ totalReinforceCost.wood }}</span>
                   <span v-if="totalReinforceCost.stone > 0">⛰️ {{ totalReinforceCost.stone }}</span>
                   <span v-if="totalReinforceCost.iron  > 0">⛏️ {{ totalReinforceCost.iron }}</span>
                   <span>👥 -{{ totalReinforceQty }}</span>

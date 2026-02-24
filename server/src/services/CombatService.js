@@ -214,7 +214,7 @@ class CombatService {
 
             // 10. Mensaje de resultado
             const lootLine = battle.loot
-                ? ` · Botín: 🪙${battle.loot.gold} 🍖${battle.loot.food} 🪵${battle.loot.wood}`
+                ? ` · Botín: 🪙${battle.loot.gold} 🍖${battle.loot.food} 🌲${battle.loot.wood}`
                 : '';
 
             let message;
@@ -594,7 +594,7 @@ class CombatService {
         const { armyA, armyB, isDraw, winner, loot, h3Index, turn } = battle;
 
         const formatLoot = (l) =>
-            `🪙${l.gold} oro, 🍖${l.food} comida, 🪵${l.wood} madera`;
+            `🪙${l.gold} oro, 🍖${l.food} comida, 🌲${l.wood} madera`;
 
         const retreatLine = (r) =>
             r ? (r.destroyed ? '\n💀 Sin retirada posible — ejército destruido.' : `\n🏃 Se retira a ${r.newHex}.`) : '';
