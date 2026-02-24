@@ -99,34 +99,34 @@ VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Milicia'), 'gold', 25);
 -- Requisitos para Soldados (Hierro)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
 VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Soldados'), 'gold', 100),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Soldados'), 'iron_stored', 30);
+       ((SELECT unit_type_id FROM unit_types WHERE name='Soldados'), 'iron_stored', 3);
 
 -- Requisitos para Lanceros (Madera + Hierro)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
 VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Lanceros'), 'gold', 80),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Lanceros'), 'wood_stored', 20),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Lanceros'), 'iron_stored', 15);
+       ((SELECT unit_type_id FROM unit_types WHERE name='Lanceros'), 'wood_stored', 1),
+       ((SELECT unit_type_id FROM unit_types WHERE name='Lanceros'), 'iron_stored', 1);
 
 -- Requisitos para Arqueros (Madera)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
 VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Arqueros'), 'gold', 120),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Arqueros'), 'wood_stored', 50);
+       ((SELECT unit_type_id FROM unit_types WHERE name='Arqueros'), 'wood_stored', 2);
 
 -- Requisitos para Ballesteros (Madera + Hierro)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
 VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Ballesteros'), 'gold', 150),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Ballesteros'), 'wood_stored', 30),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Ballesteros'), 'iron_stored', 20);
+       ((SELECT unit_type_id FROM unit_types WHERE name='Ballesteros'), 'wood_stored', 2),
+       ((SELECT unit_type_id FROM unit_types WHERE name='Ballesteros'), 'iron_stored', 1);
 
 -- Requisitos para Caballería Ligera (Oro alto por caballos)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
 VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Caballería Ligera'), 'gold', 250),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Caballería Ligera'), 'wood_stored', 10);
+       ((SELECT unit_type_id FROM unit_types WHERE name='Caballería Ligera'), 'iron_stored', 1);
 
 -- Requisitos para Caballería Pesada (Mucho Hierro y Oro)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
 VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Caballería Pesada'), 'gold', 500),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Caballería Pesada'), 'iron_stored', 100);
+       ((SELECT unit_type_id FROM unit_types WHERE name='Caballería Pesada'), 'iron_stored', 2);
 
 -- Requisitos para Explorador (Comida/Oro)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
@@ -135,12 +135,12 @@ VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Explorador'), 'gold', 1
 -- Requisitos para Ariete (Mucha Madera)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
 VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Ariete'), 'gold', 200),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Ariete'), 'wood_stored', 150);
+       ((SELECT unit_type_id FROM unit_types WHERE name='Ariete'), 'wood_stored', 10);
 
 -- Requisitos para Catapulta (Madera, Hierro y Oro)
 INSERT INTO unit_requirements (unit_type_id, resource_type, amount) 
 VALUES ((SELECT unit_type_id FROM unit_types WHERE name='Catapulta'), 'gold', 600),
-       ((SELECT unit_type_id FROM unit_types WHERE name='Catapulta'), 'wood_stored', 100),
+       ((SELECT unit_type_id FROM unit_types WHERE name='Catapulta'), 'wood_stored', 10),
        ((SELECT unit_type_id FROM unit_types WHERE name='Catapulta'), 'iron_stored', 50);
 
 
