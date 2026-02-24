@@ -4,7 +4,7 @@ const path = require('path');
 // Load environment variables from root .env file
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const isLocal = process.env.DB_HOST === 'localhost' || process.env.DB_HOST === '127.0.0.1';
+const isLocal = process.env.NODE_ENV === 'development';
 
 // Create PostgreSQL connection pool
 const pool = new Pool({

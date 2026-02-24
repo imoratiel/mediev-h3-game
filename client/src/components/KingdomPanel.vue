@@ -25,6 +25,7 @@
           <tr v-for="fief in fiefs" :key="fief.h3_index" :class="{ 'capital-row': fief.is_capital }">
             <td class="fief-name-cell">
               <span v-if="fief.is_capital" class="capital-icon" title="Capital del Reino">👑 </span>{{ fief.name }}
+              <span v-if="fief.grace_turns > 0" class="occupation-badge" :title="`Bajo ocupación militar — ${fief.grace_turns} turno${fief.grace_turns !== 1 ? 's' : ''} restante${fief.grace_turns !== 1 ? 's' : ''}`">⚔️ ({{ fief.grace_turns }})</span>
             </td>
             <td class="terrain-cell">{{ fief.terrain }}</td>
             <td class="text-right pop-cell">
@@ -197,6 +198,19 @@ const formatGold = (val) => {
     opacity: 0.85;
     text-shadow: 0 0 12px rgba(255, 215, 0, 0.8);
   }
+}
+
+.occupation-badge {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 0.68rem;
+  color: #ff6b35;
+  background: rgba(255, 107, 53, 0.12);
+  border: 1px solid rgba(255, 107, 53, 0.4);
+  border-radius: 3px;
+  padding: 1px 4px;
+  vertical-align: middle;
+  cursor: help;
 }
 
 .text-right { text-align: right; }

@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # --- SERVIDOR DE APLICACIÓN (NODE.JS) ---
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: marca_hispanica_app
+    restart: always
+    # Puertos: mapeamos el 3000 de tu PC al 3000 del contenedor
+    ports:
+      - "3000:3000"
+    # Sincronización de archivos en tiempo real (Hot Reload)
+    volumes:
+      - .:/app
+      - /app/node_modules # Evita que los módulos locales sobrescriban los del contenedor
+    # Cargamos las contraseñas desde el archivo protegido
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=db
+      - DB_PORT=5432
+    # El servidor no arranca hasta que la base de datos esté lista
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - game-network
+
+  # --- BASE DE DATOS (POSTGRESQL) ---
+  db:
+    image: postgres:15-alpine
+    container_name: marca_hispanica_db
+    restart: always
+    env_file:
+      - .env
+    environment:
+      # Estas variables deben coincidir con las de tu .env
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "5444:5432" # He cambiado el puerto externo a 5444 para evitar conflictos si tienes otro Postgres instalado
+    volumes:
+      # Persistencia: los datos no se borran al apagar Docker
+      - pgdata:/var/lib/postgresql/data
+      # Autoejecución de tus scripts de la carpeta /sql/
+      - ./sql:/docker-entrypoint-initdb.d/
+    # Verificación de salud para que 'app' sepa cuándo conectarse
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - game-network
+
+# --- RECURSOS COMPARTIDOS ---
+networks:
+  game-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local

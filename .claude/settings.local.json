@@ -36,7 +36,8 @@
       "Bash(git -C:*)",
       "Bash(Get-Content \"d:/claude/mediev-h3-game/server/logs/exceptions.log\" -Tail 80)",
       "Bash(more:*)",
-      "Bash(cmd /c:*)"
+      "Bash(cmd /c:*)",
+      "Bash(grep:*)"
     ]
   }
 }

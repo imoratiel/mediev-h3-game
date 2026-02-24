@@ -2,6 +2,7 @@ const { logEconomyEvent } = require('./economy');
 const { determineDiscoveredResource } = require('./discovery');
 const { processTaxCollection } = require('./tax_collector');
 const { processTithe } = require('./tithe_system');
+const { processGraceTurns } = require('./conquest_system');
 const GAME_CONFIG = require('../config/constants');
 const { getPopulationCap } = require('../config/constants');
 const { Logger } = require('../utils/logger');
@@ -793,6 +794,9 @@ async function processGameTurn(pool, config) {
                 // Continue processing
             }
         }
+
+        // Grace turns decay: decrement occupation counters (every turn)
+        await processGraceTurns(client, newTurn);
 
         // Process completed explorations (every turn)
         await processExplorations(client, newTurn, config);

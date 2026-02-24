@@ -93,8 +93,15 @@ class KingdomModel {
         await client.query('UPDATE players SET capital_h3 = $1 WHERE player_id = $2', [h3_index, player_id]);
     }
     async GetCapital(player_id) {
-        const result = await pool.query('SELECT capital_h3 FROM players WHERE player_id = $1', [player_id]);
+        const result = await pool.query('SELECT capital_h3, is_exiled FROM players WHERE player_id = $1', [player_id]);
         return result.rows[0];
+    }
+    async ClearExileStatus(client, player_id) {
+        await client.query('UPDATE players SET is_exiled = FALSE WHERE player_id = $1', [player_id]);
+    }
+    async GetPlayerExileStatus(client, player_id) {
+        const result = await client.query('SELECT is_exiled FROM players WHERE player_id = $1', [player_id]);
+        return result.rows[0]?.is_exiled ?? false;
     }
     async GetMyFiefs(player_id) {
         const query = `

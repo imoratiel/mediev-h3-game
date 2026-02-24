@@ -883,6 +883,7 @@ const actionPanelPosition = ref({ x: 0, y: 0 });
 // Navigation search state
 const searchH3Input = ref('');
 const capitalH3Index = ref(null); // Cache capital location
+const isExiled = ref(false);      // True when the player has no territories (exile state)
 
 // Kingdom management state
 const kingdomFilters = ref({
@@ -1084,7 +1085,9 @@ const filteredAndSortedFiefs = computed(() => {
       exploration_end_turn: fief.exploration_end_turn,
       miningStatus,
       miningStatusIcon,
-      miningStatusText
+      miningStatusText,
+      grace_turns: Number(fief.grace_turns || 0),
+      is_capital: fief.is_capital || false
     };
   });
 
@@ -3083,6 +3086,7 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       playerCapitalH3: capitalH3Index.value,
       currentTurn: currentTurn.value,
       isColonizing: isColonizing.value,
+      isExiled: isExiled.value,
       explorationConfig: explorationConfig.value,
       h3_index
     });
@@ -3333,10 +3337,18 @@ const colonizeFromPopup = async (h3_index) => {
       // Update fiefs list to include new territory
       await updateFiefsUI();
 
+      // Clear exile state if the server confirmed it was cleared
+      if (data.was_exiled) {
+        isExiled.value = false;
+        capitalH3Index.value = h3_index;
+      }
+
       // Show success toast (including iron vein message if found)
-      let message = data.is_capital
-        ? '👑 ¡Capital fundada! Tu reino comienza aquí.'
-        : '🏰 ¡Territorio colonizado!';
+      let message = data.was_exiled
+        ? '🏕️ ¡Tu reino renace! Has fundado un nuevo asentamiento.'
+        : data.is_capital
+          ? '👑 ¡Capital fundada! Tu reino comienza aquí.'
+          : '🏰 ¡Territorio colonizado!';
 
       if (data.iron_vein_found && data.iron_message) {
         message += ' ' + data.iron_message;
@@ -3977,6 +3989,7 @@ watch(
         const response = await mapApi.getCapital();
         if (response.success) {
           capitalH3Index.value = response.h3_index;
+          isExiled.value = response.is_exiled ?? false;
         }
       } catch (error) {
         console.error('Error loading capital for Kingdom Management:', error);
@@ -4175,7 +4188,9 @@ onMounted(() => {
   loadMessages(); // Load initial messages
   startSync(); // Start server synchronization (polls every 30 seconds)
   // Pre-fetch capital so the "Fundar Capital" button condition is reliable from the first click
-  mapApi.getCapital().then(r => { if (r?.success) capitalH3Index.value = r.h3_index; }).catch(() => {});
+  mapApi.getCapital().then(r => {
+    if (r?.success) { capitalH3Index.value = r.h3_index; isExiled.value = r.is_exiled ?? false; }
+  }).catch(() => {});
 
   // Setup Map Interaction Controller
   setupMapInteractionController();

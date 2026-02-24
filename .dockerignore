@@ -1,0 +1,36 @@
+# Dependencias locales (se instalan dentro del contenedor)
+node_modules
+npm-debug.log
+
+# Datos pesados del terreno y assets
+# Añade aquí el nombre de la carpeta donde guardas los archivos del terreno
+/data/
+*.zip
+*.rar
+
+# Control de versiones y configuración
+.git
+.gitignore
+.env
+.vscode
+
+# Scripts de SQL (ya los mapeamos por volumen, no hace falta que vayan en la imagen)
+sql/
+
+# Archivos de Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Python
+/.venv/
+venv/
+__pycache__/
+
+# Otros archivos que no queremos incluir en la imagen
+/docs/
+/tools/
+*.md
+/resources/
+/bruno/
+/.claude/

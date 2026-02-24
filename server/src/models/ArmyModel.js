@@ -278,7 +278,9 @@ class ArmyModel {
                     SELECT COUNT(*)::int
                     FROM armies ea
                     WHERE ea.h3_index = a.h3_index AND ea.player_id != a.player_id
-                ) AS enemy_count
+                ) AS enemy_count,
+                COALESCE(td.grace_turns, 0)::int AS fief_grace_turns,
+                (m.player_id = a.player_id) AS is_own_fief
             FROM armies a
             LEFT JOIN h3_map m ON a.h3_index = m.h3_index
             LEFT JOIN territory_details td ON a.h3_index = td.h3_index
@@ -286,7 +288,7 @@ class ArmyModel {
             LEFT JOIN troops t ON t.army_id = a.army_id
             LEFT JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
             WHERE a.player_id = $1
-            GROUP BY a.army_id, a.name, a.h3_index, a.destination, m.coord_x, m.coord_y, td.custom_name, s.name
+            GROUP BY a.army_id, a.name, a.h3_index, a.destination, m.coord_x, m.coord_y, td.custom_name, s.name, td.grace_turns, m.player_id
             ORDER BY a.name
         `;
         const result = await db.query(query, [player_id]);
@@ -322,6 +324,11 @@ class ArmyModel {
             `SELECT a.army_id, a.name, a.h3_index, a.destination, a.recovering,
                     a.gold_provisions, a.food_provisions, a.wood_provisions,
                     COALESCE(td.population, 0) AS fief_population,
+                    COALESCE(td.grace_turns, 0) AS fief_grace_turns,
+                    COALESCE(td.wood_stored, 0) AS fief_wood,
+                    COALESCE(td.stone_stored, 0) AS fief_stone,
+                    COALESCE(td.iron_stored, 0) AS fief_iron,
+                    (m.player_id = a.player_id) AS is_own_fief,
                     t.name AS terrain_name,
                     pl.capital_h3
              FROM armies a
@@ -394,6 +401,29 @@ class ArmyModel {
         // Remove pre-calculated route
         await db.query('DELETE FROM army_routes WHERE army_id = $1', [armyId]);
         return result.rows[0];
+    }
+
+    /**
+     * Adds troops to an existing army, merging with existing rows of the same unit type.
+     * If no row exists for that unit_type_id, inserts a fresh one (experience=10, morale=50).
+     */
+    async ReinforceTroops(client, army_id, unit_type_id, quantity) {
+        const existing = await client.query(
+            'SELECT troop_id FROM troops WHERE army_id = $1 AND unit_type_id = $2',
+            [army_id, unit_type_id]
+        );
+        if (existing.rows.length > 0) {
+            await client.query(
+                'UPDATE troops SET quantity = quantity + $1 WHERE army_id = $2 AND unit_type_id = $3',
+                [quantity, army_id, unit_type_id]
+            );
+        } else {
+            await client.query(
+                `INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale, stamina, force_rest)
+                 VALUES ($1, $2, $3, 10.00, 50.00, 100.00, false)`,
+                [army_id, unit_type_id, quantity]
+            );
+        }
     }
 }
 

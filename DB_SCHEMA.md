@@ -29,6 +29,7 @@
 - h3_index (VARCHAR 15 PK) <- ¡OJO! No tiene columna 'id'
 - wood_stored, iron_stored, stone_stored, food_stored (INT)
 - discovered_resource (VARCHAR)
+- grace_turns (INT)
 
 ## Tabla: terrain_types
 - terrain_type_id (SERIAL PK)

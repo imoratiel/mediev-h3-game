@@ -182,10 +182,12 @@ class ArmyService {
             const result = await ArmyModel.GetArmies(player_id);
             const armies = result.rows.map(a => ({
                 ...a,
-                total_troops: parseInt(a.total_troops) || 0,
+                total_troops:      parseInt(a.total_troops)      || 0,
                 total_combat_power: parseInt(a.total_combat_power) || 0,
-                average_moral: parseInt(a.average_moral) || 0,
-                min_stamina: parseInt(a.min_stamina) || 0,
+                average_moral:     parseInt(a.average_moral)     || 0,
+                min_stamina:       parseInt(a.min_stamina)       || 0,
+                fief_grace_turns:  parseInt(a.fief_grace_turns)  || 0,
+                is_own_fief:       a.is_own_fief === true,
             }));
             res.json({ success: true, armies });
         } catch (error) {
@@ -210,10 +212,15 @@ class ArmyService {
                 morale:     parseFloat(t.morale).toFixed(1),
                 stamina:    parseFloat(t.stamina).toFixed(1),
             }));
-            detail.army.gold_provisions = parseFloat(detail.army.gold_provisions) || 0;
-            detail.army.food_provisions = parseFloat(detail.army.food_provisions) || 0;
-            detail.army.wood_provisions = parseFloat(detail.army.wood_provisions) || 0;
-            detail.army.fief_population = parseInt(detail.army.fief_population) || 0;
+            detail.army.gold_provisions  = parseFloat(detail.army.gold_provisions)  || 0;
+            detail.army.food_provisions  = parseFloat(detail.army.food_provisions)  || 0;
+            detail.army.wood_provisions  = parseFloat(detail.army.wood_provisions)  || 0;
+            detail.army.fief_population  = parseInt(detail.army.fief_population)    || 0;
+            detail.army.fief_grace_turns = parseInt(detail.army.fief_grace_turns)   || 0;
+            detail.army.fief_wood        = parseInt(detail.army.fief_wood)          || 0;
+            detail.army.fief_stone       = parseInt(detail.army.fief_stone)         || 0;
+            detail.army.fief_iron        = parseInt(detail.army.fief_iron)          || 0;
+            detail.army.is_own_fief      = detail.army.is_own_fief === true;
             // Compute population cap for dismiss-warning in the UI
             const { getPopulationCap } = require('../config/constants.js');
             const isCapital = detail.army.h3_index === detail.army.capital_h3;
@@ -761,6 +768,153 @@ class ArmyService {
             await client.query('ROLLBACK');
             Logger.error(error, { endpoint: '/military/dismiss', method: 'POST', userId: req.user?.player_id, payload: req.body });
             res.status(500).json({ success: false, message: 'Error al licenciar tropas' });
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Adds troops to an existing army (reinforcement).
+     * Conditions: army must be at a player-owned fief with grace_turns = 0.
+     * Same recruitment costs apply (gold, resources, population).
+     * POST /api/military/reinforce
+     * Body: { armyId, units: [{ unit_type_id, quantity }] }
+     */
+    async ReinforceArmy(req, res) {
+        const client = await pool.connect();
+        try {
+            const player_id = req.user.player_id;
+            const { armyId, units } = req.body;
+
+            if (!armyId || !Array.isArray(units) || units.length === 0) {
+                return res.status(400).json({ success: false, message: 'Faltan parámetros: armyId y units' });
+            }
+            for (const u of units) {
+                if (!u.unit_type_id || !u.quantity || u.quantity <= 0) {
+                    return res.status(400).json({ success: false, message: 'Unidades inválidas en el lote' });
+                }
+            }
+
+            await client.query('BEGIN');
+
+            // 1. Verify army ownership and get its position
+            const armyResult = await client.query(
+                'SELECT army_id, name, h3_index FROM armies WHERE army_id = $1 AND player_id = $2',
+                [armyId, player_id]
+            );
+            if (armyResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Ejército no encontrado o no te pertenece' });
+            }
+            const army = armyResult.rows[0];
+            const h3_index = army.h3_index;
+
+            // 2. Verify the fief: must be owned by player AND have grace_turns = 0
+            const territoryResult = await client.query(
+                `SELECT td.population, td.wood_stored, td.stone_stored, td.iron_stored,
+                        td.grace_turns, m.player_id AS fief_owner
+                 FROM territory_details td
+                 JOIN h3_map m ON td.h3_index = m.h3_index
+                 WHERE td.h3_index = $1`,
+                [h3_index]
+            );
+            if (territoryResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'El feudo donde está el ejército no existe' });
+            }
+            const territory = territoryResult.rows[0];
+
+            if (territory.fief_owner !== player_id) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'El ejército no está en un feudo propio' });
+            }
+            if (parseInt(territory.grace_turns) > 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    success: false,
+                    message: `Feudo en período de ocupación (${territory.grace_turns} turnos restantes). No se puede reforzar hasta que se estabilice.`
+                });
+            }
+
+            // 3. Compute total cost (same as recruitment)
+            const unitTypeIds = units.map(u => u.unit_type_id);
+            const reqResult = await ArmyModel.GetBulkUnitRequirements(client, unitTypeIds);
+            const requirementsByType = {};
+            for (const row of reqResult.rows) {
+                if (!requirementsByType[row.unit_type_id]) requirementsByType[row.unit_type_id] = [];
+                requirementsByType[row.unit_type_id].push(row);
+            }
+
+            const totalCost = { gold: 0, wood_stored: 0, stone_stored: 0, iron_stored: 0 };
+            let totalQuantity = 0;
+            for (const u of units) {
+                const reqs = requirementsByType[u.unit_type_id] || [];
+                for (const req of reqs) {
+                    totalCost[req.resource_type] = (totalCost[req.resource_type] || 0) + req.amount * u.quantity;
+                }
+                totalQuantity += u.quantity;
+            }
+
+            // 4. Validate population minimum
+            const MIN_POP = GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION;
+            const currentPop = parseInt(territory.population) || 0;
+            if (currentPop - totalQuantity < MIN_POP) {
+                await client.query('ROLLBACK');
+                const available = Math.max(0, currentPop - MIN_POP);
+                return res.status(400).json({
+                    success: false,
+                    message: `Población insuficiente. Puedes reforzar como máximo ${available} unidades (mínimo de ${MIN_POP} habitantes garantizados).`
+                });
+            }
+
+            // 5. Validate gold and territory resources
+            const goldResult = await ArmyModel.GetPlayerGold(client, player_id);
+            const playerGold = parseFloat(goldResult.rows[0]?.gold) || 0;
+            if (playerGold < totalCost.gold) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Oro insuficiente' });
+            }
+            if ((territory.wood_stored || 0) < totalCost.wood_stored) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Madera insuficiente' });
+            }
+            if ((territory.stone_stored || 0) < totalCost.stone_stored) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Piedra insuficiente' });
+            }
+            if ((territory.iron_stored || 0) < totalCost.iron_stored) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Hierro insuficiente' });
+            }
+
+            // 6. Deduct resources
+            if (totalCost.gold        > 0) await ArmyModel.DeductPlayerGold(client, player_id, totalCost.gold);
+            if (totalCost.wood_stored  > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'wood_stored',  totalCost.wood_stored);
+            if (totalCost.stone_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'stone_stored', totalCost.stone_stored);
+            if (totalCost.iron_stored  > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'iron_stored',  totalCost.iron_stored);
+
+            // 7. Deduct population
+            await ArmyModel.DeductPopulation(client, h3_index, totalQuantity);
+
+            // 8. Add troops to the existing army (merge with existing unit type rows)
+            for (const u of units) {
+                await ArmyModel.ReinforceTroops(client, armyId, u.unit_type_id, u.quantity);
+            }
+            await ArmyModel.refreshDetectionRange(client, armyId);
+
+            await client.query('COMMIT');
+
+            Logger.action(`Reforzó ejército ${armyId} "${army.name}" con ${totalQuantity} tropas en ${h3_index}`, player_id, { armyId, units });
+            return res.json({
+                success: true,
+                message: `Ejército reforzado con ${totalQuantity} unidades`,
+                army_id: armyId,
+                total_added: totalQuantity
+            });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            Logger.error(error, { endpoint: '/military/reinforce', method: 'POST', userId: req.user?.player_id, payload: req.body });
+            return res.status(500).json({ success: false, message: 'Error al reforzar el ejército' });
         } finally {
             client.release();
         }

@@ -289,6 +289,16 @@ export async function dismissTroops(armyId, unitTypeId, quantity) {
   return response.data;
 }
 
+/**
+ * Reinforce an existing army with additional troops.
+ * @param {number} armyId - Army to reinforce
+ * @param {Array}  units  - [{ unit_type_id, quantity }, ...]
+ */
+export async function reinforceArmy(armyId, units) {
+  const response = await axios.post(`${API_URL}/api/military/reinforce`, { armyId, units });
+  return response.data;
+}
+
 export async function attackArmy(armyId) {
   const response = await axios.post(`${API_URL}/api/military/attack`, { armyId });
   return response.data;

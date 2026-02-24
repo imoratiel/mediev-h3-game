@@ -18,6 +18,7 @@ export function generateCellPopupContent(cell, config) {
     playerCapitalH3,
     currentTurn,
     isColonizing,
+    isExiled = false,
     explorationConfig,
     h3_index
   } = config;
@@ -141,22 +142,30 @@ export function generateCellPopupContent(cell, config) {
   // ACTIONS
   popupContent += '<div class="popup-actions">';
 
-  // "Fundar Capital" button: only shown when the hex is unclaimed AND the player has no capital.
-  // Double guard: playerCapitalH3 (fetched from API on mount) is authoritative once loaded;
-  // playerHexes.size === 0 covers the brief window before that request completes.
-  if (!cell.player_id && !playerCapitalH3 && playerHexes.size === 0) {
+  // "Fundar Capital" button:
+  // - Normal players: only when hex is unclaimed AND player has no capital yet
+  // - Exiled players: shown on any unclaimed hex (no adjacency restriction)
+  const showColonizeButton = !cell.player_id && (
+    isExiled || (!playerCapitalH3 && playerHexes.size === 0)
+  );
+  if (showColonizeButton) {
     const hasEnoughGold = playerGold >= 100;
     const isCurrentlyColonizing = isColonizing;
     let disabledReason = '';
 
     const canColonize = hasEnoughGold && !isCurrentlyColonizing;
-    if (isCurrentlyColonizing) disabledReason = 'Fundación en progreso...';
+    if (isCurrentlyColonizing) disabledReason = isExiled ? 'Colonización en progreso...' : 'Fundación en progreso...';
     else if (!hasEnoughGold) disabledReason = 'Oro insuficiente (necesitas 100 💰)';
 
     const activeClass = canColonize ? 'btn-colonize' : 'btn-disabled';
+    const btnLabel = isExiled ? '🏕️ Colonizar (100 💰)' : '👑 Fundar Capital (100 💰)';
     popupContent += `<button id="colonize-btn-${h3_index}" class="btn-popup ${activeClass}" ${!canColonize ? 'disabled' : ''} title="${disabledReason}">
-      👑 Fundar Capital (100 💰)
+      ${btnLabel}
     </button>`;
+
+    if (isExiled) {
+      popupContent += `<p class="exile-hint" style="font-size:0.72rem;color:#f97316;margin:4px 0 0 0;">⛓️ Estás en el exilio — coloniza aquí para reanudar tu reino</p>`;
+    }
   }
 
   popupContent += '</div>';

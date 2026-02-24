@@ -122,6 +122,12 @@
                     :disabled="attackingArmies.has(army.army_id)"
                     :title="`Atacar (${army.enemy_count} ejército(s) enemigo(s))`"
                   >{{ attackingArmies.has(army.army_id) ? '⏳' : '⚔️' }}</button>
+                  <button
+                    class="btn-icon btn-icon-reinforce"
+                    :disabled="!army.is_own_fief || army.fief_grace_turns > 0"
+                    :title="getReinforceTooltip(army)"
+                    @click="openReinforce(army)"
+                  >➕</button>
                 </div>
               </td>
             </tr>
@@ -131,11 +137,12 @@
     </div>
   </div>
 
-  <!-- Army Detail Modal -->
+  <!-- Army Detail Modal (inspect + optional auto-reinforce) -->
   <ArmyDetailModal
     :show="inspectModalVisible"
     :army="inspectArmy"
-    @close="inspectModalVisible = false"
+    :autoReinforce="inspectAutoReinforce"
+    @close="inspectModalVisible = false; inspectAutoReinforce = false"
     @dismissed="(payload) => emit('armyDismissed', payload)"
   />
 </template>
@@ -162,9 +169,17 @@ const stoppingArmies = ref(new Set());
 const attackingArmies = ref(new Set());
 
 // Army detail modal
-const inspectModalVisible = ref(false);
-const inspectArmy = ref(null);
-const openInspect = (army) => { inspectArmy.value = army; inspectModalVisible.value = true; };
+const inspectModalVisible   = ref(false);
+const inspectArmy           = ref(null);
+const inspectAutoReinforce  = ref(false);
+const openInspect   = (army) => { inspectArmy.value = army; inspectAutoReinforce.value = false; inspectModalVisible.value = true; };
+const openReinforce = (army) => { inspectArmy.value = army; inspectAutoReinforce.value = true;  inspectModalVisible.value = true; };
+
+const getReinforceTooltip = (army) => {
+  if (!army.is_own_fief)       return 'El ejército no está estacionado en un feudo propio';
+  if (army.fief_grace_turns > 0) return `Feudo en período de ocupación (${army.fief_grace_turns} turnos restantes)`;
+  return 'Reforzar ejército con nuevas tropas';
+};
 
 const totalUnits = computed(() => {
   return props.armies.reduce((sum, a) => sum + (a.total_troops || 0), 0);
@@ -663,5 +678,20 @@ const handleAttack = async (army) => {
 @keyframes pulse-border {
   0%, 100% { border-color: #e53935; box-shadow: none; }
   50%       { border-color: #ff6b6b; box-shadow: 0 0 6px rgba(229, 57, 53, 0.5); }
+}
+
+.btn-icon-reinforce {
+  border: 1px solid #2d6a2d;
+  color: #4ade80;
+}
+.btn-icon-reinforce:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 0.2);
+  border-color: #4ade80;
+}
+.btn-icon-reinforce:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: #444;
+  color: #555;
 }
 </style>
