@@ -776,7 +776,7 @@ import { cellToBoundary, cellToLatLng, gridDistance, latLngToCell } from 'h3-js'
 import 'leaflet/dist/leaflet.css';
 
 // Import map utilities
-import { getHexagonStyles, getCapitalStarIconHTML } from '@/utils/mapStyles.js';
+import { getHexagonStyles } from '@/utils/mapStyles.js';
 import { generateCellPopupContent, generateArmyPopup } from '@/utils/popupGenerator.js';
 import MapInteractionController from '@/utils/MapInteractionController.js';
 import RouteVisualizer from '@/utils/RouteVisualizer.js';
@@ -2227,22 +2227,32 @@ const renderHexagons = (hexagons) => {
       borderPolygon.addTo(hexagonLayer);
 
 
-      // --- LAYER 3: STAR MARKER (starPane) ---
+      // --- LAYER 3: CROWN MARKER (starPane) ---
       if (isCapital) {
         const [lat, lng] = cellToLatLng(hex.h3_index);
 
+        const crownHtml = `<div style="
+          background:#5c2e00;
+          border:2px solid #FFD700;
+          border-radius:50%;
+          width:30px;height:30px;
+          display:flex;align-items:center;justify-content:center;
+          font-size:16px;
+          box-shadow:0 0 10px 3px rgba(255,215,0,0.55),0 2px 6px rgba(0,0,0,0.7);
+          user-select:none;">👑</div>`;
+
         const capitalIcon = L.divIcon({
-            className: 'capital-star-marker',
-            html: getCapitalStarIconHTML(),
-            iconSize: [32, 32],
-            iconAnchor: [16, 16]
+          html: crownHtml,
+          className: '',
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
         });
 
         L.marker([lat, lng], {
-            icon: capitalIcon,
-            pane: 'starPane',
-            interactive: false,
-            zIndexOffset: 1000
+          icon: capitalIcon,
+          pane: 'starPane',
+          interactive: false,
+          zIndexOffset: 1000,
         }).addTo(hexagonLayer);
       }
 

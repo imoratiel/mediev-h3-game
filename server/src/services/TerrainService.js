@@ -25,6 +25,7 @@ class TerrainService {
                 terrain_type_id: row.terrain_type_id,
                 terrain_color: row.terrain_color || '#9e9e9e',
                 has_road: row.has_road || false,
+                is_capital: row.is_capital || false,
                 player_id: row.player_id || null,
                 player_color: row.player_color || null,
                 building_type_id: row.building_type_id || 0,
