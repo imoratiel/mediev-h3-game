@@ -37,7 +37,13 @@
       "Bash(Get-Content \"d:/claude/mediev-h3-game/server/logs/exceptions.log\" -Tail 80)",
       "Bash(more:*)",
       "Bash(cmd /c:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(magick --version)",
+      "Bash(convert --version)",
+      "Bash(python3 -c \"from PIL import Image; print\\(''PIL ok''\\)\")",
+      "Bash(where ffmpeg)",
+      "Bash(ffmpeg -version)",
+      "Bash(python -m pip install pillow -q)"
     ]
   }
 }
