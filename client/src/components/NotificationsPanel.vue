@@ -40,7 +40,7 @@
       >
         <div class="notif-header">
           <span class="notif-type-badge">{{ typeLabel(notif.type) }}</span>
-          <span class="notif-turn">Turno {{ notif.turn_number }}</span>
+          <span class="notif-turn">{{ turnToGameDate(notif.turn_number) }}</span>
         </div>
         <div class="notif-content">{{ notif.content }}</div>
         <div v-if="!notif.is_read" class="notif-unread-dot"></div>
@@ -55,8 +55,29 @@ import { markAllNotificationsRead } from '../services/mapApi.js';
 
 const props = defineProps({
   notifications: { type: Array, default: () => [] },
-  loading: { type: Boolean, default: false }
+  loading:       { type: Boolean, default: false },
+  currentTurn:   { type: Number, default: 0 },
+  gameDate:      { type: Date,   default: null }
 });
+
+const MONTHS = [
+  'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+];
+
+/**
+ * Converts a game turn number into the corresponding game calendar date.
+ * Formula: notifDate = currentGameDate − (currentTurn − notifTurn) days
+ * Falls back to "Turno N" if world state is not yet loaded.
+ */
+const turnToGameDate = (turnNumber) => {
+  if (!props.currentTurn || !props.gameDate || !turnNumber) {
+    return turnNumber ? `Turno ${turnNumber}` : '';
+  }
+  const date = new Date(props.gameDate);
+  date.setDate(date.getDate() - (props.currentTurn - turnNumber));
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+};
 
 const emit = defineEmits(['read', 'readAll']);
 

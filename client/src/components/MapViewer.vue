@@ -397,6 +397,8 @@
           <NotificationsPanel
             :notifications="notifications"
             :loading="loadingNotifications"
+            :currentTurn="currentTurn"
+            :gameDate="gameDate"
             @read="handleNotificationRead"
             @readAll="handleNotificationsReadAll"
           />
