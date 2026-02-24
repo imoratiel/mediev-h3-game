@@ -857,6 +857,9 @@ async function processGameTurn(pool, config) {
 
 let timeoutId = null;
 let isEngineRunning = false;
+let engineStartTime = null;
+let _enginePool = null;
+let _engineConfig = null;
 
 /**
  * Start the turn engine loop
@@ -869,7 +872,10 @@ function startTimeEngine(pool, config) {
         return;
     }
 
+    _enginePool = pool;
+    _engineConfig = config;
     isEngineRunning = true;
+    engineStartTime = new Date();
     Logger.engine('[ENGINE] Starting turn engine...');
 
     const run = async () => {
@@ -910,7 +916,19 @@ function stopTimeEngine() {
         timeoutId = null;
     }
     isEngineRunning = false;
+    engineStartTime = null;
     Logger.engine('[ENGINE] Turn engine stopped');
+}
+
+/**
+ * Restart the engine using stored pool/config references.
+ * Throws if engine was never initialized.
+ */
+function restartEngine() {
+    if (!_enginePool || !_engineConfig) {
+        throw new Error('Engine not initialized — pool/config not available. Call startTimeEngine first.');
+    }
+    startTimeEngine(_enginePool, _engineConfig);
 }
 
 /**
@@ -921,11 +939,24 @@ function isEngineActive() {
     return isEngineRunning;
 }
 
+/**
+ * Return runtime info about the engine process.
+ */
+function getEngineInfo() {
+    return {
+        isRunning: isEngineRunning,
+        startTime: engineStartTime,
+        uptimeMs: engineStartTime ? Date.now() - engineStartTime.getTime() : 0,
+    };
+}
+
 module.exports = {
     processGameTurn,
     startTimeEngine,
     stopTimeEngine,
+    restartEngine,
     isEngineActive,
+    getEngineInfo,
     processHarvestManually: processHarvest,
     processExplorationsManually: processExplorations,
     processMonthlyProductionManually: processMonthlyProduction,

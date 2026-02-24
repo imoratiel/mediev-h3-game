@@ -1,169 +1,272 @@
 const { Logger } = require('../utils/logger');
 const WorldStateModel = require('../models/TurnModel.js');
-const { processGameTurn, processHarvestManually } = require('../logic/turn_engine');
+const AdminModel = require('../models/AdminModel.js');
+const pool = require('../../db.js');
+const { CONFIG } = require('../config.js');
+const {
+    processGameTurn,
+    processHarvestManually,
+    processExplorationsManually,
+    startTimeEngine,
+    stopTimeEngine,
+    restartEngine,
+    isEngineActive,
+    getEngineInfo,
+} = require('../logic/turn_engine');
 
 class TurnService {
+    // ─────────────────────────────────────────────────────────────────────
+    // PUBLIC (non-admin)
+    // ─────────────────────────────────────────────────────────────────────
     async GetWorldState(req, res) {
         try {
             const state = await WorldStateModel.GetWorldState();
-            res.json({ success: true, turn: state.current_turn, date: state.game_date, is_paused: state.is_paused });
+            res.json({
+                success: true,
+                turn: state.current_turn,
+                date: state.game_date,
+                is_paused: state.is_paused
+            });
         } catch (error) {
             Logger.error(error, { endpoint: '/game/world-state', method: 'GET', userId: req.user?.player_id });
             res.status(500).json({ success: false, error: error.message });
         }
     }
-    async GetGlobalStatus() {
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ADMIN — ENGINE STATUS
+    // ─────────────────────────────────────────────────────────────────────
+    async GetGlobalStatus(req, res) {
         try {
-            Logger.action(`Acceso administrativo a /admin/engine/status - Consultando estado del motor`, req.user.player_id);
+            const state = await WorldStateModel.GetCurrentTurn();
+            const engineInfo = getEngineInfo();
+            const turnDurationSeconds = CONFIG.gameplay?.turn_duration_seconds || 60;
 
-            // Aquí haces la lógica de "negocio"
-            const status = await WorldStateModel.GetCurrentTurn();
-
+            Logger.action(`Admin consulta estado del motor`, req.user.player_id);
             res.json({
                 success: true,
                 engine: {
                     isRunning: isEngineActive(),
-                    isPaused: status.is_paused,
-                    currentTurn: status.current_turn,
-                    lastUpdate: status.last_updated
+                    startTime: engineInfo.startTime,
+                    uptimeMs: engineInfo.uptimeMs,
+                },
+                game: {
+                    isPaused: state.is_paused,
+                    currentTurn: state.current_turn,
+                    lastUpdated: state.last_updated,
+                },
+                config: {
+                    turnDurationSeconds,
                 }
             });
         } catch (error) {
-            Logger.error(error, {
-                endpoint: '/admin/engine/status',
-                method: 'GET',
-                userId: req.user?.player_id
-            });
+            Logger.error(error, { endpoint: '/admin/engine/status', method: 'GET', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al obtener estado del motor' });
         }
     }
-    async SetGamePaused() {
-         try {
 
-            Logger.action(`Acceso administrativo a /admin/engine/pause - Pausando juego`, req.user.player_id);
+    // ─────────────────────────────────────────────────────────────────────
+    // ADMIN — PROCESS STATUS (comprehensive monitor)
+    // ─────────────────────────────────────────────────────────────────────
+    async GetProcessStatus(req, res) {
+        try {
+            const state = await WorldStateModel.GetCurrentTurn();
+            const engineInfo = getEngineInfo();
+            const turnDurationSeconds = CONFIG.gameplay?.turn_duration_seconds || 60;
+            const turnDurationMs = turnDurationSeconds * 1000;
 
-            await WorldStateModel.SetGamePaused();
-            
-            Logger.action(`Juego pausado exitosamente`, req.user.player_id); 
-            
-            res.json({ success: true, message: 'Juego pausado. El motor no procesará más turnos.' });
+            // Time since last turn and estimated time to next
+            const lastTurnAt = state.last_updated ? new Date(state.last_updated) : null;
+            const timeSinceLastMs = lastTurnAt ? Date.now() - lastTurnAt.getTime() : null;
+            const nextTurnInMs = (isEngineActive() && !state.is_paused && timeSinceLastMs !== null)
+                ? Math.max(0, turnDurationMs - timeSinceLastMs)
+                : null;
 
-        } catch (error) {
-            Logger.error(error, {
-                endpoint: '/admin/engine/pause',
-                method: 'POST',
-                userId: req.user?.player_id
+            const engineRunning = isEngineActive();
+            const gamePaused = state.is_paused;
+            const titheActive = CONFIG.gameplay?.tithe_active === true;
+
+            res.json({
+                success: true,
+                processes: [
+                    {
+                        id: 'turn_engine',
+                        name: 'Motor de Turnos',
+                        description: 'Bucle principal que procesa cada turno del juego',
+                        status: engineRunning ? (gamePaused ? 'paused' : 'active') : 'stopped',
+                        startTime: engineInfo.startTime,
+                        uptimeMs: engineInfo.uptimeMs,
+                    },
+                    {
+                        id: 'tax_collector',
+                        name: 'Recaudación Fiscal',
+                        description: `${CONFIG.gameplay?.tax_rate ?? 5}% del oro en feudos — día 10 de cada mes`,
+                        status: engineRunning && !gamePaused ? 'active' : 'inactive',
+                    },
+                    {
+                        id: 'tithe_system',
+                        name: 'Sistema de Diezmo',
+                        description: '10% de recursos hacia la capital — día 10 de cada mes',
+                        status: titheActive
+                            ? (engineRunning && !gamePaused ? 'active' : 'inactive')
+                            : 'disabled',
+                    },
+                    {
+                        id: 'army_movement',
+                        name: 'Movimiento de Ejércitos',
+                        description: 'Procesa rutas y combate automático cada turno',
+                        status: engineRunning && !gamePaused ? 'active' : 'inactive',
+                    },
+                ],
+                game: {
+                    isPaused: gamePaused,
+                    currentTurn: state.current_turn,
+                    lastTurnAt,
+                    nextTurnInMs,
+                    turnDurationSeconds,
+                }
             });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/process-status', method: 'GET', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener estado de procesos' });
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ADMIN — ENGINE LIFECYCLE (start / stop)
+    // ─────────────────────────────────────────────────────────────────────
+    async StartEngine(req, res) {
+        try {
+            if (isEngineActive()) {
+                return res.json({ success: true, message: 'El motor ya está en ejecución.' });
+            }
+            restartEngine();
+            // Persist so the engine auto-starts on next container restart
+            await AdminModel.UpsertConfig('system', 'engine_auto_start', 'true');
+            if (!CONFIG.system) CONFIG.system = {};
+            CONFIG.system.engine_auto_start = true;
+
+            Logger.action(`Motor de turnos iniciado por admin ${req.user.player_id}`, req.user.player_id);
+            res.json({ success: true, message: 'Motor de turnos iniciado correctamente.' });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/engine/start', method: 'POST', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al iniciar el motor' });
+        }
+    }
+
+    async StopEngine(req, res) {
+        try {
+            if (!isEngineActive()) {
+                return res.json({ success: true, message: 'El motor ya está detenido.' });
+            }
+            stopTimeEngine();
+            // Persist so the engine does NOT auto-start on next container restart
+            await AdminModel.UpsertConfig('system', 'engine_auto_start', 'false');
+            if (!CONFIG.system) CONFIG.system = {};
+            CONFIG.system.engine_auto_start = false;
+
+            Logger.action(`Motor de turnos detenido por admin ${req.user.player_id}`, req.user.player_id);
+            res.json({ success: true, message: 'Motor de turnos detenido correctamente.' });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/engine/stop', method: 'POST', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al detener el motor' });
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ADMIN — GAME PAUSE / RESUME (pauses logic, engine loop keeps ticking)
+    // ─────────────────────────────────────────────────────────────────────
+    async SetGamePaused(req, res) {
+        try {
+            await WorldStateModel.SetGamePaused();
+            Logger.action(`Juego pausado por admin ${req.user.player_id}`, req.user.player_id);
+            res.json({ success: true, message: 'Juego pausado. El motor sigue activo pero no procesará turnos.' });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/engine/pause', method: 'POST', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al pausar el juego' });
         }
     }
-    async SetGameResumed() {
-          try {
 
-            Logger.action(`Acceso administrativo a /admin/engine/resume - Reanudando juego`, req.user.player_id);
-
+    async SetGameResumed(req, res) {
+        try {
             await WorldStateModel.SetGameResumed();
-        
-            Logger.action(`Juego reanudado exitosamente`, req.user.player_id);
-            
-            res.json({ success: true, message: 'Juego reanudado. El motor procesará el siguiente turno según el intervalo configurado.' });
-
+            Logger.action(`Juego reanudado por admin ${req.user.player_id}`, req.user.player_id);
+            res.json({ success: true, message: 'Juego reanudado. El motor procesará el siguiente turno.' });
         } catch (error) {
-            Logger.error(error, {
-                endpoint: '/admin/engine/resume',
-                method: 'POST',
-                userId: req.user?.player_id
-            });
+            Logger.error(error, { endpoint: '/admin/engine/resume', method: 'POST', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al reanudar el juego' });
         }
     }
-    async ForceGameTurn() {
-         try {
-            // Force process a turn manually
-            Logger.action(`Acceso administrativo a /admin/engine/force-turn - Forzando procesamiento de turno`, req.user.player_id);
 
-            // Force process a turn manually
-            const result = await processGameTurn(pool, config);
+    // ─────────────────────────────────────────────────────────────────────
+    // ADMIN — FORCE OPERATIONS
+    // ─────────────────────────────────────────────────────────────────────
+    async ForceGameTurn(req, res) {
+        try {
+            Logger.action(`Admin ${req.user.player_id} fuerza procesamiento de turno`, req.user.player_id);
+            const result = await processGameTurn(pool, CONFIG);
 
             if (result.paused) {
-                Logger.action(`Intento de forzar turno bloqueado: juego está pausado`, req.user.player_id);
                 return res.status(400).json({
                     success: false,
                     message: 'No se puede forzar turno: el juego está pausado. Usa /admin/engine/resume primero.'
                 });
             }
-
             if (result.success) {
                 Logger.action(`Turno forzado exitosamente: turno ${result.turn}`, req.user.player_id);
-                res.json({
-                    success: true,
-                    message: `Turno ${result.turn} procesado exitosamente`,
-                    turn: result.turn,
-                    date: result.date
-                });
+                res.json({ success: true, message: `Turno ${result.turn} procesado`, turn: result.turn, date: result.date });
             } else {
-                Logger.action(`Error al forzar turno`, req.user.player_id);
-                res.status(500).json({ success: false, message: 'Error al procesar turno' });
+                res.status(500).json({ success: false, message: 'Error al procesar turno forzado' });
             }
         } catch (error) {
-            Logger.error(error, {
-                endpoint: '/admin/engine/force-turn',
-                method: 'POST',
-                userId: req.user?.player_id
-            });
+            Logger.error(error, { endpoint: '/admin/engine/force-turn', method: 'POST', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al forzar procesamiento de turno' });
         }
     }
-    async ForceGameHarvest(){
-         try {
-            Logger.action(`Acceso administrativo a /admin/engine/force-harvest - Forzando procesamiento de cosecha`, req.user.player_id);
 
-            const worldState = TurnService.GetGlobalStatus();
-            const currentTurn = worldState.rows[0].current_turn;
-
-            await processHarvestManually(client, currentTurn, config);
-
-            Logger.action(`Cosecha forzada exitosamente en turno ${currentTurn}`, req.user.player_id);
-            res.json({
-                success: true,
-                message: `Cosecha procesada exitosamente en turno ${currentTurn}`,
-                turn: currentTurn
-            });
-        } catch (error) {
-            Logger.error(error, {
-                endpoint: '/admin/engine/force-harvest',
-                method: 'POST',
-                userId: req.user?.player_id
-            });
-            res.status(500).json({ success: false, message: 'Error al forzar procesamiento de cosecha' });
-        }
-
-
-
-        
-    }    
-    async ForceGameExploration(){
+    async ForceGameHarvest(req, res) {
         try {
-            Logger.action(`Acceso administrativo a /admin/engine/force-exploration - Forzando procesamiento de exploraciones`, req.user.player_id);
-
-            const worldState = TurnService.GetGlobalStatus();
-            const currentTurn = worldState.rows[0].current_turn;
-
-            await processExplorationsManually(client, currentTurn, config);
-
-            Logger.action(`Exploraciones forzadas exitosamente en turno ${currentTurn}`, req.user.player_id);        
-            res.json({
-                success: true,
-                message: `Exploraciones procesadas exitosamente en turno ${currentTurn}`,
-                turn: currentTurn
-            });
+            Logger.action(`Admin ${req.user.player_id} fuerza cosecha`, req.user.player_id);
+            const state = await WorldStateModel.GetCurrentTurn();
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await processHarvestManually(client, state.current_turn, CONFIG);
+                await client.query('COMMIT');
+            } catch (e) {
+                await client.query('ROLLBACK');
+                throw e;
+            } finally {
+                client.release();
+            }
+            Logger.action(`Cosecha forzada en turno ${state.current_turn}`, req.user.player_id);
+            res.json({ success: true, message: `Cosecha procesada en turno ${state.current_turn}`, turn: state.current_turn });
         } catch (error) {
-            Logger.error(error, {
-                endpoint: '/admin/engine/force-exploration',
-                method: 'POST',
-                userId: req.user?.player_id
-            });
-            res.status(500).json({ success: false, message: 'Error al forzar procesamiento de exploraciones' });
+            Logger.error(error, { endpoint: '/admin/engine/force-harvest', method: 'POST', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al forzar cosecha' });
+        }
+    }
+
+    async ForceGameExploration(req, res) {
+        try {
+            Logger.action(`Admin ${req.user.player_id} fuerza exploraciones`, req.user.player_id);
+            const state = await WorldStateModel.GetCurrentTurn();
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await processExplorationsManually(client, state.current_turn, CONFIG);
+                await client.query('COMMIT');
+            } catch (e) {
+                await client.query('ROLLBACK');
+                throw e;
+            } finally {
+                client.release();
+            }
+            Logger.action(`Exploraciones forzadas en turno ${state.current_turn}`, req.user.player_id);
+            res.json({ success: true, message: `Exploraciones procesadas en turno ${state.current_turn}`, turn: state.current_turn });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/engine/force-exploration', method: 'POST', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al forzar exploraciones' });
         }
     }
 }

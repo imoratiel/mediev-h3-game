@@ -39,7 +39,15 @@ app.get('/health', (req, res) => res.json({ status: 'ok', database: 'connected' 
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   await loadGameConfig(pool, logGameEvent);
-  startTimeEngine(pool, CONFIG);
+
+  // Respect engine_auto_start flag persisted in game_config.
+  // Defaults to true (start engine) unless an admin explicitly stopped it.
+  const shouldAutoStart = CONFIG.system?.engine_auto_start !== false;
+  if (shouldAutoStart) {
+    startTimeEngine(pool, CONFIG);
+  } else {
+    console.log('⏸️  Engine auto-start disabled — use the admin panel to start it manually.');
+  }
 });
 
 module.exports = app;

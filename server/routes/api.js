@@ -125,17 +125,19 @@ module.exports = function () {
     // GAME ENGINE CONTROL (ADMIN ONLY)
     // ============================================
 
-    router.get('/admin/engine/status', authenticateToken, requireAdmin, TurnService.GetGlobalStatus);
+    // Process monitor — comprehensive status of all background processes
+    router.get('/admin/process-status', authenticateToken, requireAdmin, (req, res) => TurnService.GetProcessStatus(req, res));
 
-    router.post('/admin/engine/pause', authenticateToken, requireAdmin, TurnService.SetGamePaused);
+    // Engine lifecycle — start/stop the JS turn loop (persisted across restarts)
+    router.post('/admin/engine/start', authenticateToken, requireAdmin, (req, res) => TurnService.StartEngine(req, res));
+    router.post('/admin/engine/stop',  authenticateToken, requireAdmin, (req, res) => TurnService.StopEngine(req, res));
 
-    router.post('/admin/engine/resume', authenticateToken, requireAdmin, TurnService.SetGameResumed);
-
-    router.post('/admin/engine/force-turn', authenticateToken, requireAdmin, TurnService.ForceGameTurn);
-
-    router.post('/admin/engine/force-harvest', authenticateToken, requireAdmin, TurnService.ForceGameHarvest);
-
-    router.post('/admin/engine/force-exploration', authenticateToken, requireAdmin, TurnService.ForceGameExploration);
+    router.get('/admin/engine/status',  authenticateToken, requireAdmin, (req, res) => TurnService.GetGlobalStatus(req, res));
+    router.post('/admin/engine/pause',  authenticateToken, requireAdmin, (req, res) => TurnService.SetGamePaused(req, res));
+    router.post('/admin/engine/resume', authenticateToken, requireAdmin, (req, res) => TurnService.SetGameResumed(req, res));
+    router.post('/admin/engine/force-turn',        authenticateToken, requireAdmin, (req, res) => TurnService.ForceGameTurn(req, res));
+    router.post('/admin/engine/force-harvest',     authenticateToken, requireAdmin, (req, res) => TurnService.ForceGameHarvest(req, res));
+    router.post('/admin/engine/force-exploration', authenticateToken, requireAdmin, (req, res) => TurnService.ForceGameExploration(req, res));
 
     return router;
 };

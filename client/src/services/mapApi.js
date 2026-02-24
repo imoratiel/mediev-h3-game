@@ -386,3 +386,52 @@ export async function updateProfile(display_name) {
   const response = await axios.put(`${API_URL}/api/auth/profile`, { display_name });
   return response.data;
 }
+
+// ============================================
+// ADMIN ENGINE CONTROL
+// ============================================
+
+export async function getAdminProcessStatus() {
+  const response = await axios.get(`${API_URL}/api/admin/process-status`);
+  return response.data;
+}
+
+export async function updateAdminGameConfig(group, key, value) {
+  const response = await axios.put(`${API_URL}/api/admin/game-config`, { group, key, value });
+  return response.data;
+}
+
+export async function startEngine() {
+  const response = await axios.post(`${API_URL}/api/admin/engine/start`);
+  return response.data;
+}
+
+export async function stopEngine() {
+  const response = await axios.post(`${API_URL}/api/admin/engine/stop`);
+  return response.data;
+}
+
+export async function pauseGame() {
+  const response = await axios.post(`${API_URL}/api/admin/engine/pause`);
+  return response.data;
+}
+
+export async function resumeGame() {
+  const response = await axios.post(`${API_URL}/api/admin/engine/resume`);
+  return response.data;
+}
+
+export async function forceTurn() {
+  const response = await axios.post(`${API_URL}/api/admin/engine/force-turn`);
+  return response.data;
+}
+
+export async function forceHarvest() {
+  const response = await axios.post(`${API_URL}/api/admin/engine/force-harvest`);
+  return response.data;
+}
+
+export async function forceExploration() {
+  const response = await axios.post(`${API_URL}/api/admin/engine/force-exploration`);
+  return response.data;
+}

@@ -119,14 +119,15 @@
         >
           <span class="username">{{ currentUser.display_name || currentUser.username }}</span>
         </button>
-        <a
+        <button
           v-if="currentUser && currentUser.role === 'admin'"
-          href="/admin.html"
           class="footer-button admin-button"
+          :class="{ active: activeOverlay === 'admin' }"
           title="Panel de Administración"
+          @click="openOverlay('admin')"
         >
           <span class="footer-icon">⚙️</span>
-        </a>
+        </button>
         <button
           v-if="currentUser"
           class="footer-button logout-button"
@@ -479,6 +480,12 @@
         </div>
       </div>
 
+    <!-- Admin Panel Overlay (admin only) -->
+    <AdminPanel
+      v-if="activeOverlay === 'admin'"
+      @close="closeOverlay"
+    />
+
     <!-- Full-Screen Messages Overlay -->
     <div v-if="activeOverlay === 'messages'" class="game-overlay">
       <div class="overlay-container">
@@ -784,6 +791,7 @@ import TroopsPanel from './TroopsPanel.vue';
 import NotificationsPanel from './NotificationsPanel.vue';
 import BattleSummaryModal from './BattleSummaryModal.vue';
 import EconomyPanel from './EconomyPanel.vue';
+import AdminPanel from './AdminPanel.vue';
 
 const mapContainer = ref(null);
 const loading = ref(false);
