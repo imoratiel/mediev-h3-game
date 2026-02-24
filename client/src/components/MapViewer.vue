@@ -928,6 +928,8 @@ const armyLimit = ref(2);
 // Notifications panel state
 const notifications = ref([]);
 const loadingNotifications = ref(false);
+let notifPollIntervalId = null;
+const NOTIF_POLL_INTERVAL = 45_000; // 45 segundos
 
 // Profile panel state
 const profileDisplayName = ref('');
@@ -2716,7 +2718,7 @@ const togglePanel = (panelName) => {
       displayedFiefsCount.value = FIEFS_PER_PAGE;
     }
     if (panelName === 'notifications') {
-      fetchNotifications();
+      fetchNotifications(); // refresh con spinner al abrir el panel
     }
   }
 };
@@ -3719,6 +3721,28 @@ const fetchNotifications = async () => {
   }
 };
 
+// Polling silencioso: actualiza notificaciones sin activar el spinner
+const pollNotifications = async () => {
+  try {
+    const data = await mapApi.getNotifications();
+    if (data.success) notifications.value = data.notifications;
+  } catch {
+    // fallo silencioso — no interrumpir la experiencia del usuario
+  }
+};
+
+const startNotifPolling = () => {
+  pollNotifications(); // carga inicial inmediata
+  notifPollIntervalId = setInterval(pollNotifications, NOTIF_POLL_INTERVAL);
+};
+
+const stopNotifPolling = () => {
+  if (notifPollIntervalId) {
+    clearInterval(notifPollIntervalId);
+    notifPollIntervalId = null;
+  }
+};
+
 const handleNotificationRead = async (notif) => {
   if (notif.is_read) return;
   try {
@@ -4215,6 +4239,7 @@ onMounted(() => {
   fetchArmyCapacity(); // Load army limit based on fief count
   loadMessages(); // Load initial messages
   startSync(); // Start server synchronization (polls every 30 seconds)
+  startNotifPolling(); // Start background notification polling (every 45 seconds)
   // Pre-fetch capital so the "Fundar Capital" button condition is reliable from the first click
   mapApi.getCapital().then(r => {
     if (r?.success) { capitalH3Index.value = r.h3_index; isExiled.value = r.is_exiled ?? false; }
@@ -4237,6 +4262,7 @@ onBeforeUnmount(() => {
     clearTimeout(debounceTimer);
   }
   stopSync(); // Stop server synchronization
+  stopNotifPolling(); // Stop background notification polling
   if (map) {
     map.remove();
   }
