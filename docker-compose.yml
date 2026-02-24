@@ -4,7 +4,7 @@ services:
   # --- SERVIDOR DE APLICACIÓN (NODE.JS) ---
   app:
     build:
-      context: .
+      context: ./server
       dockerfile: Dockerfile
     container_name: marca_hispanica_app
     restart: always
@@ -13,7 +13,7 @@ services:
       - "3000:3000"
     # Sincronización de archivos en tiempo real (Hot Reload)
     volumes:
-      - .:/app
+      - ./server:/app
       - /app/node_modules # Evita que los módulos locales sobrescriban los del contenedor
     # Cargamos las contraseñas desde el archivo protegido
     env_file:
@@ -51,7 +51,7 @@ services:
     # Verificación de salud para que 'app' sepa cuándo conectarse
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
     networks:

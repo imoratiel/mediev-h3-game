@@ -1,16 +1,16 @@
 # Usamos la versión estable de Node
-FROM node:18
+FROM node:18-alpine
 
 # Carpeta de trabajo dentro del contenedor
 WORKDIR /app
 
-# Copiamos los archivos de dependencias
+# Copiamos los archivos de dependencias del servidor
 COPY package*.json ./
 
 # Instalamos las librerías
 RUN npm install
 
-# Copiamos el resto del código
+# Copiamos el resto del código del servidor
 COPY . .
 
 # Exponemos el puerto que usa tu app (ej. 3000)
