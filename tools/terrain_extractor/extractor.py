@@ -1522,7 +1522,7 @@ def insert_terrain_data_batch(
             logger.info("✓ All coordinates are valid integers")
 
             terrain_data_with_fields = [
-                (h3_index, terrain_id, None, 0, False, int(coord_x), int(coord_y))
+                (h3_index, terrain_id, None, False, int(coord_x), int(coord_y))
                 for h3_index, terrain_id, coord_x, coord_y in terrain_data
             ]
 
@@ -1533,7 +1533,7 @@ def insert_terrain_data_batch(
                 sample_size = min(5, len(terrain_data_with_fields))
                 logger.info(f"Sample of first {sample_size} records (h3_index, terrain_id, coord_x, coord_y):")
                 for i in range(sample_size):
-                    h3_idx, terrain_id, _, _, _, cx, cy = terrain_data_with_fields[i]
+                    h3_idx, terrain_id, _, _, cx, cy = terrain_data_with_fields[i]
                     logger.info(f"  {i+1}. {h3_idx} -> terrain={terrain_id}, coords=({cx}, {cy})")
 
             # Insert in batches with progress logging
@@ -1547,7 +1547,7 @@ def insert_terrain_data_batch(
 
                 # Write executed SQL to dump file
                 rows_sql = ',\n    '.join(
-                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s)", row).decode('utf-8')
+                    cursor.mogrify("(%s, %s, %s, %s,%s, %s)", row).decode('utf-8')
                     for row in batch
                 )
                 sql_file.write(insert_query.replace('VALUES %s', f'VALUES\n    {rows_sql}') + ';\n\n')
