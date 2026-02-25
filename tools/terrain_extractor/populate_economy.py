@@ -7,7 +7,7 @@ from psycopg2.extras import execute_values
 # 1. CARGA DE CONFIGURACIÓN
 try:
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from extractor import DB_CONFIG
+    from extractor import DB_CONFIG, BASE_DATA_DIR
     print("✅ Configuración cargada correctamente.")
 except ImportError:
     print("❌ Error: No se pudo encontrar extractor.py para leer la configuración.")
@@ -21,13 +21,21 @@ def calculateLoot(baseMin, baseMax, multiplierPercent):
     return int(val * (multiplierPercent / 100.0))
 
 def populate():
+    sql_dump_path = BASE_DATA_DIR / 'populate_economy.sql'
+    if sql_dump_path.exists():
+        sql_dump_path.unlink()
+    print(f"📄 SQL dump will be written to: {sql_dump_path}")
+
+    sql_file = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
+        sql_file = open(sql_dump_path, 'w', encoding='utf-8')
 
         # --- PASO 0: TRUNCATE ---
         print("🧹 Limpiando tabla territory_details...")
         cur.execute("TRUNCATE TABLE territory_details RESTART IDENTITY CASCADE;")
+        sql_file.write("TRUNCATE TABLE territory_details RESTART IDENTITY CASCADE;\n\n")
         conn.commit()
 
         # --- PASO 1: LECTURA ---
@@ -98,6 +106,11 @@ def populate():
                 ) VALUES %s
             """
             execute_values(cur, insert_query, inserts)
+            rows_sql = ',\n    '.join(
+                cur.mogrify("(%s, %s, %s, %s, %s, %s, %s, %s, %s)", row).decode('utf-8')
+                for row in inserts
+            )
+            sql_file.write(insert_query.replace('VALUES %s', f'VALUES\n    {rows_sql}') + ';\n\n')
             conn.commit()
             
             # Log de progreso
@@ -111,6 +124,8 @@ def populate():
         print(f"\n❌ Error crítico: {e}")
         if conn: conn.rollback()
     finally:
+        if sql_file:
+            sql_file.close()
         if 'conn' in locals():
             cur.close()
             conn.close()

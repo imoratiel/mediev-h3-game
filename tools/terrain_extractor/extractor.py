@@ -1473,6 +1473,11 @@ def insert_terrain_data_batch(
     """
     logger.info(f"Connecting to database at {db_config['host']}...")
 
+    sql_dump_path = BASE_DATA_DIR / 'extractor.sql'
+    if sql_dump_path.exists():
+        sql_dump_path.unlink()
+    logger.info(f"SQL dump will be written to: {sql_dump_path}")
+
     conn = psycopg2.connect(
         host=db_config['host'],
         port=db_config['port'],
@@ -1482,7 +1487,7 @@ def insert_terrain_data_batch(
     )
 
     try:
-        with conn.cursor() as cursor:
+        with open(sql_dump_path, 'w', encoding='utf-8') as sql_file, conn.cursor() as cursor:
             # NO TRUNCATE: Preserve has_road column set by setup_history.py
             logger.info("Updating h3_map data (preserving has_road markers and inserting coordinates)...")
 
@@ -1539,6 +1544,13 @@ def insert_terrain_data_batch(
                 batch = terrain_data_with_fields[i:i + BATCH_SIZE]
                 execute_values(cursor, insert_query, batch, page_size=BATCH_SIZE)
                 conn.commit()
+
+                # Write executed SQL to dump file
+                rows_sql = ',\n    '.join(
+                    cursor.mogrify("(%s, %s, %s, %s, %s, %s, %s)", row).decode('utf-8')
+                    for row in batch
+                )
+                sql_file.write(insert_query.replace('VALUES %s', f'VALUES\n    {rows_sql}') + ';\n\n')
 
                 total_inserted += len(batch)
 
