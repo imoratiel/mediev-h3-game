@@ -191,6 +191,12 @@ class KingdomService {
                     ...row,
                     is_capital,
                     pop_cap: getPopulationCap(row.terrain_name, is_capital),
+                    fief_building: row.fief_building_id ? {
+                        id: row.fief_building_id,
+                        name: row.fief_building_name,
+                        is_under_construction: row.fief_building_constructing,
+                        turns_left: row.fief_building_constructing ? row.fief_building_turns_left : null,
+                    } : null,
                 };
             });
 

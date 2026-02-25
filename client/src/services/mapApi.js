@@ -146,6 +146,24 @@ export async function exploreTerritory(h3_index) {
 }
 
 /**
+ * Get all available buildings catalog
+ */
+export async function getBuildings() {
+  const response = await axios.get(`${API_URL}/api/territory/buildings`);
+  return response.data;
+}
+
+/**
+ * Start construction of a building in a territory
+ * @param {string} h3_index - H3 index of the fief
+ * @param {number} building_id - ID of the building to construct
+ */
+export async function constructBuilding(h3_index, building_id) {
+  const response = await axios.post(`${API_URL}/api/territory/construct`, { h3_index, building_id });
+  return response.data;
+}
+
+/**
  * Upgrade a building in a territory
  * @param {string} h3_index - H3 index
  * @param {string} buildingType - Type of building to upgrade

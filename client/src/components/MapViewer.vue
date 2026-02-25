@@ -702,6 +702,7 @@
               @focusOnFief="focusOnFiefAndClose"
               @exploreFief="exploreFiefFromTable"
               @openRecruitment="openRecruitmentForFief"
+              @openConstruction="openBuildModal"
             />
           </div>
 
@@ -744,6 +745,53 @@
             @armyAttackFailed="(msg) => showToast(msg, 'error')"
             @armyDismissed="handleArmyDismissed"
           />
+        </div>
+      </div>
+    </div>
+
+    <!-- Building Construction Modal -->
+    <div v-if="showBuildModal" class="build-modal-overlay" @click.self="closeBuildModal">
+      <div class="build-modal">
+        <div class="build-modal-header">
+          <h2 class="build-modal-title">🏗️ Construir Edificio</h2>
+          <button class="build-modal-close" @click="closeBuildModal" title="Cerrar">✕</button>
+        </div>
+        <p class="build-modal-subtitle">Feudo: <span class="build-modal-h3">{{ buildModalH3 }}</span></p>
+
+        <div class="build-cards-grid">
+          <div
+            v-for="building in buildModalBuildings"
+            :key="building.id"
+            class="build-card"
+            :class="{
+              'build-card-disabled': playerGold < building.gold_cost,
+              'build-card-prereq': building.required_building_id
+            }"
+          >
+            <div class="build-card-icon">{{ getBuildingIcon(building.name) }}</div>
+            <div class="build-card-info">
+              <h3 class="build-card-name">{{ building.name }}</h3>
+              <p v-if="building.type_name" class="build-card-type">{{ building.type_name }}</p>
+              <p v-if="building.description" class="build-card-desc">{{ building.description }}</p>
+              <div class="build-card-stats">
+                <span class="build-stat">💰 {{ building.gold_cost }}</span>
+                <span class="build-stat">⏱️ {{ building.construction_time_turns }}t</span>
+                <span v-if="building.food_bonus > 0" class="build-stat build-stat-food">🌾 +{{ building.food_bonus }}%</span>
+              </div>
+            </div>
+            <button
+              class="build-card-btn"
+              :disabled="playerGold < building.gold_cost || isConstructing"
+              :title="playerGold < building.gold_cost ? `Oro insuficiente (necesitas ${building.gold_cost} 💰)` : `Construir ${building.name}`"
+              @click="doConstruct(buildModalH3, building.id)"
+            >
+              {{ isConstructing ? '...' : 'Construir' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="buildModalBuildings.length === 0" class="build-empty">
+          No hay edificios disponibles.
         </div>
       </div>
     </div>
@@ -916,6 +964,12 @@ const recruitmentArmyName = ref('');
 const recruitmentMessage = ref({ type: '', text: '' });
 const isRecruiting = ref(false);
 const isColonizing = ref(false); // Track colonization state to prevent multiple simultaneous colonizations
+
+// Building construction modal state
+const showBuildModal = ref(false);
+const buildModalH3 = ref(null);
+const buildModalBuildings = ref([]);
+const isConstructing = ref(false);
 
 // Troops panel state
 const armies = ref([]);
@@ -1099,7 +1153,8 @@ const filteredAndSortedFiefs = computed(() => {
       miningStatusIcon,
       miningStatusText,
       grace_turns: Number(fief.grace_turns || 0),
-      is_capital: fief.is_capital || false
+      is_capital: fief.is_capital || false,
+      fief_building: fief.fief_building || null
     };
   });
 
@@ -3083,6 +3138,19 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       }, 100);
     }
 
+    // Add event listener to build button (own fief with no building)
+    if (cell.player_id === playerId.value && !cell.fief_building) {
+      setTimeout(() => {
+        const buildBtn = document.getElementById(`build-btn-${h3_index}`);
+        if (buildBtn) {
+          buildBtn.addEventListener('click', () => {
+            map.closePopup();
+            openBuildModal(h3_index);
+          });
+        }
+      }, 100);
+    }
+
 
   } catch (error) {
     console.error('Error fetching cell details:', error);
@@ -3341,6 +3409,73 @@ const colonizeFromPopup = async (h3_index) => {
     // CRITICAL: Always reset the colonizing state, even if there was an error
     isColonizing.value = false;
     console.log('[Colonize] State reset, ready for next colonization');
+  }
+};
+
+/**
+ * Get building icon emoji by building name
+ */
+const getBuildingIcon = (name = '') => {
+  const n = name.toLowerCase();
+  if (n.includes('granja') || n.includes('farm')) return '🌾';
+  if (n.includes('cuartel') || n.includes('barrack')) return '⚔️';
+  if (n.includes('iglesia') || n.includes('church') || n.includes('catedral')) return '⛪';
+  if (n.includes('mercado') || n.includes('market')) return '🏪';
+  if (n.includes('fortaleza') || n.includes('fortress') || n.includes('castillo')) return '🏯';
+  if (n.includes('astillero') || n.includes('shipyard')) return '⛵';
+  if (n.includes('mina') || n.includes('mine')) return '⛏️';
+  if (n.includes('aserradero') || n.includes('lumber')) return '🌲';
+  if (n.includes('torre') || n.includes('tower')) return '🗼';
+  return '🏛️';
+};
+
+/**
+ * Open the building construction modal for a fief
+ */
+const openBuildModal = async (h3_index) => {
+  try {
+    buildModalH3.value = h3_index;
+    buildModalBuildings.value = [];
+    showBuildModal.value = true;
+    const data = await mapApi.getBuildings();
+    buildModalBuildings.value = data.buildings || [];
+  } catch (err) {
+    showToast('Error al cargar catálogo de edificios', 'error');
+    showBuildModal.value = false;
+  }
+};
+
+/**
+ * Close the building construction modal
+ */
+const closeBuildModal = () => {
+  showBuildModal.value = false;
+  buildModalH3.value = null;
+  buildModalBuildings.value = [];
+};
+
+/**
+ * Start construction of a building in a fief
+ */
+const doConstruct = async (h3_index, building_id) => {
+  if (isConstructing.value) return;
+  try {
+    isConstructing.value = true;
+    const data = await mapApi.constructBuilding(h3_index, building_id);
+    if (data.success) {
+      playerGold.value = data.new_gold_balance;
+      const building = buildModalBuildings.value.find(b => b.id === building_id);
+      const buildingName = building?.name || data.building_name || 'edificio';
+      closeBuildModal();
+      await updateFiefsUI();
+      showToast(`🏗️ Construcción iniciada: ${buildingName}`, 'success');
+    } else {
+      showToast(data.message || 'Error al iniciar construcción', 'error');
+    }
+  } catch (err) {
+    showToast(err.response?.data?.message || 'Error al iniciar construcción', 'error');
+  } finally {
+    isConstructing.value = false;
   }
 };
 
@@ -7167,6 +7302,180 @@ onBeforeUnmount(() => {
     left: 50% !important;
     transform: translateX(-50%);
   }
+}
+
+/* ============================================
+   Building Construction Modal
+   ============================================ */
+.build-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.build-modal {
+  background: #1c1814;
+  border: 2px solid #c5a059;
+  border-radius: 10px;
+  padding: 24px;
+  width: 600px;
+  max-width: 95vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+  font-family: 'Cinzel', serif;
+}
+
+.build-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.build-modal-title {
+  color: #ffd700;
+  font-size: 1.3rem;
+  margin: 0;
+}
+
+.build-modal-close {
+  background: none;
+  border: 1px solid #5d4e37;
+  color: #e8d5b5;
+  font-size: 1rem;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.build-modal-close:hover {
+  background: rgba(197, 160, 89, 0.2);
+  border-color: #c5a059;
+}
+
+.build-modal-subtitle {
+  color: #a89875;
+  font-size: 0.78rem;
+  margin: 0 0 18px;
+  font-family: monospace;
+}
+
+.build-modal-h3 {
+  color: #e8d5b5;
+}
+
+.build-cards-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.build-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #5d4e37;
+  border-radius: 8px;
+  padding: 12px 14px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.build-card:hover:not(.build-card-disabled) {
+  border-color: #c5a059;
+  background: rgba(197, 160, 89, 0.08);
+}
+
+.build-card-disabled {
+  opacity: 0.5;
+}
+
+.build-card-icon {
+  font-size: 2rem;
+  min-width: 40px;
+  text-align: center;
+}
+
+.build-card-info {
+  flex: 1;
+}
+
+.build-card-name {
+  color: #ffd700;
+  font-size: 1rem;
+  margin: 0 0 2px;
+}
+
+.build-card-type {
+  color: #a89875;
+  font-size: 0.72rem;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.build-card-desc {
+  color: #c8b89a;
+  font-size: 0.82rem;
+  margin: 0 0 8px;
+  font-family: 'Palatino Linotype', serif;
+  font-style: italic;
+}
+
+.build-card-stats {
+  display: flex;
+  gap: 12px;
+}
+
+.build-stat {
+  color: #e8d5b5;
+  font-size: 0.82rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+.build-stat-food {
+  color: #4caf50;
+}
+
+.build-card-btn {
+  background: linear-gradient(135deg, #8b6914, #c5a059);
+  border: none;
+  color: #1c1814;
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  font-weight: bold;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+.build-card-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c5a059, #ffd700);
+  transform: translateY(-1px);
+}
+
+.build-card-btn:disabled {
+  background: #3a3028;
+  color: #6a5a40;
+  cursor: not-allowed;
+}
+
+.build-empty {
+  text-align: center;
+  color: #a89875;
+  font-style: italic;
+  padding: 30px;
 }
 
 /* Toast Notifications - Bottom Right Corner */

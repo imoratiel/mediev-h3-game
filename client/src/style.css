@@ -616,6 +616,35 @@ button {
   margin: 10px 15px !important;
 }
 
+.btn-build {
+  background: linear-gradient(135deg, #1a4a2e 0%, #2d7a4f 100%) !important;
+  color: white !important;
+  margin-top: 6px !important;
+}
+
+.btn-build:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+
+.popup-building-status {
+  font-size: 12px !important;
+  margin: 6px 14px 4px !important;
+  padding: 6px 10px !important;
+  border-radius: 5px !important;
+}
+
+.popup-building-progress {
+  background: rgba(197, 160, 89, 0.12) !important;
+  border: 1px solid rgba(197, 160, 89, 0.35) !important;
+  color: #c5a059 !important;
+}
+
+.popup-building-done {
+  background: rgba(76, 175, 80, 0.12) !important;
+  border: 1px solid rgba(76, 175, 80, 0.35) !important;
+  color: #81c784 !important;
+}
+
 /* ================================================ */
 /* ARMY POPUP STYLES - Medieval Theme */
 /* ================================================ */

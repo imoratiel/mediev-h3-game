@@ -139,8 +139,25 @@ export function generateCellPopupContent(cell, config) {
     popupContent += '<p class="espionage-required">🔒 Información detallada requiere espionaje</p>';
   }
 
+  // FIEF BUILDING STATUS (if own territory)
+  if (cell.player_id === playerId) {
+    if (cell.fief_building) {
+      if (cell.fief_building.is_under_construction) {
+        const turnsLeft = cell.fief_building.turns_left ?? '?';
+        popupContent += `<div class="popup-building-status popup-building-progress">🏗️ En construcción: <strong>${cell.fief_building.name}</strong> (${turnsLeft} turno${turnsLeft !== 1 ? 's' : ''})</div>`;
+      } else {
+        popupContent += `<div class="popup-building-status popup-building-done">🏛️ Edificio: <strong>${cell.fief_building.name}</strong></div>`;
+      }
+    }
+  }
+
   // ACTIONS
   popupContent += '<div class="popup-actions">';
+
+  // Build button - for own fief with no building
+  if (cell.player_id === playerId && !cell.fief_building) {
+    popupContent += `<button id="build-btn-${h3_index}" class="btn-popup btn-build" title="Construir un edificio en este feudo">🏗️ Construir</button>`;
+  }
 
   // "Fundar Capital" button:
   // - Normal players: only when hex is unclaimed AND player has no capital yet

@@ -14,7 +14,7 @@
             <th class="col-number">⛏️</th>
             <th class="col-number">💰</th>
             <th class="col-prospection">Prospección</th>
-            <th class="col-number">Δ Alim.</th>
+            <th class="col-edificio">🏛️</th>
             <th class="col-number">Auton.</th>
             <th class="col-number">Dist.</th>
             <th class="col-number">⚔️</th>
@@ -54,8 +54,22 @@
                 <span class="dimmed-dash" title="Sin explorar">—</span>
               </template>
             </td>
-            <td :class="['text-right', fief.foodBalance < 0 ? 'text-danger' : 'text-success']">
-              {{ (fief.foodBalance > 0 ? '+' : '') + formatNumber(fief.foodBalance) }}
+            <td class="text-center building-cell">
+              <template v-if="fief.fief_building">
+                <span
+                  v-if="fief.fief_building.is_under_construction"
+                  class="building-badge building-badge-wip"
+                  :title="`En construcción: ${fief.fief_building.name} (${fief.fief_building.turns_left ?? '?'}t)`"
+                >🏗️ {{ fief.fief_building.turns_left ?? '?' }}t</span>
+                <span
+                  v-else
+                  class="building-badge building-badge-done"
+                  :title="fief.fief_building.name"
+                >🏛️ {{ fief.fief_building.name }}</span>
+              </template>
+              <template v-else>
+                <span class="dimmed-dash">—</span>
+              </template>
             </td>
             <td :class="['text-right', {
               'text-danger': fief.autonomy < 30,
@@ -77,6 +91,12 @@
                 ⛏️
               </button>
               <button class="btn-micro btn-recruit-micro" @click="$emit('openRecruitment', fief)" title="Reclutar tropas">⚔️</button>
+              <button
+                v-if="!fief.fief_building"
+                class="btn-micro btn-build-micro"
+                @click="$emit('openConstruction', fief.h3_index)"
+                title="Construir edificio"
+              >🏗️</button>
             </td>
           </tr>
         </tbody>
@@ -95,7 +115,7 @@ defineProps({
   explorationConfig: Object
 });
 
-defineEmits(['focusOnFief', 'exploreFief', 'openRecruitment']);
+defineEmits(['focusOnFief', 'exploreFief', 'openRecruitment', 'openConstruction']);
 
 const formatNumber = (val) => {
   if (val === null || val === undefined || isNaN(val)) return '0';
@@ -126,6 +146,7 @@ const formatGold = (val) => {
 .col-terreno { width: 110px; }
 .col-number { width: 70px; }
 .col-prospection { width: 120px; }
+.col-edificio { width: 130px; }
 .col-actions { width: 140px; }
 
 .kingdom-table th {
@@ -313,6 +334,45 @@ const formatGold = (val) => {
   background: rgba(243, 156, 18, 0.2);
   color: #f39c12;
   border: 1px solid #f39c12;
+}
+
+.building-cell {
+  font-size: 0.75rem;
+}
+
+.building-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: bold;
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.building-badge-wip {
+  background: rgba(197, 160, 89, 0.18);
+  color: #c5a059;
+  border: 1px solid rgba(197, 160, 89, 0.5);
+}
+
+.building-badge-done {
+  background: rgba(76, 175, 80, 0.15);
+  color: #81c784;
+  border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.btn-build-micro {
+  background: rgba(45, 122, 79, 0.2);
+  color: #81c784;
+  border-color: rgba(76, 175, 80, 0.4);
+}
+
+.btn-build-micro:hover:not(:disabled) {
+  background: rgba(45, 122, 79, 0.4);
+  border-color: #81c784;
 }
 
 .empty-state {

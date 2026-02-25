@@ -153,12 +153,18 @@ class KingdomModel {
                 t.name AS terrain_name,
                 t.food_output,
                 COALESCE(garrison.total_troops, 0) AS total_troops,
-                p.capital_h3
+                p.capital_h3,
+                fb.building_id            AS fief_building_id,
+                bld.name                  AS fief_building_name,
+                fb.is_under_construction  AS fief_building_constructing,
+                fb.remaining_construction_turns AS fief_building_turns_left
             FROM h3_map m
             JOIN territory_details td ON m.h3_index = td.h3_index
             JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
             JOIN players p ON m.player_id = p.player_id
             LEFT JOIN settlements s ON m.h3_index = s.h3_index
+            LEFT JOIN fief_buildings fb ON m.h3_index = fb.h3_index
+            LEFT JOIN buildings bld ON fb.building_id = bld.id
             LEFT JOIN (
                 SELECT a.h3_index, SUM(tr.quantity) AS total_troops
                 FROM armies a
