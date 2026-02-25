@@ -28,14 +28,14 @@ INSERT INTO building_types (name, icon_slug) VALUES
 
 INSERT INTO buildings (name, type_id, gold_cost, construction_time_turns, food_bonus) 
 VALUES 
-('Barracks', 1, 5000, 3, 0),
-('Church', 2, 3000, 2, 5),
-('Market', 3, 4000, 2, 10);
+('Cuartel', 1, 5000, 15, 0),
+('Iglesia', 2, 3000, 20, 5),
+('Mercado', 3, 4000, 20, 10);
 
 -- Fortress requires Barracks (ID 1)
 INSERT INTO buildings (name, type_id, gold_cost, construction_time_turns, required_building_id) 
 VALUES 
-('Fortress', 1, 15000, 6, 1);
+('Fortaleza', 1, 15000, 60, 1);
 
 ALTER TABLE h3_map DROP COLUMN building_type_id CASCADE;
 
