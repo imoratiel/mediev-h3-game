@@ -38,9 +38,13 @@
 -- TRUNCATE TABLE armies RESTART IDENTITY CASCADE;
 
 -- TRUNCATE TABLE messages RESTART IDENTITY CASCADE;
+TRUNCATE TABLE notifications RESTART IDENTITY CASCADE;
 
 -- COMMIT;
 
+update players set capital_h3 = null;
+
+TRUNCATE TABLE fief_buildings CASCADE;
 
 
 -- -- INDICES
