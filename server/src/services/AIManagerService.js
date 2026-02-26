@@ -529,13 +529,23 @@ class AIManagerService {
                 armyId = newArmy.rows[0].army_id;
             }
 
-            // Añadir tropas (UPSERT)
-            await client.query(`
-                INSERT INTO troops (army_id, unit_type_id, quantity)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (army_id, unit_type_id)
-                DO UPDATE SET quantity = troops.quantity + EXCLUDED.quantity
-            `, [armyId, unitType.unit_type_id, FARMER.RECRUIT_QUANTITY]);
+            // Añadir tropas (manual upsert — troops no tiene unique constraint)
+            const existingTroopF = await client.query(
+                'SELECT troop_id FROM troops WHERE army_id = $1 AND unit_type_id = $2',
+                [armyId, unitType.unit_type_id]
+            );
+            if (existingTroopF.rows.length > 0) {
+                await client.query(
+                    'UPDATE troops SET quantity = quantity + $1 WHERE army_id = $2 AND unit_type_id = $3',
+                    [FARMER.RECRUIT_QUANTITY, armyId, unitType.unit_type_id]
+                );
+            } else {
+                await client.query(
+                    `INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale, stamina, force_rest)
+                     VALUES ($1, $2, $3, 10.00, 50.00, 100.00, false)`,
+                    [armyId, unitType.unit_type_id, FARMER.RECRUIT_QUANTITY]
+                );
+            }
 
             // Deducir oro
             if (totalGoldCost > 0) {
@@ -782,12 +792,22 @@ class AIManagerService {
             armyId = newArmy.rows[0].army_id;
         }
 
-        await client.query(`
-            INSERT INTO troops (army_id, unit_type_id, quantity)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (army_id, unit_type_id)
-            DO UPDATE SET quantity = troops.quantity + EXCLUDED.quantity
-        `, [armyId, unitType.unit_type_id, EXPANSIONIST.RECRUIT_QUANTITY]);
+        const existingTroopE = await client.query(
+            'SELECT troop_id FROM troops WHERE army_id = $1 AND unit_type_id = $2',
+            [armyId, unitType.unit_type_id]
+        );
+        if (existingTroopE.rows.length > 0) {
+            await client.query(
+                'UPDATE troops SET quantity = quantity + $1 WHERE army_id = $2 AND unit_type_id = $3',
+                [EXPANSIONIST.RECRUIT_QUANTITY, armyId, unitType.unit_type_id]
+            );
+        } else {
+            await client.query(
+                `INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale, stamina, force_rest)
+                 VALUES ($1, $2, $3, 10.00, 50.00, 100.00, false)`,
+                [armyId, unitType.unit_type_id, EXPANSIONIST.RECRUIT_QUANTITY]
+            );
+        }
 
         if (totalGoldCost > 0) {
             await client.query(
@@ -1171,12 +1191,22 @@ class AIManagerService {
             armyId = newArmy.rows[0].army_id;
         }
 
-        await client.query(`
-            INSERT INTO troops (army_id, unit_type_id, quantity)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (army_id, unit_type_id)
-            DO UPDATE SET quantity = troops.quantity + EXCLUDED.quantity
-        `, [armyId, unitType.unit_type_id, toRecruit]);
+        const existingTroopB = await client.query(
+            'SELECT troop_id FROM troops WHERE army_id = $1 AND unit_type_id = $2',
+            [armyId, unitType.unit_type_id]
+        );
+        if (existingTroopB.rows.length > 0) {
+            await client.query(
+                'UPDATE troops SET quantity = quantity + $1 WHERE army_id = $2 AND unit_type_id = $3',
+                [toRecruit, armyId, unitType.unit_type_id]
+            );
+        } else {
+            await client.query(
+                `INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale, stamina, force_rest)
+                 VALUES ($1, $2, $3, 10.00, 50.00, 100.00, false)`,
+                [armyId, unitType.unit_type_id, toRecruit]
+            );
+        }
 
         if (totalGoldCost > 0) {
             await client.query(
