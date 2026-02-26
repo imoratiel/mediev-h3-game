@@ -258,6 +258,7 @@ class KingdomService {
                     fief_building: row.fief_building_id ? {
                         id: row.fief_building_id,
                         name: row.fief_building_name,
+                        type_name: row.fief_building_type_name,
                         is_under_construction: row.fief_building_constructing,
                         turns_left: row.fief_building_constructing ? row.fief_building_turns_left : null,
                         upgrade: (!row.fief_building_constructing && row.upgrade_building_id) ? {
@@ -267,6 +268,11 @@ class KingdomService {
                             turns:     row.upgrade_turns
                         } : null,
                     } : null,
+                    can_recruit: is_capital || (
+                        !!row.fief_building_id &&
+                        !row.fief_building_constructing &&
+                        (row.fief_building_type_name || '').toLowerCase() === 'military'
+                    ),
                 };
             });
 

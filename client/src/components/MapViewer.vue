@@ -1198,7 +1198,8 @@ const filteredAndSortedFiefs = computed(() => {
       miningStatusText,
       grace_turns: Number(fief.grace_turns || 0),
       is_capital: fief.is_capital || false,
-      fief_building: fief.fief_building || null
+      fief_building: fief.fief_building || null,
+      can_recruit: fief.can_recruit || false,
     };
   });
 
@@ -1815,20 +1816,29 @@ const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) =>
       const marker = L.marker([lat, lng], {
         icon:        divIcon,
         pane:        'stackerPane',
-        interactive: !!units, // only clickable when armies are present
+        interactive: true, // always interactive so both troop and fief clicks work
       });
 
-      // Army click → open army popup
-      if (units) {
-        marker.on('click', () => {
+      // Route click: troops circle → army popup / anywhere else → fief popup
+      marker.on('click', (e) => {
+        const clickedTroops = e.originalEvent?.target?.closest?.('.hs-troops');
+        if (units && clickedTroops) {
           MapInteractionController.handleMapClick(h3_index, {
             onNormal: async () => showArmyDetailsPopup(h3_index, [lat, lng]),
             onSelectDestination: async (armyId, targetH3, armyName) => {
               await processArmyMovement(armyId, targetH3, armyName);
             },
           });
-        });
-      }
+        } else {
+          // Clicked on building icon, owner dot, or empty area → show fief details
+          MapInteractionController.handleMapClick(h3_index, {
+            onNormal: async () => showCellDetailsPopup(h3_index, [lat, lng]),
+            onSelectDestination: async (armyId, targetH3, armyName) => {
+              await processArmyMovement(armyId, targetH3, armyName);
+            },
+          });
+        }
+      });
 
       marker.addTo(hexStackerLayer);
     } catch (err) {

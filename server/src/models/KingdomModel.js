@@ -166,6 +166,7 @@ class KingdomModel {
                 bld.name                  AS fief_building_name,
                 fb.is_under_construction  AS fief_building_constructing,
                 fb.remaining_construction_turns AS fief_building_turns_left,
+                bt.name                   AS fief_building_type_name,
                 upgrade_bld.id            AS upgrade_building_id,
                 upgrade_bld.name          AS upgrade_building_name,
                 upgrade_bld.gold_cost     AS upgrade_gold_cost,
@@ -177,6 +178,7 @@ class KingdomModel {
             LEFT JOIN settlements s ON m.h3_index = s.h3_index
             LEFT JOIN fief_buildings fb ON m.h3_index = fb.h3_index
             LEFT JOIN buildings bld ON fb.building_id = bld.id
+            LEFT JOIN building_types bt ON bld.type_id = bt.building_type_id
             LEFT JOIN buildings upgrade_bld ON upgrade_bld.required_building_id = fb.building_id
             LEFT JOIN (
                 SELECT a.h3_index, SUM(tr.quantity) AS total_troops

@@ -90,7 +90,12 @@
               >
                 ⛏️
               </button>
-              <button class="btn-micro btn-recruit-micro" @click="$emit('openRecruitment', fief)" title="Reclutar tropas">⚔️</button>
+              <button
+                v-if="fief.can_recruit"
+                class="btn-micro btn-recruit-micro"
+                @click="$emit('openRecruitment', fief)"
+                title="Reclutar tropas"
+              >⚔️</button>
               <button
                 v-if="!fief.fief_building"
                 class="btn-micro btn-build-micro"
