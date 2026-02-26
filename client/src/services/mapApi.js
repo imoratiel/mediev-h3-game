@@ -467,3 +467,22 @@ export async function forceExploration() {
   const response = await axios.post(`${API_URL}/api/admin/engine/force-exploration`);
   return response.data;
 }
+
+// ============================================
+// ADMIN AI AGENTS
+// ============================================
+
+export async function getAIAgents() {
+  const response = await axios.get(`${API_URL}/api/admin/ai/agents`);
+  return response.data;
+}
+
+export async function spawnAIFarmer(count = 1) {
+  const response = await axios.post(`${API_URL}/api/admin/ai/spawn-farmer`, { count });
+  return response.data;
+}
+
+export async function forceAITurn() {
+  const response = await axios.post(`${API_URL}/api/admin/ai/force-turn`);
+  return response.data;
+}

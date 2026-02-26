@@ -134,6 +134,83 @@
           </div>
         </section>
 
+        <!-- ── AI AGENTS ──────────────────────────────────────────────────── -->
+        <section class="admin-section">
+          <h3 class="section-title">
+            🤖 Agentes IA
+            <span class="ai-count-badge">{{ agents.length }}</span>
+          </h3>
+
+          <!-- Spawn form -->
+          <div class="ai-spawn-row">
+            <label class="ai-spawn-label">Crear</label>
+            <input
+              v-model.number="spawnCount"
+              type="number" min="1" max="10"
+              class="ai-spawn-input"
+              :disabled="spawning"
+              title="Cantidad de agentes (máx. 10)"
+              @input="spawnCount = Math.min(10, Math.max(1, spawnCount || 1))"
+            />
+            <select v-model="spawnType" class="ai-spawn-select" :disabled="spawning">
+              <option value="farmer">Agricultor</option>
+            </select>
+            <button
+              class="ctrl-btn btn-ai-spawn"
+              :disabled="spawning || acting"
+              @click="handleSpawnAgents"
+            >{{ spawning ? '⏳' : '＋ Crear' }}</button>
+            <button
+              class="ctrl-btn btn-ai-cycle"
+              :disabled="acting || spawning"
+              @click="handleForceAITurn"
+              title="Fuerza un ciclo de decisión IA ahora"
+            >🔄 Ciclo IA</button>
+          </div>
+
+          <!-- Agent table -->
+          <div v-if="agentLoading && agents.length === 0" class="ai-empty">Cargando agentes...</div>
+          <div v-else-if="agents.length === 0" class="ai-empty">Sin agentes activos</div>
+          <div v-else class="ai-table-wrap">
+            <table class="ai-table">
+              <thead>
+                <tr>
+                  <th class="ai-th ai-th-name">Nombre</th>
+                  <th class="ai-th ai-th-num">Tipo</th>
+                  <th class="ai-th ai-th-num">💰 Oro</th>
+                  <th class="ai-th ai-th-num">🏰 Feudos</th>
+                  <th class="ai-th ai-th-act"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="agent in agents" :key="agent.player_id" class="ai-row">
+                  <td class="ai-td ai-td-name">
+                    <span
+                      class="ai-color-dot"
+                      :style="{ background: agent.color || '#888' }"
+                    ></span>
+                    {{ agent.display_name }}
+                  </td>
+                  <td class="ai-td ai-td-center">
+                    <span class="ai-profile-badge">{{ profileLabel(agent.ai_profile) }}</span>
+                  </td>
+                  <td class="ai-td ai-td-num">{{ formatGold(agent.gold) }}</td>
+                  <td class="ai-td ai-td-num">{{ agent.territory_count }}</td>
+                  <td class="ai-td ai-td-act">
+                    <button
+                      v-if="agent.capital_h3"
+                      class="ai-goto-btn"
+                      @click="$emit('go-to-hex', agent.capital_h3)"
+                      title="Ir a la capital del agente"
+                    >📍 Ir</button>
+                    <span v-else class="ai-no-capital">—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <!-- Feedback message -->
         <div v-if="message" class="admin-message" :class="messageType">{{ message }}</div>
 
@@ -160,10 +237,11 @@ import {
   updateAdminGameConfig,
   startEngine, stopEngine,
   pauseGame, resumeGame,
-  forceTurn, forceHarvest, forceExploration
+  forceTurn, forceHarvest, forceExploration,
+  getAIAgents, spawnAIFarmer, forceAITurn,
 } from '../services/mapApi.js';
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'go-to-hex']);
 
 const status  = ref(null);
 const loading = ref(false);
@@ -173,6 +251,13 @@ const message = ref('');
 const messageType = ref('msg-ok');
 const turnDurationInput = ref(60);
 const savingDuration = ref(false);
+
+// AI agents state
+const agents       = ref([]);
+const agentLoading = ref(false);
+const spawnCount   = ref(1);
+const spawnType    = ref('farmer');
+const spawning     = ref(false);
 
 let refreshTimer = null;
 
@@ -231,6 +316,46 @@ const formatTimestamp = (ts) => {
   const d = new Date(ts);
   return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
+
+// ── AI helpers ──────────────────────────────────────────────────────────────
+const PROFILE_LABELS = { farmer: '🌾 Agricultor' };
+const profileLabel = (p) => PROFILE_LABELS[p] || p || '—';
+
+const formatGold = (n) => {
+  const v = parseInt(n) || 0;
+  if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
+  return String(v);
+};
+
+const fetchAgents = async () => {
+  agentLoading.value = true;
+  try {
+    const data = await getAIAgents();
+    if (data.success) agents.value = data.agents;
+  } catch { /* silencioso */ } finally {
+    agentLoading.value = false;
+  }
+};
+
+const handleSpawnAgents = async () => {
+  if (spawning.value) return;
+  spawning.value = true;
+  try {
+    const data = await spawnAIFarmer(spawnCount.value);
+    if (data.success) {
+      showMsg(data.message || `Agente${spawnCount.value > 1 ? 's' : ''} creado${spawnCount.value > 1 ? 's' : ''} correctamente`);
+      await fetchAgents();
+    } else {
+      showMsg(data.message || 'Error al crear agente', 'msg-err');
+    }
+  } catch (e) {
+    showMsg(`Error: ${e.response?.data?.message || e.message}`, 'msg-err');
+  } finally {
+    spawning.value = false;
+  }
+};
+
+const handleForceAITurn = () => runAction(forceAITurn, 'Ciclo IA ejecutado');
 
 // ── Data fetching ───────────────────────────────────────────────────────────
 const fetchStatus = async () => {
@@ -312,7 +437,8 @@ const handleForceExploration = () => runAction(forceExploration,'Exploraciones p
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 onMounted(() => {
   fetchStatus();
-  refreshTimer = setInterval(fetchStatus, 10000);
+  fetchAgents();
+  refreshTimer = setInterval(() => { fetchStatus(); fetchAgents(); }, 10000);
 });
 
 onUnmounted(() => {
@@ -332,7 +458,7 @@ onUnmounted(() => {
 }
 
 .admin-panel {
-  width: min(520px, 95vw);
+  width: min(640px, 95vw);
   max-height: 90vh;
   overflow-y: auto;
   background: #1a1510;
@@ -602,4 +728,167 @@ onUnmounted(() => {
 }
 .timing-save-btn:hover:not(:disabled) { background: rgba(76,175,80,0.35); }
 .timing-save-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── AI Agents section ────────────────────────────────────────────── */
+.ai-count-badge {
+  display: inline-block;
+  margin-left: 8px;
+  background: rgba(197,160,89,0.2);
+  color: #c5a059;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 8px;
+  vertical-align: middle;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ai-spawn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.ai-spawn-label {
+  font-size: 0.78rem;
+  color: #a89875;
+  flex-shrink: 0;
+}
+
+.ai-spawn-input {
+  width: 48px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(197,160,89,0.35);
+  border-radius: 5px;
+  color: #e8d5b5;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: monospace;
+  padding: 4px 6px;
+  text-align: center;
+}
+.ai-spawn-input:focus { outline: none; border-color: rgba(197,160,89,0.7); }
+.ai-spawn-input:disabled { opacity: 0.5; }
+
+.ai-spawn-select {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(197,160,89,0.35);
+  border-radius: 5px;
+  color: #e8d5b5;
+  font-size: 0.82rem;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.ai-spawn-select:disabled { opacity: 0.5; }
+
+.btn-ai-spawn {
+  flex: 1;
+  background: rgba(76,175,80,0.2);
+  border-color: rgba(76,175,80,0.45);
+  color: #81c784;
+  padding: 5px 10px;
+  min-width: 72px;
+}
+.btn-ai-cycle {
+  flex: 1;
+  background: rgba(33,150,243,0.2);
+  border-color: rgba(33,150,243,0.45);
+  color: #64b5f6;
+  padding: 5px 10px;
+  min-width: 90px;
+}
+
+.ai-empty {
+  font-size: 0.8rem;
+  color: #666;
+  text-align: center;
+  padding: 14px 0 6px;
+}
+
+.ai-table-wrap {
+  overflow-x: auto;
+  border-radius: 7px;
+  border: 1px solid rgba(197,160,89,0.15);
+}
+
+.ai-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.ai-th {
+  background: rgba(0,0,0,0.35);
+  color: #c5a059;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(197,160,89,0.2);
+  white-space: nowrap;
+}
+.ai-th-num { text-align: right; }
+.ai-th-act { width: 56px; }
+
+.ai-row { border-bottom: 1px solid rgba(197,160,89,0.08); }
+.ai-row:last-child { border-bottom: none; }
+.ai-row:hover { background: rgba(197,160,89,0.05); }
+
+.ai-td {
+  padding: 7px 10px;
+  color: #e8d5b5;
+  vertical-align: middle;
+}
+.ai-td-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-td-center { text-align: center; }
+.ai-td-num { text-align: right; font-family: monospace; font-weight: 600; }
+.ai-td-act { text-align: center; }
+
+.ai-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(255,255,255,0.3);
+}
+
+.ai-profile-badge {
+  font-size: 0.72rem;
+  background: rgba(197,160,89,0.15);
+  color: #c5a059;
+  border-radius: 8px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.ai-goto-btn {
+  background: rgba(197,160,89,0.15);
+  border: 1px solid rgba(197,160,89,0.3);
+  color: #c5a059;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.ai-goto-btn:hover { background: rgba(197,160,89,0.3); }
+
+.ai-no-capital {
+  color: #555;
+  font-size: 0.8rem;
+}
 </style>

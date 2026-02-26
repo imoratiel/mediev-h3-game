@@ -484,6 +484,7 @@
     <AdminPanel
       v-if="activeOverlay === 'admin'"
       @close="closeOverlay"
+      @go-to-hex="handleAdminGoToHex"
     />
 
     <!-- Full-Screen Messages Overlay -->
@@ -3015,6 +3016,18 @@ const closeOverlay = () => {
   activeOverlay.value = null;
   selectedMessage.value = null;
   console.log('✓ Overlay cerrado');
+};
+
+/**
+ * Fly to an H3 cell from the Admin Panel (e.g. bot capital)
+ */
+const handleAdminGoToHex = (h3_index) => {
+  closeOverlay();
+  if (!map || !h3_index) return;
+  try {
+    const [lat, lng] = cellToLatLng(h3_index);
+    map.flyTo([lat, lng], 11, { duration: 1.2 });
+  } catch { /* índice H3 inválido */ }
 };
 
 /**
