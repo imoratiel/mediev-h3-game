@@ -35,6 +35,7 @@ const GAME_CONFIG = {
     // 🏘️ Economía y Población
     ECONOMY: {
         MIN_FIEF_POPULATION: 200,       // Población mínima garantizada por feudo (reclutamiento y hambruna no pueden reducirla más)
+        RECRUITMENT_NETWORK_RANGE: 10,  // Radio máximo (hexágonos BFS) de la red de suministro de reclutamiento
     },
 
     // 🌾 Producción y Cosecha

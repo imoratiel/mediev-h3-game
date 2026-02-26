@@ -178,13 +178,31 @@ class ArmyModel {
     }
     async GetTerritoryForRecruitment(client, h3_index) {
         const result = await client.query(
-            `SELECT td.h3_index, td.population, td.wood_stored, td.stone_stored, td.iron_stored, m.player_id
+            `SELECT td.h3_index, td.population, td.wood_stored, td.stone_stored, td.iron_stored,
+                    m.player_id, p.capital_h3
              FROM territory_details td
              JOIN h3_map m ON td.h3_index = m.h3_index
+             LEFT JOIN players p ON m.player_id = p.player_id
              WHERE td.h3_index = $1`,
             [h3_index]
         );
         return result;
+    }
+    /**
+     * Returns true if h3_index has a completed military building (Cuartel, Fortaleza, etc.)
+     */
+    async CheckMilitaryBuildingInFief(client, h3_index) {
+        const result = await client.query(
+            `SELECT 1
+             FROM fief_buildings fb
+             JOIN buildings b ON fb.building_id = b.id
+             JOIN building_types bt ON b.type_id = bt.building_type_id
+             WHERE fb.h3_index = $1
+               AND fb.is_under_construction = FALSE
+               AND bt.name = 'military'`,
+            [h3_index]
+        );
+        return result.rows.length > 0;
     }
     async DeductPopulation(client, h3_index, amount) {
         await client.query(

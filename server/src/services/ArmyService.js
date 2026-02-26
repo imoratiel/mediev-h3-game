@@ -6,6 +6,7 @@ const pool = require('../../db.js');
 const GAME_CONFIG = require('../config/constants.js');
 const { getArmyLimit, getPopulationCap } = require('../config/gameFunctions.js');
 const NameGenerator = require('../logic/NameGenerator.js');
+const recruitmentNetwork = require('../logic/recruitmentNetwork.js');
 
 class ArmyService {
     async GetArmyDetails(req, res) {
@@ -95,15 +96,29 @@ class ArmyService {
                 return res.status(403).json({ success: false, message: 'No posees este territorio' });
             }
 
-            // Validate population: recruiting reduces local population; can't go below MIN_FIEF_POPULATION
-            const MIN_POP = GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION;
-            const currentPop = parseInt(territory.population) || 0;
-            if (currentPop - quantity < MIN_POP) {
+            // ── Validación de ubicación: Capital o edificio militar ───────────────
+            const isCapital = territory.capital_h3 === h3_index;
+            if (!isCapital) {
+                const hasMilitary = await ArmyModel.CheckMilitaryBuildingInFief(client, h3_index);
+                if (!hasMilitary) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Solo puedes reclutar en tu Capital o en feudos con un edificio militar (Cuartel o Fortaleza).'
+                    });
+                }
+            }
+
+            // ── Validación de población por red conectada ─────────────────────────
+            const connectedH3s = await recruitmentNetwork.getConnectedNetwork(client, h3_index, player_id);
+            const fiefPops = await recruitmentNetwork.getFiefPopulations(client, connectedH3s);
+            const recruitablePool = recruitmentNetwork.calcRecruitablePool(fiefPops);
+
+            if (recruitablePool < quantity) {
                 await client.query('ROLLBACK');
-                const available = Math.max(0, currentPop - MIN_POP);
                 return res.status(400).json({
                     success: false,
-                    message: `Población insuficiente. Puedes reclutar como máximo ${available} unidades (mínimo de ${MIN_POP} habitantes garantizados).`
+                    message: `Población insuficiente. Tu red de feudos puede aportar ${recruitablePool} reclutas (cada feudo reserva ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab.).`
                 });
             }
 
@@ -138,8 +153,8 @@ class ArmyService {
                 }
             }
 
-            // Deduct population: recruited soldiers leave the local population
-            await ArmyModel.DeductPopulation(client, h3_index, quantity);
+            // Deduct population from network (recruiting fief first, then neighbors in BFS order)
+            await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, quantity);
 
             // Find or create army
             const existingArmy = await ArmyModel.FindArmy(client, h3_index, army_name, player_id);
@@ -318,10 +333,38 @@ class ArmyService {
             await client.query('BEGIN');
 
             // Verify territory ownership
-            const territory = await ArmyModel.GetTerritoryForRecruitment(client, h3_index);
-            if (!territory.rows.length || territory.rows[0].player_id !== player_id) {
+            const terrResult = await ArmyModel.GetTerritoryForRecruitment(client, h3_index);
+            if (!terrResult.rows.length || terrResult.rows[0].player_id !== player_id) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ success: false, message: 'No eres propietario de este territorio' });
+            }
+            const territory = terrResult.rows[0];
+
+            // ── Validación de ubicación: Capital o edificio militar ───────────────
+            const isCapital = territory.capital_h3 === h3_index;
+            if (!isCapital) {
+                const hasMilitary = await ArmyModel.CheckMilitaryBuildingInFief(client, h3_index);
+                if (!hasMilitary) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Solo puedes reclutar en tu Capital o en feudos con un edificio militar (Cuartel o Fortaleza).'
+                    });
+                }
+            }
+
+            // ── Validación de población por red conectada ─────────────────────────
+            const totalTroops = units.reduce((s, u) => s + u.quantity, 0);
+            const connectedH3s = await recruitmentNetwork.getConnectedNetwork(client, h3_index, player_id);
+            const fiefPops = await recruitmentNetwork.getFiefPopulations(client, connectedH3s);
+            const recruitablePool = recruitmentNetwork.calcRecruitablePool(fiefPops);
+
+            if (recruitablePool < totalTroops) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    success: false,
+                    message: `Población insuficiente. Tu red de feudos puede aportar ${recruitablePool} reclutas (cada feudo reserva ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab.).`
+                });
             }
 
             // Fetch all requirements in one query
@@ -342,24 +385,22 @@ class ArmyService {
                 }
             }
 
-            // Validate resources (anti-exploit double-check)
+            // Validate resources
             const goldResult = await ArmyModel.GetPlayerGold(client, player_id);
             const playerGold = parseFloat(goldResult.rows[0]?.gold) || 0;
             if (playerGold < totalCost.gold) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Oro insuficiente' });
             }
-
-            const td = territory.rows[0];
-            if ((td.wood_stored || 0) < totalCost.wood_stored) {
+            if ((territory.wood_stored || 0) < totalCost.wood_stored) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Madera insuficiente' });
             }
-            if ((td.stone_stored || 0) < totalCost.stone_stored) {
+            if ((territory.stone_stored || 0) < totalCost.stone_stored) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Piedra insuficiente' });
             }
-            if ((td.iron_stored || 0) < totalCost.iron_stored) {
+            if ((territory.iron_stored || 0) < totalCost.iron_stored) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Hierro insuficiente' });
             }
@@ -369,6 +410,9 @@ class ArmyService {
             if (totalCost.wood_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'wood_stored', totalCost.wood_stored);
             if (totalCost.stone_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'stone_stored', totalCost.stone_stored);
             if (totalCost.iron_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'iron_stored', totalCost.iron_stored);
+
+            // Deduct population from network (recruiting fief first, then neighbors in BFS order)
+            await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, totalTroops);
 
             // ── Army limit check (server-side, cannot be bypassed from client) ──
             const capacity = await ArmyModel.GetPlayerArmyCapacity(client, player_id);
@@ -394,7 +438,6 @@ class ArmyService {
 
             await client.query('COMMIT');
 
-            const totalTroops = units.reduce((s, u) => s + u.quantity, 0);
             Logger.action(`Reclutó lote: ${totalTroops} tropas en ${h3_index}`, player_id);
             res.json({ success: true, army_id, army_name: resolvedName, total_troops: totalTroops });
         } catch (error) {
