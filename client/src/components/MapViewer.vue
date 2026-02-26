@@ -865,6 +865,7 @@ import { getHexagonStyles } from '@/utils/mapStyles.js';
 import { generateCellPopupContent, generateArmyPopup } from '@/utils/popupGenerator.js';
 import MapInteractionController from '@/utils/MapInteractionController.js';
 import RouteVisualizer from '@/utils/RouteVisualizer.js';
+import { createStackerDivIcon } from '@/utils/HexStacker.js';
 
 // Import API service
 import * as mapApi from '@/services/mapApi.js';
@@ -1257,6 +1258,7 @@ let settlementMarkersMap = {}; // Map: settlement name -> marker
 let buildingMarkersLayer = null; // Layer for capital crown markers
 let fiefIconsLayer = null;       // Layer for fief building icons (API-driven)
 let armyMarkersLayer = null; // Layer for army/troop icons
+let hexStackerLayer = null;  // Layer for combined HexStacker markers (owner+building+troops)
 let highlightLayer = null; // Temporary highlight polygon for navigation
 let debounceTimer = null;
 
@@ -1417,6 +1419,10 @@ const initMap = () => {
   map.createPane('armyPane');
   map.getPane('armyPane').style.zIndex = 680;
 
+  // Stacker Pane (HexStacker combined icons) - same tier as army, above building pane
+  map.createPane('stackerPane');
+  map.getPane('stackerPane').style.zIndex = 675;
+
   // Inicializar visualizador de rutas (crea su propio pane routePane z-600)
   RouteVisualizer.init(map);
 
@@ -1471,6 +1477,7 @@ const initMap = () => {
   buildingMarkersLayer = L.layerGroup().addTo(map);
   fiefIconsLayer = L.layerGroup().addTo(map);
   armyMarkersLayer = L.layerGroup().addTo(map);
+  hexStackerLayer = L.layerGroup().addTo(map);
 
   // Track zoom level
   currentZoom.value = map.getZoom();
@@ -1573,6 +1580,7 @@ const loadHexagonsIfZoomValid = () => {
     clearHexagons();
     clearArmyMarkers();
     clearFiefIcons();
+    clearHexStackers();
     if (currentZoom < MIN_ZOOM_H3) {
       console.log(`Hexágonos ocultos: zoom ${currentZoom} < ${MIN_ZOOM_H3}`);
     } else if (currentZoom > MAX_ZOOM_H3) {
@@ -1615,11 +1623,35 @@ const fetchHexagonData = async () => {
     hexagonCount.value = hexagons.length;
     renderHexagons(hexagons);
 
-    // Fetch and render army markers after hexagons are loaded
-    await fetchArmyData();
+    // Build owner map from hexagon data: h3_index → { color, player_id }
+    const ownerMap = new Map();
+    for (const h of hexagons) {
+      if (h.player_color) {
+        ownerMap.set(h.h3_index, { color: h.player_color, player_id: h.player_id });
+      }
+    }
 
-    // Fetch and render building markers
-    await fetchBuildingData();
+    // Draw movement routes (always, regardless of zoom)
+    await fetchAndDrawRoutes();
+
+    // Fetch buildings and armies in parallel for HexStacker rendering
+    const [buildingData, armyData] = await Promise.allSettled([
+      mapApi.getMapBuildings(params),
+      mapApi.getMapArmies(params),
+    ]);
+
+    const buildings = buildingData.status === 'fulfilled' && buildingData.value.success
+      ? buildingData.value.buildings
+      : [];
+    const armies = armyData.status === 'fulfilled' && armyData.value.success
+      ? armyData.value.armies
+      : [];
+    const currentPlayerId = armyData.status === 'fulfilled'
+      ? armyData.value.current_player_id
+      : playerId.value;
+
+    // Render combined HexStacker icons (replaces separate army + building markers)
+    renderHexStackers(buildings, armies, currentPlayerId, ownerMap);
 
     loading.value = false;
   } catch (err) {
@@ -1644,6 +1676,15 @@ const clearArmyMarkers = () => {
 const clearFiefIcons = () => {
   if (fiefIconsLayer) {
     fiefIconsLayer.clearLayers();
+  }
+};
+
+/**
+ * Clear all HexStacker combined markers from the map
+ */
+const clearHexStackers = () => {
+  if (hexStackerLayer) {
+    hexStackerLayer.clearLayers();
   }
 };
 
@@ -1713,6 +1754,90 @@ const renderFiefIcons = (buildings) => {
 };
 
 /**
+ * Renders combined HexStacker markers (Owner + Building + Troops) on the map.
+ * One marker per hex that has at least one piece of information to show.
+ * Replaces the separate renderArmyMarkers + renderFiefIcons calls.
+ *
+ * @param {Array}  buildings       - [{ h3_index, building_name, type_name, is_under_construction }]
+ * @param {Array}  armyEntries     - [{ h3_index, player_id, army_count, total_troops }]
+ * @param {number} currentPlayerId - the viewing player's ID
+ * @param {Map}    ownerMap        - h3_index → { color, player_id }
+ */
+const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) => {
+  clearHexStackers();
+  clearArmyMarkers();   // also clear legacy army layer to avoid duplicates
+  clearFiefIcons();     // also clear legacy building layer to avoid duplicates
+
+  // ── Build per-hex building index ─────────────────────────────────────────
+  const buildingByHex = new Map();
+  for (const b of (buildings || [])) {
+    buildingByHex.set(b.h3_index, b);
+  }
+
+  // ── Build per-hex army index (group by h3_index) ─────────────────────────
+  const armyByHex = new Map();
+  for (const a of (armyEntries || [])) {
+    if (!armyByHex.has(a.h3_index)) armyByHex.set(a.h3_index, []);
+    armyByHex.get(a.h3_index).push(a);
+  }
+
+  // ── Collect hex indices that have buildings or troops (owner-only hexes
+  //    are already rendered by territory fill polygons, so skip them here) ─────
+  const candidateHexes = new Set([
+    ...buildingByHex.keys(),
+    ...armyByHex.keys(),
+  ]);
+
+  for (const h3_index of candidateHexes) {
+    try {
+      const [lat, lng] = cellToLatLng(h3_index);
+
+      // ── Owner data ──────────────────────────────────────────────────────
+      const ownerInfo = ownerMap ? ownerMap.get(h3_index) : null;
+      const owner = ownerInfo ? { color: ownerInfo.color } : null;
+
+      // ── Building data ───────────────────────────────────────────────────
+      const bld = buildingByHex.get(h3_index) || null;
+
+      // ── Army data ───────────────────────────────────────────────────────
+      let units = null;
+      const group = armyByHex.get(h3_index);
+      if (group && group.length > 0) {
+        const totalTroops  = group.reduce((s, e) => s + (Number(e.total_troops) || 0), 0);
+        const playerIds    = new Set(group.map(e => e.player_id));
+        const hasEnemy     = [...playerIds].some(id => id !== currentPlayerId);
+        const isConflict   = playerIds.size > 1;
+        units = { total_troops: totalTroops, has_enemy: hasEnemy, is_conflict: isConflict };
+      }
+
+      const divIcon = createStackerDivIcon(L, { owner, building: bld, units });
+
+      const marker = L.marker([lat, lng], {
+        icon:        divIcon,
+        pane:        'stackerPane',
+        interactive: !!units, // only clickable when armies are present
+      });
+
+      // Army click → open army popup
+      if (units) {
+        marker.on('click', () => {
+          MapInteractionController.handleMapClick(h3_index, {
+            onNormal: async () => showArmyDetailsPopup(h3_index, [lat, lng]),
+            onSelectDestination: async (armyId, targetH3, armyName) => {
+              await processArmyMovement(armyId, targetH3, armyName);
+            },
+          });
+        });
+      }
+
+      marker.addTo(hexStackerLayer);
+    } catch (err) {
+      // Skip bad hex silently
+    }
+  }
+};
+
+/**
  * Obtiene las rutas activas propias del servidor y las dibuja en el mapa.
  * Se llama desde fetchArmyData para mantener las rutas sincronizadas.
  */
@@ -1739,36 +1864,41 @@ const fetchAndDrawRoutes = async () => {
  */
 const fetchArmyData = async () => {
   try {
-    // Rutas siempre visibles, independientemente del nivel de zoom
+    // Routes always visible regardless of zoom
     await fetchAndDrawRoutes();
 
     const currentZoom = map.getZoom();
 
-    // Army icon markers only visible between zoom 11-17
     if (currentZoom < MIN_ZOOM_H3 || currentZoom > MAX_ZOOM_H3) {
+      clearHexStackers();
       clearArmyMarkers();
       return;
     }
 
-    // Get current map bounds (same as hexagons)
     const bounds = map.getBounds();
     const params = {
       minLat: bounds.getSouth(),
       maxLat: bounds.getNorth(),
       minLng: bounds.getWest(),
-      maxLng: bounds.getEast()
+      maxLng: bounds.getEast(),
     };
 
-    console.log(`Fetching armies for visible area...`);
+    // Fetch armies and buildings together so HexStacker stays accurate
+    const [armyRes, buildRes] = await Promise.allSettled([
+      mapApi.getMapArmies(params),
+      mapApi.getMapBuildings(params),
+    ]);
 
-    const data = await mapApi.getMapArmies(params);
+    const armies    = armyRes.status  === 'fulfilled' && armyRes.value.success
+      ? armyRes.value.armies  : [];
+    const buildings = buildRes.status === 'fulfilled' && buildRes.value.success
+      ? buildRes.value.buildings : [];
+    const cPlayerId = armyRes.status === 'fulfilled'
+      ? armyRes.value.current_player_id : playerId.value;
 
-    if (data.success) {
-      renderArmyMarkers(data.armies, data.current_player_id);
-    }
+    renderHexStackers(buildings, armies, cPlayerId, null);
   } catch (err) {
     console.error('Failed to fetch army data:', err);
-    // Don't show error to user - army icons are supplementary
   }
 };
 
@@ -8751,5 +8881,27 @@ onBeforeUnmount(() => {
 .current-fief-mini {
   padding: 15px !important;
   border-color: rgba(255, 215, 0, 0.4) !important;
+}
+
+/* ============================================
+   HEX STACKER MARKER
+   ============================================ */
+
+/* Strip Leaflet's default divIcon styles so our container is clean */
+:deep(.hex-stacker-icon) {
+  background: none !important;
+  border: none !important;
+  /* overflow:visible lets the troop count badge peek outside the icon box */
+  overflow: visible !important;
+}
+
+/* The outer wrapper div generated by HexStacker.js */
+:deep(.hex-stacker) {
+  overflow: visible;
+}
+
+/* The troops slot — pointer-events come from inline style, but ensure cursor */
+:deep(.hex-stacker .hs-troops) {
+  cursor: pointer;
 }
 </style>
