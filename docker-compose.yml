@@ -7,6 +7,7 @@ services:
       context: ./server
       dockerfile: Dockerfile
     container_name: marca_hispanica_app
+    tty: true
     restart: always
     # Puertos: mapeamos el 3000 de tu PC al 3000 del contenedor
     ports:
@@ -50,7 +51,7 @@ services:
       - ./sql:/docker-entrypoint-initdb.d/:ro
     # Verificación de salud para que 'app' sepa cuándo conectarse
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -9,6 +9,7 @@ const conquest = require('../logic/conquest.js');
 const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = require('../logic/conquest_system.js');
 const pool = require('../../db.js');
 const h3 = require('h3-js');
+const { executeConstruction, executeColonization, GameActionError } = require('./gameActions.js');
 
 class KingdomService {
     async StartExploration(req, res) {
@@ -119,62 +120,16 @@ class KingdomService {
             const { h3_index, building_id } = req.body;
             const player_id = req.user.player_id;
 
-            if (!h3_index || !building_id) {
-                return res.status(400).json({ success: false, message: 'h3_index y building_id son requeridos' });
-            }
-
-            // Verificar propiedad del territorio
-            const owner = await KingdomModel.CheckTerritoryOwnership(client, h3_index);
-            if (owner?.player_id !== player_id) {
-                return res.status(403).json({ success: false, message: 'No posees este territorio' });
-            }
-
-            // Verificar que no hay edificio ya en construcción o construido
-            const existing = await KingdomModel.GetExistingFiefBuilding(client, h3_index);
-            if (existing) {
-                const msg = existing.is_under_construction
-                    ? `Ya hay una construcción en curso (${existing.remaining_construction_turns} turnos restantes)`
-                    : 'Este feudo ya tiene un edificio construido';
-                return res.status(400).json({ success: false, message: msg });
-            }
-
-            // Obtener definición del edificio
-            const building = await KingdomModel.GetBuildingDefinition(client, building_id);
-            if (!building) {
-                return res.status(404).json({ success: false, message: 'Edificio no encontrado' });
-            }
-
-            // Verificar edificio prerequisito si aplica
-            if (building.required_building_id) {
-                const prereq = await KingdomModel.GetCompletedBuilding(client, h3_index, building.required_building_id);
-                if (!prereq) {
-                    return res.status(400).json({ success: false, message: 'Debes construir el edificio prerequisito primero' });
-                }
-            }
-
-            // Verificar oro del jugador
-            const player = await KingdomModel.GetPlayerGold(client, player_id);
-            if (player.gold < building.gold_cost) {
-                return res.status(400).json({ success: false, message: `Oro insuficiente. Necesitas 🌲 ${building.gold_cost} oro` });
-            }
-
             await client.query('BEGIN');
-            await KingdomModel.DeductGold(client, player_id, building.gold_cost);
-            await KingdomModel.StartConstruction(client, h3_index, building_id, building.construction_time_turns);
+            const result = await executeConstruction(client, player_id, { h3_index, building_id });
             await client.query('COMMIT');
 
-            Logger.action(
-                `🏗️ Jugador ${player_id} inició construcción de "${building.name}" en ${h3_index} (${building.construction_time_turns} turnos)`,
-                { player_id, h3_index, building_id, building_name: building.name }
-            );
-            res.json({
-                success: true,
-                message: `Construcción de ${building.name} iniciada. Turnos restantes: ${building.construction_time_turns}`,
-                building_name: building.name,
-                turns: building.construction_time_turns,
-            });
+            res.json({ success: true, ...result });
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
+            if (error instanceof GameActionError) {
+                return res.status(400).json({ success: false, message: error.message });
+            }
             Logger.error(error, { endpoint: '/territory/construct', method: 'POST', userId: req.user?.player_id, payload: req.body });
             res.status(500).json({ success: false, message: 'Error al iniciar construcción' });
         } finally {
@@ -298,67 +253,16 @@ class KingdomService {
             if (!h3_index) return res.status(400).json({ success: false, message: 'Falta parámetro: h3_index' });
 
             await client.query('BEGIN');
-
-            // Check exile status first — exiled players are allowed to colonize anywhere
-            const isExiled = await KingdomModel.GetPlayerExileStatus(client, player_id);
-
-            // Non-exiled players can only colonize if they have no territory yet
-            if (!isExiled) {
-                const territoryCount = await KingdomModel.GetTerritoryCount(client, player_id);
-                if (territoryCount > 0) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, message: '👑 Ya tienes una capital. Usa la conquista para expandirte.' });
-                }
-            }
-
-            // Validate selected hex
-            const hex = await KingdomModel.GetHexForClaim(client, h3_index);
-            if (!hex) { await client.query('ROLLBACK'); return res.status(404).json({ success: false, message: 'Hexágono no encontrado' }); }
-            if (!hex.is_colonizable) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '🌊 Este terreno no puede ser colonizado' }); }
-            if (hex.player_id !== null) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '🛡️ Este territorio ya está ocupado' }); }
-
-            const player = await KingdomModel.GetPlayerGoldForUpdate(client, player_id);
-            const CLAIM_COST = 100;
-            if (player.gold < CLAIM_COST) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: '💰 Oro insuficiente' }); }
-
-            // --- Claim the capital hex ---
-            const eco = conquest.generateInitialEconomy();
-            await KingdomModel.ClaimHex(client, h3_index, player_id);
-            await KingdomModel.InsertTerritoryDetails(client, h3_index, eco);
-            await KingdomModel.SetCapital(client, h3_index, player_id);
-            await KingdomModel.DeductGold(client, player_id, CLAIM_COST);
-
-            // If the player was exiled, clear exile status now that they have a new capital
-            if (isExiled) {
-                await KingdomModel.ClearExileStatus(client, player_id);
-            }
-
-            // --- Radial expansion: claim colonizable, unclaimed ring-1 neighbors ---
-            const ring1 = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
-            const colonizableNeighbors = await KingdomModel.GetColonizableNeighbors(client, ring1);
-
-            for (const neighbor of colonizableNeighbors) {
-                const neighborEco = conquest.generateInitialEconomy();
-                await KingdomModel.ClaimHex(client, neighbor.h3_index, player_id);
-                await KingdomModel.InsertTerritoryDetails(client, neighbor.h3_index, neighborEco);
-            }
-
+            const result = await executeColonization(client, player_id, { h3_index });
             await client.query('COMMIT');
 
-            Logger.action(`${isExiled ? 'Exiliado' : 'Capital'} fundada en ${h3_index} con ${colonizableNeighbors.length} territorios adyacentes`, player_id);
-            logGameEvent(`[Claim] Jugador ${player_id} ${isExiled ? 'refundó reino desde exilio' : 'fundó capital'} en ${h3_index} (${colonizableNeighbors.length + 1} hexes reclamados)`);
-
-            res.json({
-                success: true,
-                is_capital: true,
-                was_exiled: isExiled,
-                claimed_count: colonizableNeighbors.length + 1,
-                message: isExiled
-                    ? `🏕️ ¡Nuevo asentamiento fundado! Tu reino renace en ${h3_index}.`
-                    : `👑 ¡Capital fundada! Se han reclamado ${colonizableNeighbors.length} territorios adyacentes.`
-            });
+            logGameEvent(`[Claim] Jugador ${player_id} ${result.was_exiled ? 'refundó reino desde exilio' : 'fundó capital'} en ${h3_index} (${result.claimed_count} hexes reclamados)`);
+            res.json({ success: true, ...result });
         } catch (error) {
             if (client) await client.query('ROLLBACK');
+            if (error instanceof GameActionError) {
+                return res.status(400).json({ success: false, message: error.message });
+            }
             Logger.error(error, { endpoint: '/game/claim', method: 'POST', userId: req.user?.player_id, payload: req.body });
             res.status(500).json({ success: false, error: error.message });
         } finally {

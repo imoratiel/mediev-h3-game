@@ -23,6 +23,7 @@ const KingdomModel       = require('../models/KingdomModel');
 const { generateInitialEconomy } = require('../logic/conquest');
 const recruitmentNetwork = require('../logic/recruitmentNetwork');
 const aiProxy            = require('./AIProxyService');
+const { executeRecruitment, executeConstruction, GameActionError } = require('./gameActions');
 
 // ── Constantes del perfil Agricultor ─────────────────────────────────────────
 // ── Constantes del perfil Expansionista ──────────────────────────────────────
@@ -86,7 +87,6 @@ class AIManagerService {
      * Crea el jugador IA, reclama el hex capital y los vecinos colonizables de radio 1.
      */
     async _spawnAgent(profile, config, targetH3 = null) {
-        const EMOJI = { farmer: '🌾', expansionist: '⚔️', balanced: '⚖️' };
         const LABEL = { farmer: 'Agricultor', expansionist: 'Expansionista', balanced: 'Equilibrado' };
 
         const client = await pool.connect();
@@ -140,7 +140,7 @@ class AIManagerService {
             await client.query('COMMIT');
 
             Logger.action(
-                `[AI] ${EMOJI[profile]} Agente ${LABEL[profile]} "${aiName}" (id=${aiPlayerId}) fundado en ${spawnHex} (${neighbors.length + 1} hexes)`,
+                `[ACTION][${aiName}]: Agente ${LABEL[profile]} fundado en ${spawnHex} (${neighbors.length + 1} hexes)`,
                 { player_id: aiPlayerId, h3_index: spawnHex }
             );
             return { success: true, player_id: aiPlayerId, name: aiName,
@@ -188,11 +188,11 @@ class AIManagerService {
                 } else {
                     // Procedural fallback (default behavior)
                     if (agent.ai_profile === 'farmer') {
-                        await this._processFarmerTurn(agent.player_id, turn);
+                        await this._processFarmerTurn(agent, turn);
                     } else if (agent.ai_profile === 'expansionist') {
-                        await this._processExpansionistTurn(agent.player_id, turn);
+                        await this._processExpansionistTurn(agent, turn);
                     } else if (agent.ai_profile === 'balanced') {
-                        await this._processBalancedTurn(agent.player_id, turn);
+                        await this._processBalancedTurn(agent, turn);
                     }
                 }
             } catch (agentError) {
@@ -212,7 +212,8 @@ class AIManagerService {
      * Ciclo de decisión del perfil Agricultor.
      * Prioridad: A (amenaza) → B (construcción) → C (expansión)
      */
-    async _processFarmerTurn(playerId, turn) {
+    async _processFarmerTurn(agent, turn) {
+        const { player_id: playerId, display_name: botName } = agent;
         // ── Paso A: Análisis + detección de amenaza ──────────────────────────
         const state = await this._farmerAnalysis(playerId);
         if (!state || state.territories.length === 0) return; // IA sin territorios
@@ -220,7 +221,7 @@ class AIManagerService {
         if (state.isThreatened) {
             // En modo defensivo: solo recluta, omite construcción y expansión
             if (state.totalTroops < FARMER.MIN_TROOPS_DEFEND) {
-                await this._farmerThreatResponse(state, playerId, turn);
+                await this._farmerThreatResponse(state, playerId, botName, turn);
             } else {
                 Logger.engine(`[TURN ${turn}] 🛡️ AI Agricultor (${playerId}) amenazado pero con tropas suficientes (${state.totalTroops})`);
             }
@@ -231,7 +232,7 @@ class AIManagerService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await this._farmerConstruction(client, playerId, state, turn);
+            await this._farmerConstruction(client, playerId, botName, state, turn);
             await this._farmerExpansion(client, playerId, state, turn);
             await client.query('COMMIT');
         } catch (error) {
@@ -339,7 +340,7 @@ class AIManagerService {
      * en el feudo con más food_stored entre los que no tienen edificio.
      * Solo un edificio por turno para simular decisión de ahorro.
      */
-    async _farmerConstruction(client, playerId, state, turn) {
+    async _farmerConstruction(client, playerId, botName, state, turn) {
         if (state.gold < FARMER.GOLD_TO_BUILD) return;
         if (state.territoriesWithoutBuilding.length === 0) return;
 
@@ -366,20 +367,15 @@ class AIManagerService {
             parseInt(t.food_stored) > parseInt(best.food_stored) ? t : best
         );
 
-        await client.query(
-            'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-            [building.gold_cost, playerId]
-        );
-        await client.query(`
-            INSERT INTO fief_buildings (h3_index, building_id, remaining_construction_turns, is_under_construction)
-            VALUES ($1, $2, $3, TRUE)
-            ON CONFLICT (h3_index) DO NOTHING
-        `, [target.h3_index, building.id, building.construction_time_turns]);
-
-        const emoji = building.type_name === 'economic' ? '🏪' : '⛪';
-        Logger.engine(
-            `[TURN ${turn}] ${emoji} AI Agricultor (${playerId}) inició construcción de "${building.name}" en ${target.h3_index} (-${building.gold_cost}💰)`
-        );
+        try {
+            await executeConstruction(client, playerId, { h3_index: target.h3_index, building_id: building.id }, { actorName: botName });
+            const emoji = building.type_name === 'economic' ? '🏪' : '⛪';
+            Logger.engine(`[TURN ${turn}] ${emoji} AI Agricultor (${playerId}) inició construcción de "${building.name}" en ${target.h3_index}`);
+        } catch (err) {
+            if (err instanceof GameActionError) {
+                Logger.engine(`[TURN ${turn}] ⚠️ AI Agricultor (${playerId}) construcción rechazada: ${err.message}`);
+            } else { throw err; }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -421,10 +417,7 @@ class AIManagerService {
         const target = result.rows[0];
         const eco    = generateInitialEconomy();
 
-        await client.query(
-            'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-            [FARMER.CLAIM_COST, playerId]
-        );
+        await KingdomModel.DeductGold(client, playerId, FARMER.CLAIM_COST);
         await KingdomModel.ClaimHex(client, target.h3_index, playerId);
         await KingdomModel.InsertTerritoryDetails(client, target.h3_index, eco);
 
@@ -453,7 +446,7 @@ class AIManagerService {
      * @param {number} playerId
      * @param {number} turn
      */
-    async _farmerThreatResponse(state, playerId, turn) {
+    async _farmerThreatResponse(state, playerId, botName, turn) {
         if (state.recruitLocations.length === 0) return;
 
         // Obtener tipo de unidad más barata (Milicia)
@@ -489,19 +482,13 @@ class AIManagerService {
             }
 
             // Buscar primera ubicación válida con población suficiente en red conectada
-            let recruitH3        = null;
-            let connectedH3s     = null;
-            let lockedFiefPops   = null;
-
+            let recruitH3 = null;
             for (const locationH3 of state.recruitLocations) {
-                const network       = await recruitmentNetwork.getConnectedNetwork(client, locationH3, playerId);
-                const fiefPops      = await recruitmentNetwork.getFiefPopulations(client, network);  // FOR UPDATE
-                const availablePop  = recruitmentNetwork.calcRecruitablePool(fiefPops);
-
+                const network      = await recruitmentNetwork.getConnectedNetwork(client, locationH3, playerId);
+                const fiefPops     = await recruitmentNetwork.getFiefPopulations(client, network);
+                const availablePop = recruitmentNetwork.calcRecruitablePool(fiefPops);
                 if (availablePop >= FARMER.RECRUIT_QUANTITY) {
-                    recruitH3      = locationH3;
-                    connectedH3s   = network;
-                    lockedFiefPops = fiefPops;
+                    recruitH3 = locationH3;
                     break;
                 }
             }
@@ -512,52 +499,11 @@ class AIManagerService {
                 return;
             }
 
-            // Encontrar o crear ejército en la ubicación de reclutamiento
-            const existingArmy = await client.query(
-                'SELECT army_id FROM armies WHERE player_id = $1 AND h3_index = $2 LIMIT 1',
-                [playerId, recruitH3]
-            );
-            let armyId;
-            if (existingArmy.rows.length > 0) {
-                armyId = existingArmy.rows[0].army_id;
-            } else {
-                const newArmy = await client.query(`
-                    INSERT INTO armies (name, player_id, h3_index)
-                    VALUES ('Milicia Campesina', $1, $2)
-                    RETURNING army_id
-                `, [playerId, recruitH3]);
-                armyId = newArmy.rows[0].army_id;
-            }
-
-            // Añadir tropas (manual upsert — troops no tiene unique constraint)
-            const existingTroopF = await client.query(
-                'SELECT troop_id FROM troops WHERE army_id = $1 AND unit_type_id = $2',
-                [armyId, unitType.unit_type_id]
-            );
-            if (existingTroopF.rows.length > 0) {
-                await client.query(
-                    'UPDATE troops SET quantity = quantity + $1 WHERE army_id = $2 AND unit_type_id = $3',
-                    [FARMER.RECRUIT_QUANTITY, armyId, unitType.unit_type_id]
-                );
-            } else {
-                await client.query(
-                    `INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale, stamina, force_rest)
-                     VALUES ($1, $2, $3, 10.00, 50.00, 100.00, false)`,
-                    [armyId, unitType.unit_type_id, FARMER.RECRUIT_QUANTITY]
-                );
-            }
-
-            // Deducir oro
-            if (totalGoldCost > 0) {
-                await client.query(
-                    'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-                    [totalGoldCost, playerId]
-                );
-            }
-
-            // Deducir población de la red (regla de suministro)
-            await recruitmentNetwork.deductFromNetwork(
-                client, connectedH3s, lockedFiefPops, FARMER.RECRUIT_QUANTITY
+            // executeRecruitment aplica todas las validaciones + muta DB
+            await executeRecruitment(
+                client, playerId,
+                { h3_index: recruitH3, unit_type_id: unitType.unit_type_id, quantity: FARMER.RECRUIT_QUANTITY, army_name: 'Milicia Campesina' },
+                { actorName: botName }
             );
 
             await client.query('COMMIT');
@@ -565,7 +511,7 @@ class AIManagerService {
             const isCapital = recruitH3 === state.capitalH3;
             Logger.engine(
                 `[TURN ${turn}] ⚔️ AI Agricultor (${playerId}) reclutó ${FARMER.RECRUIT_QUANTITY} tropas en ${recruitH3} ` +
-                `(${isCapital ? 'capital' : 'cuartel'}, amenaza detectada, -${totalGoldCost}💰)`
+                `(${isCapital ? 'capital' : 'cuartel'}, amenaza detectada)`
             );
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -584,7 +530,8 @@ class AIManagerService {
      * Prioridad: A (colonizar) → B (reclutar) → C (construir cuarteles en la frontera)
      * No espera amenazas: siempre recluta si hay oro y población suficiente.
      */
-    async _processExpansionistTurn(playerId, turn) {
+    async _processExpansionistTurn(agent, turn) {
+        const { player_id: playerId, display_name: botName } = agent;
         const state = await this._expansionistAnalysis(playerId);
         if (!state || state.territories.length === 0) return;
 
@@ -592,8 +539,8 @@ class AIManagerService {
         try {
             await client.query('BEGIN');
             await this._expansionistColonization(client, playerId, state, turn);
-            await this._expansionistRecruitment(client, playerId, state, turn);
-            await this._expansionistConstruction(client, playerId, state, turn);
+            await this._expansionistRecruitment(client, playerId, botName, state, turn);
+            await this._expansionistConstruction(client, playerId, botName, state, turn);
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -706,10 +653,7 @@ class AIManagerService {
         for (const target of result.rows) {
             if (currentGold < EXPANSIONIST.CLAIM_COST + EXPANSIONIST.GOLD_RESERVE) break;
 
-            await client.query(
-                'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-                [EXPANSIONIST.CLAIM_COST, playerId]
-            );
+            await KingdomModel.DeductGold(client, playerId, EXPANSIONIST.CLAIM_COST);
             await KingdomModel.ClaimHex(client, target.h3_index, playerId);
             await KingdomModel.InsertTerritoryDetails(client, target.h3_index, generateInitialEconomy());
 
@@ -729,7 +673,7 @@ class AIManagerService {
      * sin necesidad de amenaza previa.
      * Usa la red de suministro con bloqueo FOR UPDATE.
      */
-    async _expansionistRecruitment(client, playerId, state, turn) {
+    async _expansionistRecruitment(client, playerId, botName, state, turn) {
         if (state.recruitLocations.length === 0) return;
 
         const unitResult = await pool.query(`
@@ -742,29 +686,25 @@ class AIManagerService {
         `);
         if (unitResult.rows.length === 0) return;
 
-        const unitType      = unitResult.rows[0];
+        const unitType    = unitResult.rows[0];
         const totalGoldCost = unitType.gold_cost * EXPANSIONIST.RECRUIT_QUANTITY;
 
         // Re-verify gold with lock
-        const freshGold = await client.query(
-            'SELECT gold FROM players WHERE player_id = $1 FOR UPDATE',
-            [playerId]
+        const freshGold   = await client.query(
+            'SELECT gold FROM players WHERE player_id = $1 FOR UPDATE', [playerId]
         );
         const currentGold = parseInt(freshGold.rows[0]?.gold) || 0;
-
         if (currentGold < EXPANSIONIST.GOLD_TO_RECRUIT) return;
         if (currentGold < totalGoldCost + EXPANSIONIST.GOLD_RESERVE) return;
 
-        // Find recruit location with sufficient population in connected network
-        let recruitH3 = null, connectedH3s = null, lockedFiefPops = null;
-
+        // Find first recruit location with sufficient population
+        let recruitH3 = null;
         for (const locationH3 of state.recruitLocations) {
             const network      = await recruitmentNetwork.getConnectedNetwork(client, locationH3, playerId);
             const fiefPops     = await recruitmentNetwork.getFiefPopulations(client, network);
             const availablePop = recruitmentNetwork.calcRecruitablePool(fiefPops);
-
             if (availablePop >= EXPANSIONIST.RECRUIT_QUANTITY) {
-                recruitH3 = locationH3; connectedH3s = network; lockedFiefPops = fiefPops;
+                recruitH3 = locationH3;
                 break;
             }
         }
@@ -774,62 +714,20 @@ class AIManagerService {
             return;
         }
 
-        // Find or create army
-        const existingArmy = await client.query(
-            'SELECT army_id FROM armies WHERE player_id = $1 AND h3_index = $2 LIMIT 1',
-            [playerId, recruitH3]
-        );
-        let armyId;
-        if (existingArmy.rows.length > 0) {
-            armyId = existingArmy.rows[0].army_id;
-        } else {
-            const newArmy = await client.query(
-                `INSERT INTO armies (name, player_id, h3_index)
-                 VALUES ('Horda Expansionista', $1, $2)
-                 RETURNING army_id`,
-                [playerId, recruitH3]
-            );
-            armyId = newArmy.rows[0].army_id;
-        }
-
-        const existingTroopE = await client.query(
-            'SELECT troop_id FROM troops WHERE army_id = $1 AND unit_type_id = $2',
-            [armyId, unitType.unit_type_id]
-        );
-        if (existingTroopE.rows.length > 0) {
-            await client.query(
-                'UPDATE troops SET quantity = quantity + $1 WHERE army_id = $2 AND unit_type_id = $3',
-                [EXPANSIONIST.RECRUIT_QUANTITY, armyId, unitType.unit_type_id]
-            );
-        } else {
-            await client.query(
-                `INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale, stamina, force_rest)
-                 VALUES ($1, $2, $3, 10.00, 50.00, 100.00, false)`,
-                [armyId, unitType.unit_type_id, EXPANSIONIST.RECRUIT_QUANTITY]
-            );
-        }
-
-        if (totalGoldCost > 0) {
-            await client.query(
-                'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-                [totalGoldCost, playerId]
-            );
-        }
-
-        await recruitmentNetwork.deductFromNetwork(
-            client, connectedH3s, lockedFiefPops, EXPANSIONIST.RECRUIT_QUANTITY
+        await executeRecruitment(
+            client, playerId,
+            { h3_index: recruitH3, unit_type_id: unitType.unit_type_id, quantity: EXPANSIONIST.RECRUIT_QUANTITY, army_name: 'Horda Expansionista' },
+            { actorName: botName }
         );
 
-        Logger.engine(
-            `[TURN ${turn}] ⚔️ AI Expansionista (${playerId}) reclutó ${EXPANSIONIST.RECRUIT_QUANTITY} tropas en ${recruitH3} (-${totalGoldCost}💰)`
-        );
+        Logger.engine(`[TURN ${turn}] ⚔️ AI Expansionista (${playerId}) reclutó ${EXPANSIONIST.RECRUIT_QUANTITY} tropas en ${recruitH3}`);
     }
 
     /**
      * Fase C — Construcción: levanta un cuartel (edificio militar base) en el feudo
      * de frontera más alejado de la capital — empuja el punto de reclutamiento al frente.
      */
-    async _expansionistConstruction(client, playerId, state, turn) {
+    async _expansionistConstruction(client, playerId, botName, state, turn) {
         const freshGold = await client.query(
             'SELECT gold FROM players WHERE player_id = $1', [playerId]
         );
@@ -868,19 +766,14 @@ class AIManagerService {
             } catch { /* gridDistance may throw on mismatched resolutions */ }
         }
 
-        await client.query(
-            'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-            [building.gold_cost, playerId]
-        );
-        await client.query(`
-            INSERT INTO fief_buildings (h3_index, building_id, remaining_construction_turns, is_under_construction)
-            VALUES ($1, $2, $3, TRUE)
-            ON CONFLICT (h3_index) DO NOTHING
-        `, [target.h3_index, building.id, building.construction_time_turns]);
-
-        Logger.engine(
-            `[TURN ${turn}] 🏯 AI Expansionista (${playerId}) construyendo "${building.name}" en ${target.h3_index} (frontera, -${building.gold_cost}💰)`
-        );
+        try {
+            await executeConstruction(client, playerId, { h3_index: target.h3_index, building_id: building.id }, { actorName: botName });
+            Logger.engine(`[TURN ${turn}] 🏯 AI Expansionista (${playerId}) construyendo "${building.name}" en ${target.h3_index} (frontera)`);
+        } catch (err) {
+            if (err instanceof GameActionError) {
+                Logger.engine(`[TURN ${turn}] ⚠️ AI Expansionista (${playerId}) construcción rechazada: ${err.message}`);
+            } else { throw err; }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -892,16 +785,17 @@ class AIManagerService {
      * Prioridad: A (construcción circular) → B (expansión selectiva) → C (reclutamiento de guarnición)
      * Evaluación del ratio food/gold para determinar prioridades de expansión.
      */
-    async _processBalancedTurn(playerId, turn) {
+    async _processBalancedTurn(agent, turn) {
+        const { player_id: playerId, display_name: botName } = agent;
         const state = await this._balancedAnalysis(playerId);
         if (!state || state.territories.length === 0) return;
 
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await this._balancedConstruction(client, playerId, state, turn);
+            await this._balancedConstruction(client, playerId, botName, state, turn);
             await this._balancedExpansion(client, playerId, state, turn);
-            await this._balancedRecruitment(client, playerId, state, turn);
+            await this._balancedRecruitment(client, playerId, botName, state, turn);
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -1009,7 +903,7 @@ class AIManagerService {
      * Fase A — Construcción circular: Market en capital → Church en interior → Barracks en frontera.
      * Solo un edificio por turno.
      */
-    async _balancedConstruction(client, playerId, state, turn) {
+    async _balancedConstruction(client, playerId, botName, state, turn) {
         if (state.gold < BALANCED.GOLD_TO_BUILD) return;
 
         let targetH3     = null;
@@ -1065,20 +959,15 @@ class AIManagerService {
         const building = bldResult.rows[0];
         if (state.gold - parseInt(building.gold_cost) < BALANCED.GOLD_RESERVE) return;
 
-        await client.query(
-            'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-            [building.gold_cost, playerId]
-        );
-        await client.query(`
-            INSERT INTO fief_buildings (h3_index, building_id, remaining_construction_turns, is_under_construction)
-            VALUES ($1, $2, $3, TRUE)
-            ON CONFLICT (h3_index) DO NOTHING
-        `, [targetH3, building.id, building.construction_time_turns]);
-
-        const emoji = { economic: '🏪', religious: '⛪', military: '🏰' }[buildingType] || '🏗️';
-        Logger.engine(
-            `[TURN ${turn}] ${emoji} AI Equilibrado (${playerId}) construyendo "${building.name}" en ${targetH3} (${buildingType}, -${building.gold_cost}💰)`
-        );
+        try {
+            await executeConstruction(client, playerId, { h3_index: targetH3, building_id: building.id }, { actorName: botName });
+            const emoji = { economic: '🏪', religious: '⛪', military: '🏰' }[buildingType] || '🏗️';
+            Logger.engine(`[TURN ${turn}] ${emoji} AI Equilibrado (${playerId}) construyendo "${building.name}" en ${targetH3} (${buildingType})`);
+        } catch (err) {
+            if (err instanceof GameActionError) {
+                Logger.engine(`[TURN ${turn}] ⚠️ AI Equilibrado (${playerId}) construcción rechazada: ${err.message}`);
+            } else { throw err; }
+        }
     }
 
     /**
@@ -1100,7 +989,7 @@ class AIManagerService {
                    tt.wood_output,
                    tt.stone_output,
                    tt.name AS terrain_name,
-                   (tt.food_output * $2 + tt.wood_output * $3 + tt.stone_output * $3) AS score
+                   (tt.food_output * $2::numeric + tt.wood_output * $3::numeric + tt.stone_output * $3::numeric) AS score
             FROM h3_map m
             JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
             WHERE m.h3_index = ANY($1)
@@ -1114,10 +1003,7 @@ class AIManagerService {
         if (result.rows.length === 0) return;
 
         const target = result.rows[0];
-        await client.query(
-            'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-            [BALANCED.CLAIM_COST, playerId]
-        );
+        await KingdomModel.DeductGold(client, playerId, BALANCED.CLAIM_COST);
         await KingdomModel.ClaimHex(client, target.h3_index, playerId);
         await KingdomModel.InsertTerritoryDetails(client, target.h3_index, generateInitialEconomy());
 
@@ -1131,13 +1017,12 @@ class AIManagerService {
      * Fase C — Reclutamiento de guarnición: solo recluta si las tropas actuales
      * están por debajo del 30% de la población total del reino.
      */
-    async _balancedRecruitment(client, playerId, state, turn) {
+    async _balancedRecruitment(client, playerId, botName, state, turn) {
         if (state.recruitLocations.length === 0) return;
         if (state.totalTroops >= state.garrisonTarget) return;
 
-        const freshGold = await client.query(
-            'SELECT gold FROM players WHERE player_id = $1 FOR UPDATE',
-            [playerId]
+        const freshGold   = await client.query(
+            'SELECT gold FROM players WHERE player_id = $1 FOR UPDATE', [playerId]
         );
         const currentGold = parseInt(freshGold.rows[0]?.gold) || 0;
         if (currentGold < BALANCED.GOLD_TO_RECRUIT) return;
@@ -1158,13 +1043,14 @@ class AIManagerService {
 
         if (currentGold < totalGoldCost + BALANCED.GOLD_RESERVE) return;
 
-        let recruitH3 = null, connectedH3s = null, lockedFiefPops = null;
+        // Find first location with sufficient population
+        let recruitH3 = null;
         for (const locationH3 of state.recruitLocations) {
             const network      = await recruitmentNetwork.getConnectedNetwork(client, locationH3, playerId);
             const fiefPops     = await recruitmentNetwork.getFiefPopulations(client, network);
             const availablePop = recruitmentNetwork.calcRecruitablePool(fiefPops);
             if (availablePop >= toRecruit) {
-                recruitH3 = locationH3; connectedH3s = network; lockedFiefPops = fiefPops;
+                recruitH3 = locationH3;
                 break;
             }
         }
@@ -1174,54 +1060,15 @@ class AIManagerService {
             return;
         }
 
-        const existingArmy = await client.query(
-            'SELECT army_id FROM armies WHERE player_id = $1 AND h3_index = $2 LIMIT 1',
-            [playerId, recruitH3]
-        );
-        let armyId;
-        if (existingArmy.rows.length > 0) {
-            armyId = existingArmy.rows[0].army_id;
-        } else {
-            const newArmy = await client.query(
-                `INSERT INTO armies (name, player_id, h3_index)
-                 VALUES ('Guardia Equilibrada', $1, $2)
-                 RETURNING army_id`,
-                [playerId, recruitH3]
-            );
-            armyId = newArmy.rows[0].army_id;
-        }
-
-        const existingTroopB = await client.query(
-            'SELECT troop_id FROM troops WHERE army_id = $1 AND unit_type_id = $2',
-            [armyId, unitType.unit_type_id]
-        );
-        if (existingTroopB.rows.length > 0) {
-            await client.query(
-                'UPDATE troops SET quantity = quantity + $1 WHERE army_id = $2 AND unit_type_id = $3',
-                [toRecruit, armyId, unitType.unit_type_id]
-            );
-        } else {
-            await client.query(
-                `INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale, stamina, force_rest)
-                 VALUES ($1, $2, $3, 10.00, 50.00, 100.00, false)`,
-                [armyId, unitType.unit_type_id, toRecruit]
-            );
-        }
-
-        if (totalGoldCost > 0) {
-            await client.query(
-                'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
-                [totalGoldCost, playerId]
-            );
-        }
-
-        await recruitmentNetwork.deductFromNetwork(
-            client, connectedH3s, lockedFiefPops, toRecruit
+        await executeRecruitment(
+            client, playerId,
+            { h3_index: recruitH3, unit_type_id: unitType.unit_type_id, quantity: toRecruit, army_name: 'Guardia Equilibrada' },
+            { actorName: botName }
         );
 
         Logger.engine(
             `[TURN ${turn}] ⚖️ AI Equilibrado (${playerId}) reclutó ${toRecruit} tropas ` +
-            `(guarnición: ${state.totalTroops + toRecruit}/${state.garrisonTarget}, -${totalGoldCost}💰)`
+            `(guarnición: ${state.totalTroops + toRecruit}/${state.garrisonTarget})`
         );
     }
 
@@ -1236,7 +1083,7 @@ class AIManagerService {
      * ejecuta el ciclo completo habitual del perfil.
      */
     async _processAIGuidedTurn(agent, turn) {
-        const { player_id: playerId, ai_profile: profile } = agent;
+        const { player_id: playerId, ai_profile: profile, display_name: botName } = agent;
 
         // 1. Obtener estado del reino (análisis de solo lectura)
         let state;
@@ -1258,11 +1105,11 @@ class AIManagerService {
         // 3a. Fallback procedural si el proxy lo indica
         if (decision.mode === 'procedural') {
             if (profile === 'farmer') {
-                await this._processFarmerTurn(playerId, turn);
+                await this._processFarmerTurn(agent, turn);
             } else if (profile === 'expansionist') {
-                await this._processExpansionistTurn(playerId, turn);
+                await this._processExpansionistTurn(agent, turn);
             } else if (profile === 'balanced') {
-                await this._processBalancedTurn(playerId, turn);
+                await this._processBalancedTurn(agent, turn);
             }
             return;
         }
@@ -1271,7 +1118,7 @@ class AIManagerService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await this._executeAIDecision(client, playerId, profile, state, decision.action, turn);
+            await this._executeAIDecision(client, playerId, botName, profile, state, decision.action, turn);
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -1293,7 +1140,7 @@ class AIManagerService {
      * @param {number} turn
      * @returns {Promise<void>}
      */
-    async _executeAIDecision(client, playerId, profile, state, action, turn) {
+    async _executeAIDecision(client, playerId, botName, profile, state, action, turn) {
         switch (action.action) {
 
             case 'expand':
@@ -1308,11 +1155,11 @@ class AIManagerService {
 
             case 'build':
                 if (profile === 'expansionist') {
-                    await this._expansionistConstruction(client, playerId, state, turn);
+                    await this._expansionistConstruction(client, playerId, botName, state, turn);
                 } else if (profile === 'balanced') {
-                    await this._balancedConstruction(client, playerId, state, turn);
+                    await this._balancedConstruction(client, playerId, botName, state, turn);
                 } else {
-                    await this._farmerConstruction(client, playerId, state, turn);
+                    await this._farmerConstruction(client, playerId, botName, state, turn);
                 }
                 break;
 
@@ -1320,9 +1167,9 @@ class AIManagerService {
                 // _farmerThreatResponse gestiona su propio cliente — usamos balancedRecruitment
                 // para farmer en modo IA (interfaz compatible con client activo)
                 if (profile === 'expansionist') {
-                    await this._expansionistRecruitment(client, playerId, state, turn);
+                    await this._expansionistRecruitment(client, playerId, botName, state, turn);
                 } else {
-                    await this._balancedRecruitment(client, playerId, state, turn);
+                    await this._balancedRecruitment(client, playerId, botName, state, turn);
                 }
                 break;
 

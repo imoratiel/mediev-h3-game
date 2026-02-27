@@ -7,6 +7,7 @@ const GAME_CONFIG = require('../config/constants.js');
 const { getArmyLimit, getPopulationCap } = require('../config/gameFunctions.js');
 const NameGenerator = require('../logic/NameGenerator.js');
 const recruitmentNetwork = require('../logic/recruitmentNetwork.js');
+const { executeRecruitment, GameActionError } = require('./gameActions.js');
 
 class ArmyService {
     async GetArmyDetails(req, res) {
@@ -72,108 +73,16 @@ class ArmyService {
             const { h3_index, unit_type_id, quantity } = req.body;
             const army_name = req.body.army_name || NameGenerator.generate();
 
-            if (!h3_index || !unit_type_id || !quantity) {
-                return res.status(400).json({ success: false, message: 'Faltan parámetros requeridos' });
-            }
-            if (quantity <= 0) {
-                return res.status(400).json({ success: false, message: 'La cantidad debe ser mayor a 0' });
-            }
-
             await client.query('BEGIN');
-
-            const reqResult = await ArmyModel.GetUnitRequirements(client, unit_type_id);
-            const requirements = reqResult.rows;
-
-            const terrResult = await ArmyModel.GetTerritoryForRecruitment(client, h3_index);
-            if (terrResult.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return res.status(404).json({ success: false, message: 'Territorio no encontrado' });
-            }
-            const territory = terrResult.rows[0];
-
-            if (territory.player_id !== player_id) {
-                await client.query('ROLLBACK');
-                return res.status(403).json({ success: false, message: 'No posees este territorio' });
-            }
-
-            // ── Validación de ubicación: Capital o edificio militar ───────────────
-            const isCapital = territory.capital_h3 === h3_index;
-            if (!isCapital) {
-                const hasMilitary = await ArmyModel.CheckMilitaryBuildingInFief(client, h3_index);
-                if (!hasMilitary) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Solo puedes reclutar en tu Capital o en feudos con un edificio militar (Cuartel o Fortaleza).'
-                    });
-                }
-            }
-
-            // ── Validación de población por red conectada ─────────────────────────
-            const connectedH3s = await recruitmentNetwork.getConnectedNetwork(client, h3_index, player_id);
-            const fiefPops = await recruitmentNetwork.getFiefPopulations(client, connectedH3s);
-            const recruitablePool = recruitmentNetwork.calcRecruitablePool(fiefPops);
-
-            if (recruitablePool < quantity) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({
-                    success: false,
-                    message: `Población insuficiente. Tu red de feudos puede aportar ${recruitablePool} reclutas (cada feudo reserva ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab.).`
-                });
-            }
-
-            const playerResult = await ArmyModel.GetPlayerGold(client, player_id);
-            const player = playerResult.rows[0];
-
-            // Validate resources
-            for (const req of requirements) {
-                const needed = req.amount * quantity;
-                if (req.resource_type === 'gold' && player.gold < needed) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, message: `Oro insuficiente. Necesitas ${needed} oro, pero solo tienes ${player.gold}.` });
-                } else if (req.resource_type === 'wood_stored' && (territory.wood_stored || 0) < needed) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, message: `Madera insuficiente. Necesitas ${needed}, pero solo tienes ${territory.wood_stored || 0}.` });
-                } else if (req.resource_type === 'stone_stored' && (territory.stone_stored || 0) < needed) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, message: `Piedra insuficiente. Necesitas ${needed}, pero solo tienes ${territory.stone_stored || 0}.` });
-                } else if (req.resource_type === 'iron_stored' && (territory.iron_stored || 0) < needed) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, message: `Hierro insuficiente. Necesitas ${needed}, pero solo tienes ${territory.iron_stored || 0}.` });
-                }
-            }
-
-            // Deduct resources
-            for (const req of requirements) {
-                const cost = req.amount * quantity;
-                if (req.resource_type === 'gold') {
-                    await ArmyModel.DeductPlayerGold(client, player_id, cost);
-                } else {
-                    await ArmyModel.DeductTerritoryResource(client, h3_index, req.resource_type, cost);
-                }
-            }
-
-            // Deduct population from network (recruiting fief first, then neighbors in BFS order)
-            await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, quantity);
-
-            // Find or create army
-            const existingArmy = await ArmyModel.FindArmy(client, h3_index, army_name, player_id);
-            let army_id;
-            if (existingArmy.rows.length === 0) {
-                const newArmy = await ArmyModel.CreateArmy(client, army_name, player_id, h3_index);
-                army_id = newArmy.rows[0].army_id;
-            } else {
-                army_id = existingArmy.rows[0].army_id;
-            }
-
-            await ArmyModel.AddTroops(client, army_id, unit_type_id, quantity);
-            await ArmyModel.refreshDetectionRange(client, army_id);
+            const result = await executeRecruitment(client, player_id, { h3_index, unit_type_id, quantity, army_name });
             await client.query('COMMIT');
 
-            Logger.action(`Reclutó ${quantity} unidades (tipo ${unit_type_id}) en ${h3_index}`, player_id, { army_name, unit_type_id, quantity });
-            res.json({ success: true, message: 'Unidades reclutadas exitosamente', army_id });
+            res.json({ success: true, ...result });
         } catch (error) {
             await client.query('ROLLBACK');
+            if (error instanceof GameActionError) {
+                return res.status(400).json({ success: false, message: error.message });
+            }
             Logger.error(error, { endpoint: '/military/recruit', method: 'POST', userId: req.user?.player_id, payload: req.body });
             res.status(500).json({ success: false, message: 'Error al reclutar unidades', error: error.message });
         } finally {

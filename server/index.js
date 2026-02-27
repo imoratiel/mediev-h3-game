@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -13,6 +14,12 @@ const territory = require('./src/logic/territory');
 const infrastructure = require('./src/logic/infrastructure');
 const discovery = require('./src/logic/discovery');
 const conquest = require('./src/logic/conquest');
+
+// --- SANITY CHECK: ENVIRONMENT VARIABLES ---
+console.log('--- Environment Variable Check ---');
+console.log(`GEMINI_API_KEY present: ${process.env.GEMINI_API_KEY ? "SÍ" : "NO"}`);
+console.log(`OPENAI_API_KEY present: ${process.env.OPENAI_API_KEY ? "SÍ" : "NO"}`);
+console.log('---------------------------------');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
