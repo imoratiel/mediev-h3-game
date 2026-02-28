@@ -25,6 +25,7 @@ const recruitmentNetwork = require('../logic/recruitmentNetwork');
 const aiProxy            = require('./AIProxyService');
 const { executeRecruitment, executeConstruction, GameActionError } = require('./gameActions');
 const { getSpawnCoordinates } = require('./BotService');
+const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = require('../logic/conquest_system');
 
 // ── Constantes del perfil Agricultor ─────────────────────────────────────────
 // ── Constantes del perfil Expansionista ──────────────────────────────────────
@@ -33,6 +34,7 @@ const EXPANSIONIST = {
     CLAIM_COST:          100,
     GOLD_TO_BUILD:       8_000,   // Build military only if well-funded
     GOLD_TO_RECRUIT:     5_000,   // Recruit unconditionally above this
+    GOLD_TO_EXPAND:          0,   // No gold threshold — always tries to expand
     GOLD_RESERVE:        3_000,   // Never go below this
     RECRUIT_QUANTITY:    100,     // Larger batches for aggression
     COLORS: ['#8B0000','#B22222','#DC143C','#800000','#4A0E0E','#C0392B','#922B21','#641E16'],
@@ -61,6 +63,7 @@ const FARMER = {
     GOLD_RESERVE:        2_000,   // Nunca gastar por debajo de este umbral
     THREAT_SCAN_RADIUS:  2,       // Radio H3 por cada feudo para detectar enemigos
     MIN_TROOPS_DEFEND:   50,      // Si hay amenaza y tiene < este valor, recluta
+    MIN_TROOPS_EXPAND:   30,      // No expandir sin al menos estas tropas en casa
     RECRUIT_QUANTITY:    50,      // Tropas a reclutar en respuesta a amenaza
     COLORS: ['#8B7355','#6B8E23','#A0522D','#556B2F','#8FBC8F','#BC8F5F','#9ACD32','#DEB887'],
 };
@@ -242,16 +245,29 @@ class AIManagerService {
         }
 
         // ── Paso B: Construcción (sin amenaza) ───────────────────────────────
-        const client = await pool.connect();
+        const clientB = await pool.connect();
         try {
-            await client.query('BEGIN');
-            await this._farmerConstruction(client, playerId, botName, state, turn);
-            await client.query('COMMIT');
+            await clientB.query('BEGIN');
+            await this._farmerConstruction(clientB, playerId, botName, state, turn);
+            await clientB.query('COMMIT');
         } catch (error) {
-            await client.query('ROLLBACK').catch(() => {});
+            await clientB.query('ROLLBACK').catch(() => {});
             Logger.error(error, { context: 'AIManagerService._processFarmerTurn.B', playerId, turn });
         } finally {
-            client.release();
+            clientB.release();
+        }
+
+        // ── Paso C: Expansión (conservadora, solo hexes libres) ───────────────
+        const clientC = await pool.connect();
+        try {
+            await clientC.query('BEGIN');
+            await this._farmerExpansion(clientC, playerId, botName, state, turn);
+            await clientC.query('COMMIT');
+        } catch (error) {
+            await clientC.query('ROLLBACK').catch(() => {});
+            Logger.error(error, { context: 'AIManagerService._processFarmerTurn.C', playerId, turn });
+        } finally {
+            clientC.release();
         }
     }
 
@@ -334,9 +350,19 @@ class AIManagerService {
             `, [scanArea, playerId]);
             const isThreatened = parseInt(threatResult.rows[0].enemy_count) > 0;
 
+            // Expansion candidates: adjacent non-owned hexes
+            const ownedSet    = new Set(territories.map(t => t.h3_index));
+            const candidateSet = new Set();
+            for (const hex of ownedSet) {
+                h3.gridDisk(hex, 1)
+                  .filter(n => n !== hex && !ownedSet.has(n))
+                  .forEach(n => candidateSet.add(n));
+            }
+
             return {
                 gold, capitalH3, territories, territoriesWithoutBuilding,
                 totalTroops, recruitLocations, isThreatened,
+                candidateSet: [...candidateSet],
             };
         } finally {
             client.release();
@@ -498,8 +524,9 @@ class AIManagerService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await this._expansionistRecruitment(client, playerId, botName, state, turn);
-            await this._expansionistConstruction(client, playerId, botName, state, turn);
+            await this._expansionistExpansion(client, playerId, botName, state, turn);  // A: Expand first
+            await this._expansionistRecruitment(client, playerId, botName, state, turn); // B: Recruit
+            await this._expansionistConstruction(client, playerId, botName, state, turn); // C: Build
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -705,8 +732,9 @@ class AIManagerService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await this._balancedConstruction(client, playerId, botName, state, turn);
-            await this._balancedRecruitment(client, playerId, botName, state, turn);
+            await this._balancedConstruction(client, playerId, botName, state, turn); // A: Build
+            await this._balancedExpansion(client, playerId, botName, state, turn);    // B: Expand
+            await this._balancedRecruitment(client, playerId, botName, state, turn);  // C: Recruit
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -1031,6 +1059,16 @@ class AIManagerService {
                 }
                 break;
 
+            case 'expand':
+                if (profile === 'expansionist') {
+                    await this._expansionistExpansion(client, playerId, botName, state, turn);
+                } else if (profile === 'balanced') {
+                    await this._balancedExpansion(client, playerId, botName, state, turn);
+                } else {
+                    await this._farmerExpansion(client, playerId, botName, state, turn);
+                }
+                break;
+
             case 'idle':
                 Logger.bot(playerId, `[TURN ${turn}] 💤 Decidió descansar (idle) este turno`);
                 break;
@@ -1038,6 +1076,259 @@ class AIManagerService {
             default:
                 Logger.bot(playerId, `[TURN ${turn}] ⚠️ Acción desconocida: ${action.action}. Ignorando.`);
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVADO: Expansión / Conquista
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Queries the DB for candidate expansion hexes and scores them by resources.
+     * Returns sorted array (best first).
+     *
+     * @param {string[]} candidates - h3_index values to check
+     * @param {number}   playerId
+     * @param {boolean}  aggressive - if true, enemy-owned hexes are also included
+     * @returns {Object[]}
+     */
+    async _loadCandidateHexes(candidates, playerId, aggressive = false) {
+        if (!candidates || candidates.length === 0) return [];
+
+        const result = await pool.query(`
+            SELECT m.h3_index, m.player_id,
+                   COALESCE(tt.food_output,   0) AS food_output,
+                   COALESCE(tt.wood_output,   0) AS wood_output,
+                   COALESCE(tt.stone_output,  0) AS stone_output,
+                   COALESCE(tt.movement_cost, 1) AS movement_cost
+            FROM h3_map m
+            JOIN terrain_types tt ON tt.terrain_type_id = m.terrain_type_id
+            WHERE m.h3_index = ANY($1)
+              AND COALESCE(tt.movement_cost, 1) >= 0
+        `, [candidates]);
+
+        const rows = result.rows.filter(r =>
+            aggressive
+                ? (r.player_id === null || Number(r.player_id) !== Number(playerId))
+                : r.player_id === null
+        );
+
+        return rows.sort((a, b) => {
+            const scoreA = a.food_output * 3 + a.wood_output * 2 + a.stone_output;
+            const scoreB = b.food_output * 3 + b.wood_output * 2 + b.stone_output;
+            return scoreB - scoreA;
+        });
+    }
+
+    /**
+     * Core bot conquest helper.
+     * Picks the best available bot army, advances it to targetH3, and resolves
+     * combat against local militia (or empty-hex resistance).
+     * On defeat: retreats army to origin.
+     * On victory/draw: transfers hex ownership + sets grace_turns.
+     *
+     * Must be called within an active DB transaction.
+     *
+     * @param {Object} client
+     * @param {number} playerId
+     * @param {string} botName
+     * @param {string} targetH3
+     * @param {number} turn
+     * @returns {{ conquered: boolean, result?: string, reason?: string }}
+     */
+    async _botConquerHex(client, playerId, botName, targetH3, turn) {
+        // 1. Load target hex info
+        const hexResult = await client.query(`
+            SELECT m.player_id,
+                   COALESCE(td.custom_name, m.h3_index) AS fief_name,
+                   COALESCE(td.population, 200)          AS population,
+                   COALESCE(td.defense_level, 0)         AS defense_level,
+                   p.capital_h3
+            FROM h3_map m
+            LEFT JOIN territory_details td ON td.h3_index = m.h3_index
+            LEFT JOIN players p            ON p.player_id = m.player_id
+            WHERE m.h3_index = $1
+        `, [targetH3]);
+        if (hexResult.rows.length === 0) return { conquered: false, reason: 'hex_not_found' };
+        const hex = hexResult.rows[0];
+        if (Number(hex.player_id) === Number(playerId)) return { conquered: false, reason: 'own_hex' };
+
+        // 2. No enemy armies allowed at target
+        const enemyCheck = await client.query(
+            'SELECT COUNT(*)::int AS cnt FROM armies WHERE h3_index = $1 AND player_id != $2',
+            [targetH3, playerId]
+        );
+        if (enemyCheck.rows[0].cnt > 0) return { conquered: false, reason: 'enemy_armies_present' };
+
+        // 3. Find best bot army stationed in own territory (most troops)
+        const armyResult = await client.query(`
+            SELECT a.army_id, a.h3_index AS origin_h3, SUM(t.quantity)::int AS total_troops
+            FROM armies a
+            JOIN troops  t ON t.army_id  = a.army_id
+            JOIN h3_map  m ON m.h3_index = a.h3_index
+            WHERE a.player_id = $1 AND m.player_id = $1
+            GROUP BY a.army_id, a.h3_index
+            HAVING SUM(t.quantity) > 0
+            ORDER BY SUM(t.quantity) DESC
+            LIMIT 1
+        `, [playerId]);
+        if (armyResult.rows.length === 0) return { conquered: false, reason: 'no_army' };
+        const army = armyResult.rows[0];
+
+        // 4. Advance army to target
+        await client.query('UPDATE armies SET h3_index = $1 WHERE army_id = $2', [targetH3, army.army_id]);
+
+        // 5. Load troop details for combat resolution
+        const troopsResult = await client.query(`
+            SELECT t.troop_id, t.quantity, t.morale, t.stamina, t.force_rest, ut.attack
+            FROM troops t JOIN unit_types ut ON ut.unit_type_id = t.unit_type_id
+            WHERE t.army_id = $1
+        `, [army.army_id]);
+        const troops = troopsResult.rows;
+
+        // 6. Calculate attacker power (same formula as KingdomService.conquestTerritory)
+        let attackerPower = 0, attackerTotal = 0;
+        for (const t of troops) {
+            const mf = Math.max(0.5, parseFloat(t.morale)  / 100);
+            const sf = t.force_rest ? 0.5 : Math.max(0.1, parseFloat(t.stamina) / 100);
+            attackerPower += t.quantity * t.attack * mf * sf;
+            attackerTotal += t.quantity;
+        }
+        attackerPower *= (0.85 + Math.random() * 0.30);
+
+        // 7. Calculate militia / defender power
+        const { militiaCount, defenderPower } = calcMilitiaPower(hex.population, hex.defense_level);
+        const ratio  = attackerPower / (defenderPower || 1);
+        const result = ratio >= 1.1 ? 'victory' : ratio <= 0.9 ? 'defeat' : 'draw';
+
+        // 8. Apply attacker losses
+        const lossFrac       = result === 'victory' ? 0.05 + (1 / ratio) * 0.10 : 0.20 + Math.random() * 0.15;
+        const attackerLosses = Math.min(attackerTotal, Math.floor(attackerTotal * lossFrac));
+        if (attackerLosses > 0) {
+            for (const t of troops) {
+                const deduct = Math.min(t.quantity, Math.floor(attackerLosses * (t.quantity / attackerTotal)));
+                if (deduct > 0) {
+                    await client.query(
+                        'UPDATE troops SET quantity = quantity - $1 WHERE troop_id = $2',
+                        [deduct, t.troop_id]
+                    );
+                }
+            }
+            await client.query('DELETE FROM troops WHERE army_id = $1 AND quantity <= 0', [army.army_id]);
+        }
+
+        // 9. Defeat → retreat army back to origin fief
+        if (result === 'defeat') {
+            await client.query('UPDATE armies SET h3_index = $1 WHERE army_id = $2', [army.origin_h3, army.army_id]);
+            const remaining = await client.query(
+                'SELECT COALESCE(SUM(quantity),0)::int AS total FROM troops WHERE army_id = $1',
+                [army.army_id]
+            );
+            if ((remaining.rows[0]?.total || 0) === 0) {
+                await client.query('DELETE FROM armies WHERE army_id = $1', [army.army_id]);
+            }
+            Logger.bot(playerId, `[TURN ${turn}] [${botName}] ❌ Conquista de ${targetH3} fallida — derrota (${attackerLosses} bajas)`);
+            return { conquered: false, result: 'defeat' };
+        }
+
+        // 10. Victory / draw → transfer ownership
+        const prevOwner = hex.player_id;
+        await client.query('UPDATE h3_map SET player_id = $1 WHERE h3_index = $2', [playerId, targetH3]);
+
+        // Ensure territory_details row exists, apply grace period
+        const tdCheck = await client.query('SELECT 1 FROM territory_details WHERE h3_index = $1', [targetH3]);
+        if (tdCheck.rows.length === 0) {
+            const eco = generateInitialEconomy();
+            await KingdomModel.InsertTerritoryDetails(client, targetH3, eco);
+        } else {
+            await client.query(
+                'UPDATE territory_details SET grace_turns = $1 WHERE h3_index = $2',
+                [GRACE_TURNS_DEFAULT, targetH3]
+            );
+        }
+
+        // 11. Capital-collapse cascade if this was the defeated player's capital
+        const isCapital = prevOwner !== null && hex.capital_h3 === targetH3;
+        if (isCapital) {
+            await processCapitalCollapse(client, targetH3, playerId, prevOwner, turn);
+            Logger.bot(playerId, `[TURN ${turn}] 💥 ¡Capital conquistada! Cascada activada.`);
+        }
+
+        // 12. Notify previous owner
+        if (prevOwner !== null) {
+            const NotificationService = require('./NotificationService.js');
+            const worldRow = await client.query('SELECT current_turn FROM world_state LIMIT 1');
+            const currentTurn = worldRow.rows[0]?.current_turn ?? turn;
+            await NotificationService.createSystemNotification(
+                prevOwner, 'COMBAT',
+                `🏴 TERRITORIO PERDIDO\nEl feudo ${hex.fief_name} ha sido conquistado (Turno ${currentTurn})`,
+                currentTurn
+            );
+        }
+
+        Logger.bot(playerId,
+            `[TURN ${turn}] [${botName}] 🏴 Conquistó ${targetH3} (${result}, milicia: ${militiaCount}, bajas: ${attackerLosses})`
+        );
+        return { conquered: true, result };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVADO: Fase C Agricultor — Expansión conservadora
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Phase C — Farmer expansion: only unclaimed hexes, only when well-funded
+     * and with enough troops to keep home territory defended.
+     */
+    async _farmerExpansion(client, playerId, botName, state, turn) {
+        // Re-read gold (construction phase may have spent some)
+        const goldRow = await client.query('SELECT gold FROM players WHERE player_id = $1', [playerId]);
+        const currentGold = parseInt(goldRow.rows[0]?.gold) || 0;
+        if (currentGold < FARMER.GOLD_TO_EXPAND) return;
+
+        // Don't expand if we can't defend our existing territory
+        if (state.totalTroops < FARMER.MIN_TROOPS_EXPAND) {
+            Logger.bot(playerId, `[TURN ${turn}] 🌾 Sin tropas suficientes para expandir (${state.totalTroops}/${FARMER.MIN_TROOPS_EXPAND})`);
+            return;
+        }
+
+        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, false);
+        if (scored.length === 0) return;
+
+        await this._botConquerHex(client, playerId, botName, scored[0].h3_index, turn);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVADO: Fase A Expansionista — Expansión agresiva
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Phase A — Expansionist expansion: highest priority action.
+     * Prefers unclaimed hexes; attacks enemy fiefs if none are available.
+     */
+    async _expansionistExpansion(client, playerId, botName, state, turn) {
+        // Try unclaimed hexes first, then enemy hexes (aggressive mode)
+        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, true);
+        if (scored.length === 0) return;
+
+        await this._botConquerHex(client, playerId, botName, scored[0].h3_index, turn);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVADO: Fase B Equilibrado — Expansión selectiva
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Phase B — Balanced expansion: only unclaimed hexes, only when well-funded.
+     */
+    async _balancedExpansion(client, playerId, botName, state, turn) {
+        const goldRow = await client.query('SELECT gold FROM players WHERE player_id = $1', [playerId]);
+        const currentGold = parseInt(goldRow.rows[0]?.gold) || 0;
+        if (currentGold < BALANCED.GOLD_TO_EXPAND) return;
+
+        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, false);
+        if (scored.length === 0) return;
+
+        await this._botConquerHex(client, playerId, botName, scored[0].h3_index, turn);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
