@@ -8,8 +8,9 @@
 
 // Estados de interacción posibles
 export const InteractionMode = {
-  NORMAL: 'NORMAL',                     // Modo normal: click abre popup
-  SELECT_DESTINATION: 'SELECT_DESTINATION'  // Modo selección: click mueve ejército
+  NORMAL: 'NORMAL',                                   // Modo normal: click abre popup
+  SELECT_DESTINATION: 'SELECT_DESTINATION',            // Modo selección: click mueve ejército
+  SELECT_WORKER_DESTINATION: 'SELECT_WORKER_DESTINATION' // Modo selección: click mueve trabajadores
 };
 
 class MapInteractionController {
@@ -114,6 +115,17 @@ class MapInteractionController {
         this.resetMode();
         break;
 
+      case InteractionMode.SELECT_WORKER_DESTINATION:
+        // Modo selección: procesar movimiento de trabajadores
+        if (callbacks.onSelectWorkerDestination && this.contextData) {
+          const { workerH3 } = this.contextData;
+          console.log(`[MapInteraction] Procesando movimiento de trabajadores desde ${workerH3} → ${h3Index}`);
+          callbacks.onSelectWorkerDestination(workerH3, h3Index);
+        }
+        // Resetear al modo normal después de procesar
+        this.resetMode();
+        break;
+
       default:
         console.warn(`[MapInteraction] Modo no manejado: ${this.currentMode}`);
     }
@@ -131,6 +143,23 @@ class MapInteractionController {
       armyName,
       armyH3
     });
+  }
+
+  /**
+   * Inicia el proceso de movimiento de trabajadores desde un hexágono
+   * @param {string} workerH3 - Hex origen donde están los trabajadores
+   */
+  startWorkerMovement(workerH3) {
+    console.log(`[MapInteraction] Iniciando movimiento de trabajadores desde ${workerH3}`);
+    this.setMode(InteractionMode.SELECT_WORKER_DESTINATION, { workerH3 });
+  }
+
+  /**
+   * Verifica si está en modo selección de destino de trabajadores
+   * @returns {boolean}
+   */
+  isSelectingWorkerDestination() {
+    return this.currentMode === InteractionMode.SELECT_WORKER_DESTINATION;
   }
 
   /**

@@ -131,3 +131,21 @@
 - remaining_construction_turns (INT) - Contador regresivo de obra
 - is_under_construction (BOOLEAN) - True mientras se construye
 - created_at (TIMESTAMP)
+
+## Tabla: workers_types
+- worker_type_id (SERIAL PK)
+- name (VARCHAR 50) - Ej: 'constructor', 'scout'
+- hp (INT)
+- speed (INT)
+- detection_range (INT)
+- cost (INT)
+
+## Tabla: workers
+- worker_id (SERIAL PK)
+- player_id (INT FK -> players.player_id)
+- h3_index (VARCHAR 15)
+- type_id (INT FK -> workers_types.worker_type_id)
+- current_hp (INT) - HP actual (permite daño/curación)
+- speed (INT)
+- detection_range (INT)
+- created_at (TIMESTAMP)

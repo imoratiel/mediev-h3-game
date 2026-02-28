@@ -53,6 +53,54 @@ export async function getMapArmies(params) {
 }
 
 /**
+ * Get worker markers for map
+ * @param {Object} params - { minLat, maxLat, minLng, maxLng }
+ */
+export async function getMapWorkers(params) {
+  const response = await axios.get(`${API_URL}/api/map/workers`, { params });
+  return response.data;
+}
+
+/**
+ * Get all worker type definitions (cost, stats)
+ */
+export async function getWorkerTypes() {
+  const response = await axios.get(`${API_URL}/api/workers/types`);
+  return response.data;
+}
+
+/**
+ * Hire a worker at the specified hex
+ * @param {{ h3_index: string, worker_type_id: number }} params
+ */
+export async function buyWorker({ h3_index, worker_type_id }) {
+  const response = await axios.post(`${API_URL}/api/workers/buy`, { h3_index, worker_type_id });
+  return response.data;
+}
+
+/**
+ * Get all workers owned by the authenticated player
+ */
+export async function getMyWorkers() {
+  const response = await axios.get(`${API_URL}/api/workers/my`);
+  return response.data;
+}
+
+/**
+ * Set movement destination for all player workers at from_h3.
+ * The turn engine will advance them toward destination_h3 each turn.
+ * @param {string} fromH3 - Current hex of the workers
+ * @param {string} destinationH3 - Target hex
+ */
+export async function setWorkerHexDestination(fromH3, destinationH3) {
+  const response = await axios.post(`${API_URL}/api/workers/set-hex-destination`, {
+    from_h3: fromH3,
+    destination_h3: destinationH3,
+  });
+  return response.data;
+}
+
+/**
  * Get completed buildings in visible map extent (for map icons)
  * @param {Object} params - { minLat, maxLat, minLng, maxLng }
  */

@@ -291,7 +291,56 @@
 
         <!-- Market Panel -->
         <div v-if="activePanel === 'market'" class="panel-section market-panel">
-          <p class="panel-placeholder">Contenido de Mercado (próximamente)</p>
+          <div class="market-header">
+            <span class="market-subtitle">
+              {{ myWorkers.length }} trabajador{{ myWorkers.length === 1 ? '' : 'es' }} contratado{{ myWorkers.length === 1 ? '' : 's' }}
+            </span>
+            <button class="btn-refresh-workers" @click="fetchMyWorkers" :disabled="loadingWorkers" title="Actualizar">
+              {{ loadingWorkers ? '⏳' : '🔄' }}
+            </button>
+          </div>
+
+          <div v-if="loadingWorkers" class="workers-loading">Cargando trabajadores...</div>
+
+          <div v-else-if="myWorkers.length === 0" class="workers-empty">
+            <p>No tienes trabajadores contratados.</p>
+            <p class="workers-hint">Contrátalos desde tu Capital o en un feudo con <strong>Mercado</strong>.</p>
+          </div>
+
+          <div v-else class="workers-list">
+            <div
+              v-for="worker in myWorkers"
+              :key="worker.id"
+              class="worker-card"
+            >
+              <div class="worker-card-top">
+                <span class="worker-type-badge">⛏️ {{ worker.type_name }}</span>
+                <span class="worker-id">#{{ worker.id }}</span>
+              </div>
+              <div class="worker-card-info">
+                <span title="Ubicación actual">📍 {{ worker.h3_index }}</span>
+                <span v-if="worker.destination_h3" class="worker-en-route" title="Destino">
+                  ➡️ {{ worker.destination_h3 }}
+                </span>
+              </div>
+              <div class="worker-card-stats">
+                <span title="Velocidad">💨 {{ worker.speed }}</span>
+                <span title="Coste">💰 {{ worker.cost }}</span>
+              </div>
+              <div class="worker-card-actions">
+                <button
+                  class="worker-btn worker-btn-build"
+                  disabled
+                  title="Próximamente"
+                >🏗️ Construir</button>
+                <button
+                  class="worker-btn worker-btn-move"
+                  @click="startWorkerMoveFromPanel(worker.h3_index)"
+                  title="Mover trabajadores de este hex"
+                >➡️ Mover</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Kingdom Panel (Fiefs) -->
@@ -703,11 +752,13 @@
               :limit="fiefsLimit"
               :playerGold="playerGold"
               :explorationConfig="explorationConfig"
+              :workerTypes="workerTypes"
               @focusOnFief="focusOnFiefAndClose"
               @exploreFief="exploreFiefFromTable"
               @openRecruitment="openRecruitmentForFief"
               @openConstruction="openBuildModal"
               @openUpgrade="(data) => openUpgradeModal(data.h3_index, data.upgrade)"
+              @buyWorker="handleBuyWorkerFromTable"
               @change-page="handleFiefsPageChange"
               @change-limit="handleFiefsLimitChange"
             />
@@ -1019,6 +1070,9 @@ const recruitmentArmyName = ref('');
 const recruitmentMessage = ref({ type: '', text: '' });
 const isRecruiting = ref(false);
 const isColonizing = ref(false); // Track colonization state to prevent multiple simultaneous colonizations
+const workerTypes = ref([]);    // Loaded once on mount from /api/workers/types
+const myWorkers = ref([]);       // Player's hired workers (shown in market panel)
+const loadingWorkers = ref(false);
 
 // Building construction modal state
 const showBuildModal = ref(false);
@@ -1233,8 +1287,9 @@ let settlementMarkersLayer = null;
 let settlementMarkersMap = {}; // Map: settlement name -> marker
 let buildingMarkersLayer = null; // Layer for capital crown markers
 let fiefIconsLayer = null;       // Layer for fief building icons (API-driven)
-let armyMarkersLayer = null; // Layer for army/troop icons
-let hexStackerLayer = null;  // Layer for combined HexStacker markers (owner+building+troops)
+let armyMarkersLayer = null;    // Layer for army/troop icons
+let workersMarkersLayer = null; // Layer for worker icons
+let hexStackerLayer = null;     // Layer for combined HexStacker markers (owner+building+troops)
 let highlightLayer = null; // Temporary highlight polygon for navigation
 let debounceTimer = null;
 
@@ -1391,6 +1446,10 @@ const initMap = () => {
   map.createPane('buildingPane');
   map.getPane('buildingPane').style.zIndex = 660;
 
+  // Worker Pane (Worker Icons) - Below army pane
+  map.createPane('workerPane');
+  map.getPane('workerPane').style.zIndex = 665;
+
   // Army Pane (Troop Icons) - Below popupPane (700) so popups always render on top
   map.createPane('armyPane');
   map.getPane('armyPane').style.zIndex = 680;
@@ -1453,6 +1512,7 @@ const initMap = () => {
   buildingMarkersLayer = L.layerGroup().addTo(map);
   fiefIconsLayer = L.layerGroup().addTo(map);
   armyMarkersLayer = L.layerGroup().addTo(map);
+  workersMarkersLayer = L.layerGroup().addTo(map);
   hexStackerLayer = L.layerGroup().addTo(map);
 
   // Track zoom level
@@ -1552,9 +1612,10 @@ const loadHexagonsIfZoomValid = () => {
   if (currentZoom >= MIN_ZOOM_H3 && currentZoom <= MAX_ZOOM_H3) {
     fetchHexagonData();
   } else {
-    // Clear hexagons and army markers if zoom is outside valid range
+    // Clear hexagons and all map-bound markers if zoom is outside valid range
     clearHexagons();
     clearArmyMarkers();
+    clearWorkerMarkers();
     clearFiefIcons();
     clearHexStackers();
     if (currentZoom < MIN_ZOOM_H3) {
@@ -1610,10 +1671,11 @@ const fetchHexagonData = async () => {
     // Draw movement routes (always, regardless of zoom)
     await fetchAndDrawRoutes();
 
-    // Fetch buildings and armies in parallel for HexStacker rendering
-    const [buildingData, armyData] = await Promise.allSettled([
+    // Fetch buildings, armies and workers in parallel for rendering
+    const [buildingData, armyData, workerData] = await Promise.allSettled([
       mapApi.getMapBuildings(params),
       mapApi.getMapArmies(params),
+      mapApi.getMapWorkers(params),
     ]);
 
     const buildings = buildingData.status === 'fulfilled' && buildingData.value.success
@@ -1625,9 +1687,15 @@ const fetchHexagonData = async () => {
     const currentPlayerId = armyData.status === 'fulfilled'
       ? armyData.value.current_player_id
       : playerId.value;
+    const workers = workerData.status === 'fulfilled' && workerData.value.success
+      ? workerData.value.workers
+      : [];
 
     // Render combined HexStacker icons (replaces separate army + building markers)
     renderHexStackers(buildings, armies, currentPlayerId, ownerMap);
+
+    // Render worker markers on separate layer
+    renderWorkerMarkers(workers, currentPlayerId);
 
     loading.value = false;
   } catch (err) {
@@ -1643,6 +1711,105 @@ const fetchHexagonData = async () => {
 const clearArmyMarkers = () => {
   if (armyMarkersLayer) {
     armyMarkersLayer.clearLayers();
+  }
+};
+
+/**
+ * Clear all worker markers from the map
+ */
+const clearWorkerMarkers = () => {
+  if (workersMarkersLayer) {
+    workersMarkersLayer.clearLayers();
+  }
+};
+
+/**
+ * Render worker icons on the map.
+ * Own workers: amber (#f59e0b). Foreign workers: teal (#0d9488).
+ * Distinct from armies (blue/red circles) via different color and emoji.
+ * @param {Array} workers - [{ h3_index, player_id, player_name, worker_type, worker_count }]
+ * @param {number} currentPlayerId
+ */
+const renderWorkerMarkers = (workers, currentPlayerId) => {
+  clearWorkerMarkers();
+  if (!workers || workers.length === 0) return;
+
+  // Group by hex: one icon per hex, sum counts across types if mixed
+  const byHex = new Map();
+  for (const w of workers) {
+    const key = w.h3_index;
+    if (!byHex.has(key)) {
+      byHex.set(key, { ...w });
+    } else {
+      byHex.get(key).worker_count += w.worker_count;
+    }
+  }
+
+  for (const [h3_index, data] of byHex) {
+    try {
+      const [lat, lng] = cellToLatLng(h3_index);
+
+      const isOwn = data.player_id === currentPlayerId;
+      const color = isOwn ? '#f59e0b' : '#0d9488';
+      const borderColor = isOwn ? '#b45309' : '#0f766e';
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:26px;height:26px;border-radius:50%;
+          background:${color};border:2px solid ${borderColor};
+          display:flex;align-items:center;justify-content:center;
+          font-size:13px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.45);
+          cursor:pointer;"
+          title="${data.worker_count} ${data.worker_type}(s) · ${data.player_name}">⛏️</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+        pane: 'workerPane',
+      });
+
+      const ownActions = isOwn ? `
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button
+            disabled
+            style="flex:1;padding:4px 6px;border:1px solid #6b7280;border-radius:4px;
+                   background:#374151;color:#9ca3af;font-size:12px;cursor:not-allowed;"
+            title="Próximamente">🏗️ Construir</button>
+          <button
+            id="worker-move-btn-${h3_index}"
+            style="flex:1;padding:4px 6px;border:none;border-radius:4px;
+                   background:#f59e0b;color:#1c1917;font-size:12px;font-weight:600;cursor:pointer;"
+            >➡️ Mover</button>
+        </div>` : '';
+
+      const marker = L.marker([lat, lng], { icon, pane: 'workerPane' });
+      marker.bindPopup(
+        `<div style="font-family:sans-serif;font-size:13px;min-width:160px;">
+          <strong>⛏️ Trabajadores</strong><br>
+          <span style="color:#d1d5db;">${data.worker_count} ${data.worker_type}(s)</span><br>
+          <span style="color:#6b7280;">👤 ${data.player_name}</span><br>
+          <span style="color:#6b7280;font-size:11px;">📍 ${h3_index}</span>
+          ${ownActions}
+        </div>`,
+        { maxWidth: 220 }
+      );
+
+      // Wire up the Move button after popup opens
+      if (isOwn) {
+        marker.on('popupopen', () => {
+          setTimeout(() => {
+            const btn = document.getElementById(`worker-move-btn-${h3_index}`);
+            if (btn) {
+              btn.addEventListener('click', () => {
+                marker.closePopup();
+                window.startWorkerMovement(h3_index);
+              });
+            }
+          }, 50);
+        });
+      }
+
+      workersMarkersLayer.addLayer(marker);
+    } catch { /* continue silently */ }
   }
 };
 
@@ -1807,6 +1974,9 @@ const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) =>
             onSelectDestination: async (armyId, targetH3, armyName) => {
               await processArmyMovement(armyId, targetH3, armyName);
             },
+            onSelectWorkerDestination: async (fromH3, targetH3) => {
+              await processWorkerMovement(fromH3, targetH3);
+            },
           });
         } else {
           // Clicked on building icon, owner dot, or empty area → show fief details
@@ -1814,6 +1984,9 @@ const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) =>
             onNormal: async () => showCellDetailsPopup(h3_index, [lat, lng]),
             onSelectDestination: async (armyId, targetH3, armyName) => {
               await processArmyMovement(armyId, targetH3, armyName);
+            },
+            onSelectWorkerDestination: async (fromH3, targetH3) => {
+              await processWorkerMovement(fromH3, targetH3);
             },
           });
         }
@@ -1965,7 +2138,10 @@ const renderArmyMarkers = (armies, currentPlayerId) => {
           onNormal: async () => showArmyDetailsPopup(h3_index, [lat, lng]),
           onSelectDestination: async (armyId, targetH3, armyName) => {
             await processArmyMovement(armyId, targetH3, armyName);
-          }
+          },
+          onSelectWorkerDestination: async (fromH3, targetH3) => {
+            await processWorkerMovement(fromH3, targetH3);
+          },
         });
       });
       marker.addTo(armyMarkersLayer);
@@ -2465,15 +2641,23 @@ const renderHexagons = (hexagons) => {
           // Modo selección: procesar movimiento del ejército
           onSelectDestination: async (armyId, targetH3, armyName) => {
             await processArmyMovement(armyId, targetH3, armyName);
-          }
+          },
+          // Modo selección: procesar movimiento de trabajadores
+          onSelectWorkerDestination: async (fromH3, targetH3) => {
+            await processWorkerMovement(fromH3, targetH3);
+          },
         });
       });
 
-      // Right-click to cancel selection
+      // Right-click to cancel selection (army or worker movement)
       fillPolygon.on('contextmenu', function (e) {
         L.DomEvent.preventDefault(e);
         if (MapInteractionController.isSelectingDestination()) {
           window.cancelArmyMovement();
+        } else if (MapInteractionController.isSelectingWorkerDestination()) {
+          MapInteractionController.cancelSelection();
+          if (map) map.getContainer().style.cursor = '';
+          showToast('Movimiento cancelado', 'info');
         }
       });
 
@@ -2927,6 +3111,9 @@ const togglePanel = (panelName) => {
     if (panelName === 'notifications') {
       fetchNotifications(); // refresh con spinner al abrir el panel
     }
+    if (panelName === 'market') {
+      fetchMyWorkers();
+    }
   }
 };
 
@@ -3337,7 +3524,8 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       isColonizing: isColonizing.value,
       isExiled: isExiled.value,
       explorationConfig: explorationConfig.value,
-      h3_index
+      h3_index,
+      workerTypes: workerTypes.value,
     });
 
     // Create and show popup
@@ -3383,6 +3571,23 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
             const upgrade = JSON.parse(upgradeBtn.dataset.upgrade);
             map.closePopup();
             openUpgradeModal(h3_index, upgrade);
+          });
+        }
+      }, 100);
+    }
+
+    // Add event listener to hire-worker button (own Capital or fief with Mercado)
+    const isOwnFief = cell.player_id === playerId.value;
+    const hasMarket = isOwnFief && cell.fief_building &&
+      cell.fief_building.name === 'Mercado' && !cell.fief_building.is_under_construction;
+    if (isOwnFief && (cell.is_capital || hasMarket) && workerTypes.value.length > 0) {
+      setTimeout(() => {
+        const buyBtn = document.getElementById(`buy-worker-btn-${h3_index}`);
+        if (buyBtn) {
+          buyBtn.addEventListener('click', () => {
+            const select = document.getElementById(`worker-type-select-${h3_index}`);
+            const worker_type_id = parseInt(select?.value);
+            if (worker_type_id) buyWorkerFromPopup(h3_index, worker_type_id);
           });
         }
       }, 100);
@@ -4275,6 +4480,81 @@ const totalUpkeep = computed(() => {
 });
 
 /**
+ * Fetch the player's own worker list for the market panel.
+ * Also called after buying a worker to keep the panel in sync.
+ */
+const fetchMyWorkers = async () => {
+  loadingWorkers.value = true;
+  try {
+    const data = await mapApi.getMyWorkers();
+    if (data.success) myWorkers.value = data.workers;
+  } catch {
+    // Non-critical
+  } finally {
+    loadingWorkers.value = false;
+  }
+};
+
+/**
+ * Start worker movement from the market panel (closes panel, activates crosshair).
+ * @param {string} fromH3 - Hex where the workers to move are located
+ */
+const startWorkerMoveFromPanel = (fromH3) => {
+  activePanel.value = null; // Close panel so the map is clickable
+  window.startWorkerMovement(fromH3);
+};
+
+/**
+ * Load worker type definitions once on mount.
+ * Stored in workerTypes ref and passed into popup config for the hire form.
+ */
+const loadWorkerTypes = async () => {
+  try {
+    const data = await mapApi.getWorkerTypes();
+    if (data.success) workerTypes.value = data.worker_types;
+  } catch {
+    // Non-critical — popup will just hide the hire form
+  }
+};
+
+/**
+ * Hire a worker from the cell popup.
+ */
+const buyWorkerFromPopup = async (h3_index, worker_type_id) => {
+  try {
+    const result = await mapApi.buyWorker({ h3_index, worker_type_id });
+    if (result.success) {
+      showToast(`⛏️ ${result.message}`, 'success');
+      map.closePopup();
+      await fetchHexagonData();
+      fetchMyWorkers(); // keep market panel in sync
+    }
+  } catch (err) {
+    const msg = err?.response?.data?.message || 'Error al contratar trabajador';
+    showToast(`❌ ${msg}`, 'error');
+  }
+};
+
+/**
+ * Hire a worker from the KingdomPanel fiefs table.
+ * @param {{ h3_index: string, worker_type_id: number, cost: number }} data
+ */
+const handleBuyWorkerFromTable = async ({ h3_index, worker_type_id, cost }) => {
+  try {
+    const result = await mapApi.buyWorker({ h3_index, worker_type_id });
+    if (result.success) {
+      showToast(`⛏️ ${result.message}`, 'success');
+      playerGold.value = Math.max(0, playerGold.value - cost);
+      await fetchHexagonData();
+      fetchMyWorkers(); // keep market panel in sync
+    }
+  } catch (err) {
+    const msg = err?.response?.data?.message || 'Error al contratar trabajador';
+    showToast(`❌ ${msg}`, 'error');
+  }
+};
+
+/**
  * Check authentication status
  * Loads user session from server
  */
@@ -4431,6 +4711,16 @@ const setupMapInteractionController = () => {
     showToast('Movimiento cancelado', 'info');
   };
 
+  // Exponer función global para iniciar movimiento de trabajadores
+  window.startWorkerMovement = (fromH3) => {
+    console.log(`[MapViewer] Iniciando movimiento de trabajadores desde ${fromH3}`);
+    MapInteractionController.startWorkerMovement(fromH3);
+    if (map) {
+      map.getContainer().style.cursor = 'crosshair';
+    }
+    showToast('🎯 Selecciona el destino para los trabajadores. Click derecho para cancelar.', 'info');
+  };
+
   // Registrar callback para cambios de modo
   MapInteractionController.setOnModeChange((mode, data) => {
     console.log(`[MapViewer] Modo de interacción cambió a: ${mode}`, data);
@@ -4474,6 +4764,29 @@ const processArmyMovement = async (armyId, targetH3, armyName) => {
   } catch (error) {
     console.error('[MapViewer] Error procesando movimiento:', error);
     const errorMsg = error.response?.data?.message || error.message || 'Error al mover ejército';
+    showToast(`❌ ${errorMsg}`, 'error');
+  }
+};
+
+/**
+ * Envía la orden de movimiento para todos los trabajadores propios en fromH3.
+ * @param {string} fromH3 - Hex origen donde están los trabajadores
+ * @param {string} targetH3 - Hex destino seleccionado por el jugador
+ */
+const processWorkerMovement = async (fromH3, targetH3) => {
+  try {
+    console.log(`[MapViewer] Movimiento de trabajadores: ${fromH3} → ${targetH3}`);
+    const response = await mapApi.setWorkerHexDestination(fromH3, targetH3);
+
+    if (response.success) {
+      showToast(`✅ ${response.message || `Trabajadores en ruta hacia ${targetH3}`}`, 'success');
+      await fetchHexagonData();
+    } else {
+      showToast(`⚠️ ${response.message || 'No se pudo mover los trabajadores'}`, 'warning');
+    }
+  } catch (error) {
+    console.error('[MapViewer] Error procesando movimiento de trabajadores:', error);
+    const errorMsg = error.response?.data?.message || error.message || 'Error al mover trabajadores';
     showToast(`❌ ${errorMsg}`, 'error');
   }
 };
@@ -4579,6 +4892,7 @@ const handleKeyDown = (event) => {
 // Lifecycle hooks
 onMounted(() => {
   checkAuth(); // Check authentication first
+  loadWorkerTypes(); // Load worker type catalog for popup hire form
   initMap();
   fetchTerrainTypes();
   fetchWorldState();
@@ -5147,6 +5461,134 @@ onBeforeUnmount(() => {
   font-style: italic;
   text-align: center;
   padding: 40px 20px;
+}
+
+/* ── Market Panel (Workers) ── */
+.market-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.market-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.market-subtitle {
+  font-size: 12px;
+  color: var(--color-text-dim);
+}
+
+.btn-refresh-workers {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.7;
+}
+.btn-refresh-workers:hover { opacity: 1; }
+
+.workers-loading,
+.workers-empty {
+  text-align: center;
+  color: var(--color-text-dim);
+  font-size: 12px;
+  padding: 20px 8px;
+}
+.workers-hint {
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.workers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.worker-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.worker-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.worker-type-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f59e0b;
+}
+
+.worker-id {
+  font-size: 10px;
+  color: var(--color-text-dim);
+}
+
+.worker-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+.worker-en-route {
+  color: #34d399;
+  font-size: 11px;
+}
+
+.worker-card-stats {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+.worker-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.worker-btn {
+  flex: 1;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.worker-btn:hover:not(:disabled) { opacity: 0.85; }
+
+.worker-btn-build {
+  background: #374151;
+  color: #9ca3af;
+  border: 1px solid #4b5563;
+  cursor: not-allowed;
+}
+
+.worker-btn-move {
+  background: #f59e0b;
+  color: #1c1917;
 }
 
 /* Layers Panel Sections */

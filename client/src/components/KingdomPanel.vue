@@ -108,6 +108,13 @@
                 @click="$emit('openUpgrade', { h3_index: fief.h3_index, upgrade: fief.fief_building.upgrade })"
                 :title="`Ampliar a ${fief.fief_building.upgrade.name} (${fief.fief_building.upgrade.gold_cost}💰, ${fief.fief_building.upgrade.turns}t)`"
               >🏰</button>
+              <!-- Worker hire button: visible on Capital or fief with completed Mercado -->
+              <button
+                v-if="canBuyWorkers(fief) && workerTypes.length > 0"
+                class="btn-micro btn-worker-micro"
+                @click="openWorkerPanel(fief)"
+                title="Contratar trabajador"
+              >👷</button>
             </td>
           </tr>
         </tbody>
@@ -150,27 +157,129 @@
         </select>
       </div>
     </div>
+
+    <!-- ── Worker Buy Panel ─────────────────────────────────────────────────── -->
+    <Teleport to="body">
+      <div v-if="workerPanel.show" class="worker-panel-backdrop" @click.self="closeWorkerPanel">
+        <div class="worker-panel">
+          <div class="worker-panel-header">
+            <span class="worker-panel-title">👷 Contratar Trabajador</span>
+            <button class="worker-panel-close" @click="closeWorkerPanel">✕</button>
+          </div>
+
+          <div class="worker-panel-body">
+            <p class="worker-panel-fief">
+              <span v-if="workerPanel.fief?.is_capital">👑</span>
+              <span v-else>🏛️</span>
+              {{ workerPanel.fief?.name }}
+            </p>
+
+            <div class="worker-type-list">
+              <label
+                v-for="wt in workerTypes"
+                :key="wt.id"
+                class="worker-type-option"
+                :class="{ selected: workerPanel.selectedTypeId === wt.id }"
+              >
+                <input
+                  type="radio"
+                  :value="wt.id"
+                  v-model="workerPanel.selectedTypeId"
+                  class="worker-type-radio"
+                />
+                <div class="worker-type-info">
+                  <span class="worker-type-name">⛏️ {{ wt.name }}</span>
+                  <span class="worker-type-stats">HP {{ wt.hp }} · Vel {{ wt.speed }} · Det {{ wt.detection_range }}</span>
+                </div>
+                <span class="worker-type-cost" :class="{ 'cost-unaffordable': playerGold < wt.cost }">
+                  {{ wt.cost.toLocaleString() }} 💰
+                </span>
+              </label>
+            </div>
+
+            <p v-if="selectedWorkerType && playerGold < selectedWorkerType.cost" class="worker-gold-warning">
+              ⚠️ Oro insuficiente (tienes {{ Math.floor(playerGold).toLocaleString() }} 💰)
+            </p>
+          </div>
+
+          <div class="worker-panel-footer">
+            <button class="worker-btn-cancel" @click="closeWorkerPanel">Cancelar</button>
+            <button
+              class="worker-btn-hire"
+              :disabled="!workerPanel.selectedTypeId || (selectedWorkerType && playerGold < selectedWorkerType.cost)"
+              @click="confirmHire"
+            >
+              ⛏️ Contratar
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, reactive } from 'vue';
 
 const props = defineProps({
-  fiefs:           { type: Array,  default: () => [] },
-  total:           { type: Number, default: 0 },
-  page:            { type: Number, default: 1 },
-  limit:           { type: Number, default: 10 },
-  playerGold:      { type: Number, default: 0 },
+  fiefs:             { type: Array,  default: () => [] },
+  total:             { type: Number, default: 0 },
+  page:              { type: Number, default: 1 },
+  limit:             { type: Number, default: 10 },
+  playerGold:        { type: Number, default: 0 },
   explorationConfig: { type: Object, default: () => ({ gold_cost: 0 }) },
+  workerTypes:       { type: Array,  default: () => [] },
 });
 
-defineEmits(['focusOnFief', 'exploreFief', 'openRecruitment', 'openConstruction', 'openUpgrade', 'change-page', 'change-limit']);
+const emit = defineEmits([
+  'focusOnFief', 'exploreFief', 'openRecruitment', 'openConstruction', 'openUpgrade',
+  'change-page', 'change-limit',
+  'buyWorker',
+]);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.limit)));
 const rangeStart = computed(() => props.total === 0 ? 0 : (props.page - 1) * props.limit + 1);
 const rangeEnd   = computed(() => Math.min(props.page * props.limit, props.total));
 
+// ── Worker panel state ──────────────────────────────────────────────────────
+const workerPanel = reactive({
+  show:           false,
+  fief:           null,
+  selectedTypeId: null,
+});
+
+const selectedWorkerType = computed(() =>
+  props.workerTypes.find(t => t.id === workerPanel.selectedTypeId) ?? null
+);
+
+/** Returns true if a fief is a valid worker hire location */
+const canBuyWorkers = (fief) =>
+  fief.is_capital ||
+  (fief.fief_building?.name === 'Mercado' && !fief.fief_building.is_under_construction);
+
+const openWorkerPanel = (fief) => {
+  workerPanel.fief = fief;
+  workerPanel.selectedTypeId = props.workerTypes[0]?.id ?? null;
+  workerPanel.show = true;
+};
+
+const closeWorkerPanel = () => {
+  workerPanel.show = false;
+  workerPanel.fief = null;
+  workerPanel.selectedTypeId = null;
+};
+
+const confirmHire = () => {
+  if (!workerPanel.fief || !workerPanel.selectedTypeId) return;
+  emit('buyWorker', {
+    h3_index:       workerPanel.fief.h3_index,
+    worker_type_id: workerPanel.selectedTypeId,
+    cost:           selectedWorkerType.value?.cost ?? 0,
+  });
+  closeWorkerPanel();
+};
+
+// ── Formatters ──────────────────────────────────────────────────────────────
 const formatNumber = (val) => {
   if (val === null || val === undefined || isNaN(val)) return '0';
   if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
@@ -200,7 +309,7 @@ const formatGold = (val) => {
 .col-number { width: 70px; }
 .col-prospection { width: 120px; }
 .col-edificio { width: 130px; }
-.col-actions { width: 140px; }
+.col-actions { width: 160px; }
 
 .kingdom-table th {
   background: rgba(26, 22, 18, 0.9);
@@ -327,9 +436,10 @@ const formatGold = (val) => {
 
 .table-actions {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   justify-content: center;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .btn-micro {
@@ -367,6 +477,17 @@ const formatGold = (val) => {
 .btn-recruit-micro:hover:not(:disabled) {
   background: rgba(255, 215, 0, 0.2);
   border-color: #ffd700;
+}
+
+.btn-worker-micro {
+  background: rgba(180, 83, 9, 0.18);
+  color: #fbbf24;
+  border-color: rgba(180, 83, 9, 0.5);
+}
+
+.btn-worker-micro:hover:not(:disabled) {
+  background: rgba(180, 83, 9, 0.35);
+  border-color: #fbbf24;
 }
 
 .exploration-badge {
@@ -518,4 +639,188 @@ const formatGold = (val) => {
   cursor: pointer;
 }
 .page-size-select:focus { outline: none; border-color: rgba(197, 160, 89, 0.7); }
+
+/* ── Worker Buy Panel ─────────────────────────────────────────────────────── */
+.worker-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.worker-panel {
+  background: #1a1612;
+  border: 2px solid #c5a059;
+  border-radius: 8px;
+  min-width: 340px;
+  max-width: 420px;
+  width: 90vw;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(197, 160, 89, 0.15);
+  display: flex;
+  flex-direction: column;
+}
+
+.worker-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid rgba(197, 160, 89, 0.3);
+}
+
+.worker-panel-title {
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #ffd700;
+  letter-spacing: 0.5px;
+}
+
+.worker-panel-close {
+  background: none;
+  border: none;
+  color: #a89875;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: color 0.2s;
+}
+.worker-panel-close:hover { color: #e8d5b5; }
+
+.worker-panel-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.worker-panel-fief {
+  font-size: 0.9rem;
+  color: #c5a059;
+  font-weight: 600;
+  margin: 0;
+}
+
+.worker-type-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.worker-type-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(93, 78, 55, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.worker-type-option:hover {
+  border-color: rgba(197, 160, 89, 0.5);
+  background: rgba(197, 160, 89, 0.08);
+}
+
+.worker-type-option.selected {
+  border-color: #c5a059;
+  background: rgba(197, 160, 89, 0.12);
+}
+
+.worker-type-radio {
+  accent-color: #c5a059;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.worker-type-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+}
+
+.worker-type-name {
+  font-size: 0.9rem;
+  color: #e8d5b5;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.worker-type-stats {
+  font-size: 0.72rem;
+  color: #7a6a50;
+}
+
+.worker-type-cost {
+  font-size: 0.88rem;
+  color: #ffd700;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.worker-type-cost.cost-unaffordable {
+  color: #ff6b6b;
+}
+
+.worker-gold-warning {
+  font-size: 0.8rem;
+  color: #ff6b6b;
+  background: rgba(231, 76, 60, 0.1);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 0;
+}
+
+.worker-panel-footer {
+  display: flex;
+  gap: 10px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid rgba(93, 78, 55, 0.3);
+  justify-content: flex-end;
+}
+
+.worker-btn-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(93, 78, 55, 0.6);
+  color: #a89875;
+  padding: 8px 18px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: all 0.15s;
+}
+.worker-btn-cancel:hover { background: rgba(255, 255, 255, 0.1); color: #e8d5b5; }
+
+.worker-btn-hire {
+  background: #b45309;
+  border: 1px solid #92400e;
+  color: #fef3c7;
+  padding: 8px 22px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: bold;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.5px;
+  transition: all 0.15s;
+  box-shadow: 0 2px 8px rgba(180, 83, 9, 0.4);
+}
+.worker-btn-hire:hover:not(:disabled) {
+  background: #d97706;
+  box-shadow: 0 3px 12px rgba(180, 83, 9, 0.6);
+}
+.worker-btn-hire:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
 </style>

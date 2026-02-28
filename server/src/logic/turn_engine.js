@@ -3,6 +3,7 @@ const { determineDiscoveredResource } = require('./discovery');
 const { processTaxCollection } = require('./tax_collector');
 const { processTithe } = require('./tithe_system');
 const { processGraceTurns } = require('./conquest_system');
+const { processWorkerMovements } = require('./workerMovement');
 const GAME_CONFIG = require('../config/constants');
 const { getPopulationCap } = require('../config/gameFunctions');
 const { Logger } = require('../utils/logger');
@@ -877,6 +878,9 @@ async function processGameTurn(pool, config) {
         // executeArmyTurn opens its own transaction (T2) and tries to UPDATE armies.h3_index.
         // T2 would block waiting for T1's lock, while T1 awaits T2 in JS → application-level deadlock.
         await processArmyMovements(client, newTurn, config);
+
+        // Worker straight-line movements (every turn)
+        await processWorkerMovements(client, newTurn);
 
         // Army passive stamina recovery (every turn, after movements)
         // Ejecutar DESPUÉS del movimiento para que el esfuerzo extra de este turno

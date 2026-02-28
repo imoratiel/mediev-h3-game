@@ -19,6 +19,7 @@ module.exports = function () {
     const PlayerService = require('../src/services/PlayerService.js');
     const ScoutingService = require('../src/services/ScoutingService.js');
     const EconomyService = require('../src/services/EconomyService.js');
+    const WorkerService = require('../src/services/WorkerService.js');
 
     // ============================================
     // AUTHENTICATION ENDPOINTS
@@ -117,6 +118,15 @@ module.exports = function () {
     router.get('/messages/thread/:thread_id', authenticateToken, async (req, res) => {
         
     });
+
+    // ============================================
+    // WORKERS
+    // ============================================
+    router.get('/workers/types', (req, res) => WorkerService.GetTypes(req, res));
+    router.post('/workers/buy', authenticateToken, (req, res) => WorkerService.Buy(req, res));
+    router.get('/map/workers', authenticateToken, (req, res) => WorkerService.GetInRegion(req, res));
+    router.get('/workers/my', authenticateToken, (req, res) => WorkerService.GetMyWorkers(req, res));
+    router.post('/workers/set-hex-destination', authenticateToken, (req, res) => WorkerService.SetHexDestination(req, res));
 
     // ============================================
     // NOTIFICATIONS

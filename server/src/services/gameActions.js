@@ -21,6 +21,7 @@
 
 const KingdomModel    = require('../models/KingdomModel');
 const ArmyModel       = require('../models/ArmyModel');
+const WorkerModel     = require('../models/WorkerModel');
 const recruitmentNetwork = require('../logic/recruitmentNetwork');
 const GAME_CONFIG     = require('../config/constants');
 const { getArmyLimit } = require('../config/gameFunctions');
@@ -238,6 +239,81 @@ async function executeConstruction(client, playerId, { h3_index, building_id }, 
     };
 }
 
+// ─── buyWorker ────────────────────────────────────────────────────────────────
+
+/**
+ * Hire a worker for any player (human or bot).
+ *
+ * Valid locations: player's Capital OR a fief with a completed Mercado building.
+ * Deducts gold from players table and inserts into workers table.
+ *
+ * @param {import('pg').PoolClient} client
+ * @param {number} playerId
+ * @param {{ h3_index: string, worker_type_id: number }} params
+ * @param {{ actorName?: string }} [meta]
+ * @returns {{ worker_id: number, message: string }}
+ * @throws {GameActionError}
+ */
+async function buyWorker(client, playerId, { h3_index, worker_type_id }, meta = {}) {
+    if (!h3_index || !worker_type_id) {
+        throw new GameActionError('h3_index y worker_type_id son requeridos');
+    }
+
+    // ── 1. Territory must exist and belong to this player ─────────────────────
+    const terrResult = await ArmyModel.GetTerritoryForRecruitment(client, h3_index);
+    if (terrResult.rows.length === 0) {
+        throw new GameActionError('Territorio no encontrado');
+    }
+    const territory = terrResult.rows[0];
+    if (territory.player_id !== playerId) {
+        throw new GameActionError('No posees este territorio', 'FORBIDDEN');
+    }
+
+    // ── 2. Location must be Capital OR a fief with a completed Mercado ────────
+    const isCapital = territory.capital_h3 === h3_index;
+    if (!isCapital) {
+        const hasMarket = await WorkerModel.CheckMarketInFief(client, h3_index);
+        if (!hasMarket) {
+            throw new GameActionError(
+                'Los trabajadores solo se pueden contratar en tu Capital o en feudos con un Mercado construido.',
+                'FORBIDDEN'
+            );
+        }
+    }
+
+    // ── 3. Worker type must exist ─────────────────────────────────────────────
+    const workerType = await WorkerModel.GetWorkerType(client, worker_type_id);
+    if (!workerType) {
+        throw new GameActionError('Tipo de trabajador no encontrado');
+    }
+
+    // ── 4. Gold check ─────────────────────────────────────────────────────────
+    const goldRow = await KingdomModel.GetPlayerGold(client, playerId);
+    const playerGold = parseInt(goldRow?.gold) || 0;
+    if (playerGold < workerType.cost) {
+        throw new GameActionError(
+            `Oro insuficiente. Necesitas ${workerType.cost} 💰 pero tienes ${playerGold} 💰.`
+        );
+    }
+
+    // ── 5. Deduct gold ────────────────────────────────────────────────────────
+    await ArmyModel.DeductPlayerGold(client, playerId, workerType.cost);
+
+    // ── 6. Create worker (stats copied from type to allow future buffs) ───────
+    const worker = await WorkerModel.CreateWorker(
+        client, playerId, h3_index, worker_type_id,
+        workerType.hp, workerType.speed, workerType.detection_range
+    );
+
+    const label = _actorLabel(meta, playerId);
+    Logger.action(
+        `[ACTION]${label}: Contrató trabajador "${workerType.name}" en ${h3_index} (-${workerType.cost}💰)`,
+        { player_id: playerId, h3_index, worker_type_id, worker_id: worker.id }
+    );
+
+    return { worker_id: worker.id, message: `${workerType.name} contratado exitosamente` };
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
-module.exports = { executeRecruitment, executeConstruction, GameActionError };
+module.exports = { executeRecruitment, executeConstruction, buyWorker, GameActionError };

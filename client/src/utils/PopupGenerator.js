@@ -20,7 +20,8 @@ export function generateCellPopupContent(cell, config) {
     isColonizing,
     isExiled = false,
     explorationConfig,
-    h3_index
+    h3_index,
+    workerTypes = [],    // array of { id, name, cost } from /api/workers/types
   } = config;
 
   let popupContent = '<div class="cell-inspector">';
@@ -189,6 +190,44 @@ export function generateCellPopupContent(cell, config) {
     if (isExiled) {
       popupContent += `<p class="exile-hint" style="font-size:0.72rem;color:#f97316;margin:4px 0 0 0;">⛓️ Estás en el exilio — coloniza aquí para reanudar tu reino</p>`;
     }
+  }
+
+  // WORKER HIRE — shown on own hexes that are Capital or have a completed Mercado
+  const isOwnFief = cell.player_id === playerId;
+  const hasMarket = isOwnFief && cell.fief_building &&
+    cell.fief_building.name === 'Mercado' && !cell.fief_building.is_under_construction;
+  const isCapitalHex = cell.is_capital && isOwnFief;
+  const canHireWorkers = (isCapitalHex || hasMarket) && workerTypes.length > 0;
+
+  if (canHireWorkers) {
+    const options = workerTypes.map(t =>
+      `<option value="${t.id}">${t.name} (${t.cost} 💰)</option>`
+    ).join('');
+
+    popupContent += `
+      <div class="popup-worker-section">
+        <p class="popup-details-title" style="margin:10px 0 6px;">👷 Contratar Trabajador</p>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <select id="worker-type-select-${h3_index}"
+            style="flex:1;min-width:130px;padding:5px 8px;
+                   background:#1a1612;border:1px solid #c5a059;border-radius:4px;
+                   color:#e8d5b5;font-size:0.85em;cursor:pointer;">
+            ${options}
+          </select>
+          <button id="buy-worker-btn-${h3_index}"
+            class="btn-popup"
+            style="background:#b45309;border-color:#92400e;white-space:nowrap;"
+            title="Contratar trabajador en este feudo">
+            ⛏️ Contratar
+          </button>
+        </div>
+      </div>`;
+  } else if (isOwnFief && !canHireWorkers && workerTypes.length > 0) {
+    // Own fief but no valid location — hint without a form
+    popupContent += `
+      <p style="font-size:0.75rem;color:#6b7280;margin:8px 0 0 0;">
+        ⚒️ Construye un <strong>Mercado</strong> para poder contratar trabajadores aquí.
+      </p>`;
   }
 
   popupContent += '</div>';
