@@ -2,11 +2,11 @@ version: '3.8'
 
 services:
   # --- SERVIDOR DE APLICACIÓN (NODE.JS) ---
-  app:
+  backend:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: marca_hispanica_app
+    container_name: marca_hispanica_backend
     tty: true
     restart: always
     # Puertos: mapeamos el 3000 de tu PC al 3000 del contenedor
@@ -56,7 +56,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       # Autoejecución de tus scripts de la carpeta /sql/
       - ./sql:/docker-entrypoint-initdb.d/:ro
-    # Verificación de salud para que 'app' sepa cuándo conectarse
+    # Verificación de salud para que 'backend' sepa cuándo conectarse
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
       interval: 5s
@@ -65,14 +65,15 @@ services:
     networks:
       - game-network
 
-  client:
+  client:    
+    container_name: marca_hispanica_client
     build:
       context: ./client
       dockerfile: Dockerfile
     ports:
       - "8080:80"
     depends_on:
-      app:
+      backend:
         condition: service_healthy
     networks:
       - game-network
