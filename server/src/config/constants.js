@@ -47,6 +47,11 @@ const GAME_CONFIG = {
         EMERGENCY_HARVEST_MAX: 4.0,       // Multiplicador máximo de Cosecha Milagrosa (exclusivo, rango [MIN, MAX))
     },
 
+    // 🏛️ Reglas de Construcción
+    BUILDINGS: {
+        EXCLUSION_RADIUS: 5,   // Radio (en hexágonos H3) dentro del cual no puede existir otro edificio del mismo tipo
+    },
+
     // 🏰 Límite de Ejércitos por Jugador
     // Regla: max(BASE, floor(feudos / RATIO))
     // Ej: 0 feudos → 1 ejército, 3 → 1, 6 → 2, 30 → 10, 170 → 56

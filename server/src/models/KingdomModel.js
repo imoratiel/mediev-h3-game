@@ -128,6 +128,19 @@ class KingdomModel {
         );
         return result.rows[0] || null;
     }
+    async GetBuildingOfTypeInRadius(client, h3Cells, typeId, excludeH3) {
+        const result = await client.query(
+            `SELECT fb.h3_index, b.name AS building_name
+             FROM fief_buildings fb
+             JOIN buildings b ON fb.building_id = b.id
+             WHERE fb.h3_index = ANY($1::text[])
+               AND fb.h3_index != $2
+               AND b.type_id = $3
+             LIMIT 1`,
+            [h3Cells, excludeH3, typeId]
+        );
+        return result.rows[0] || null;
+    }
     async GetCompletedBuilding(client, h3_index, building_id) {
         const result = await client.query(
             'SELECT * FROM fief_buildings WHERE h3_index = $1 AND building_id = $2 AND is_under_construction = FALSE',

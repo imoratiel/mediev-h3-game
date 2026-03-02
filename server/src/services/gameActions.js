@@ -19,6 +19,7 @@
  * On validation failure each function throws a GameActionError (user-friendly Spanish message).
  */
 
+const h3              = require('h3-js');
 const KingdomModel    = require('../models/KingdomModel');
 const ArmyModel       = require('../models/ArmyModel');
 const WorkerModel     = require('../models/WorkerModel');
@@ -208,7 +209,17 @@ async function executeConstruction(client, playerId, { h3_index, building_id }, 
         throw new GameActionError('Edificio no encontrado');
     }
 
-    // ── 4. Prerequisite building if required ──────────────────────────────────
+    // ── 4. Exclusion radius: no same building type within EXCLUSION_RADIUS hexes ─
+    const exclusionRadius = GAME_CONFIG.BUILDINGS.EXCLUSION_RADIUS;
+    const nearbyHexes = h3.gridDisk(h3_index, exclusionRadius);
+    const conflict = await KingdomModel.GetBuildingOfTypeInRadius(client, nearbyHexes, building.type_id, h3_index);
+    if (conflict) {
+        throw new GameActionError(
+            `Ya existe un edificio de este tipo en un radio de ${exclusionRadius} feudos (en ${conflict.h3_index})`
+        );
+    }
+
+    // ── 5. Prerequisite building if required ──────────────────────────────────
     if (building.required_building_id) {
         const prereq = await KingdomModel.GetCompletedBuilding(client, h3_index, building.required_building_id);
         if (!prereq) {
@@ -216,7 +227,7 @@ async function executeConstruction(client, playerId, { h3_index, building_id }, 
         }
     }
 
-    // ── 5. Gold check ─────────────────────────────────────────────────────────
+    // ── 6. Gold check ─────────────────────────────────────────────────────────
     const player = await KingdomModel.GetPlayerGold(client, playerId);
     if ((player?.gold ?? 0) < building.gold_cost) {
         throw new GameActionError(`Oro insuficiente. Necesitas ${building.gold_cost} 💰`);
