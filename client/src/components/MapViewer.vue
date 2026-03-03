@@ -2092,7 +2092,7 @@ const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) =>
           const count = Number(e.total_troops) || 0;
           if (e.player_id === currentPlayerId) {
             ownTroops += count;
-            if (e.has_field_army) ownHasFieldArmy = true;
+            if (!e.has_garrison || Number(e.army_count) > 1) ownHasFieldArmy = true;
           } else {
             enemyTroops += count;
           }

@@ -772,9 +772,13 @@ class ArmyService {
             }
 
             // Own armies always visible; enemy armies only if in the visible zone
-            const visibleArmies = armiesResult.rows.filter(army =>
-                army.player_id === playerId || visibleHexes.has(army.h3_index)
-            );
+            const visibleArmies = armiesResult.rows
+                .filter(army => army.player_id === playerId || visibleHexes.has(army.h3_index))
+                .map(army => {
+                    if (army.player_id === playerId) return army;
+                    // Enemy army: only expose position and owner, no military intelligence
+                    return { h3_index: army.h3_index, player_id: army.player_id };
+                });
 
             res.json({ success: true, armies: visibleArmies, current_player_id: playerId });
         } catch (error) {

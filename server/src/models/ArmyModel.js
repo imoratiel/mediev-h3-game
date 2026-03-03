@@ -88,8 +88,7 @@ class ArmyModel {
                 a.player_id,
                 COUNT(DISTINCT a.army_id) AS army_count,
                 SUM(t.quantity) AS total_troops,
-                BOOL_OR(a.is_garrison)     AS has_garrison,
-                BOOL_OR(NOT a.is_garrison) AS has_field_army
+                BOOL_OR(a.is_garrison) AS has_garrison
             FROM armies a
             LEFT JOIN troops t ON a.army_id = t.army_id
             WHERE a.h3_index = ANY($1::text[])
