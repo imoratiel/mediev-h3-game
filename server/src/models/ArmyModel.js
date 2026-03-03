@@ -348,7 +348,15 @@ class ArmyModel {
                     COALESCE(td.iron_stored, 0) AS fief_iron,
                     (m.player_id = a.player_id) AS is_own_fief,
                     t.name AS terrain_name,
-                    pl.capital_h3
+                    pl.capital_h3,
+                    EXISTS (
+                        SELECT 1 FROM fief_buildings fb
+                        JOIN buildings b ON fb.building_id = b.id
+                        JOIN building_types bt ON b.type_id = bt.building_type_id
+                        WHERE fb.h3_index = a.h3_index
+                          AND bt.name = 'military'
+                          AND NOT fb.is_under_construction
+                    ) AS fief_has_military
              FROM armies a
              LEFT JOIN h3_map m ON a.h3_index = m.h3_index
              LEFT JOIN territory_details td ON a.h3_index = td.h3_index

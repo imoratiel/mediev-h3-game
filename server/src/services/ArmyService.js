@@ -788,6 +788,23 @@ class ArmyService {
                 });
             }
 
+            // 2b. Verify location: must be capital or fief with completed military building
+            const playerCapResult = await client.query(
+                'SELECT capital_h3 FROM players WHERE player_id = $1',
+                [player_id]
+            );
+            const isCapital = playerCapResult.rows[0]?.capital_h3 === h3_index;
+            if (!isCapital) {
+                const hasMilitary = await ArmyModel.CheckMilitaryBuildingInFief(client, h3_index);
+                if (!hasMilitary) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Solo puedes reforzar en tu Capital o en feudos con un edificio militar completado (Cuartel o Fortaleza).'
+                    });
+                }
+            }
+
             // 3. Compute total cost (same as recruitment)
             const unitTypeIds = units.map(u => u.unit_type_id);
             const reqResult = await ArmyModel.GetBulkUnitRequirements(client, unitTypeIds);

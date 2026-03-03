@@ -121,6 +121,15 @@
               No se puede reclutar hasta que el feudo se estabilice.
             </div>
 
+            <!-- Bloqueado: sin edificio militar -->
+            <div
+              v-else-if="armyDetail.h3_index !== armyDetail.capital_h3 && !armyDetail.fief_has_military"
+              class="adm-reinforce-blocked"
+            >
+              🏗️ Este feudo no tiene un edificio militar completado.<br>
+              Solo puedes reforzar en tu Capital o en feudos con un Cuartel o Fortaleza.
+            </div>
+
             <!-- Formulario de refuerzo -->
             <template v-else-if="showReinforce">
               <div class="adm-reinforce-wrap">
