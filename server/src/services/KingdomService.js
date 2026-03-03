@@ -9,7 +9,7 @@ const conquest = require('../logic/conquest.js');
 const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = require('../logic/conquest_system.js');
 const pool = require('../../db.js');
 const h3 = require('h3-js');
-const { executeConstruction, canPerformAction, applyCooldown, GameActionError } = require('./gameActions.js');
+const { executeConstruction, canPerformAction, applyCooldown, processConquestLoot, GameActionError } = require('./gameActions.js');
 
 class KingdomService {
     async StartExploration(req, res) {
@@ -433,6 +433,12 @@ class KingdomService {
                 cascadedFiefs = await processCapitalCollapse(client, h3_index, player_id, currentOwner, turn);
             }
 
+            // 11. Saqueo (solo si el ejército sobrevivió)
+            let lootResult = null;
+            if (!armyDestroyed) {
+                lootResult = await processConquestLoot(client, armyId, h3_index);
+            }
+
             await client.query('COMMIT');
 
             Logger.action(`Player ${player_id} conquered ${h3_index} (prev owner: ${currentOwner}, result: ${result})`, { player_id, h3_index, previous_owner: currentOwner, result, cascaded: cascadedFiefs.length });
@@ -449,6 +455,7 @@ class KingdomService {
                 is_capital_conquest: isCapital,
                 cascaded_fiefs: cascadedFiefs.length,
                 army_destroyed: armyDestroyed,
+                loot: lootResult,
                 message: isCapital
                     ? `🏚️ ¡Capital conquistada! ${cascadedFiefs.length} feudos colapsaron automáticamente.`
                     : result === 'victory' ? '🏴 ¡Territorio conquistado!' : '🏴 El territorio cambia de manos por desgaste.'
@@ -655,6 +662,12 @@ class KingdomService {
             // Registrar cooldown de conquista (se aplica siempre, gane o pierda)
             await applyCooldown(client, armyId, 'conquer');
 
+            // 14. Saqueo (solo si se conquistó y el ejército sigue vivo)
+            let lootResult = null;
+            if ((result === 'victory' || result === 'draw') && !armyDestroyed) {
+                lootResult = await processConquestLoot(client, armyId, h3_index);
+            }
+
             await client.query('COMMIT');
 
             Logger.action(`Player ${player_id} conquerFief ${h3_index} → ${result}${isCapital ? ` [CAPITAL, cascade: ${cascadedFiefs.length}]` : ''}`, { player_id, h3_index, result, attacker_losses, defender_losses });
@@ -674,6 +687,7 @@ class KingdomService {
                 is_capital_conquest: isCapital,
                 cascaded_fiefs: cascadedFiefs.length,
                 army_destroyed: armyDestroyed,
+                loot: lootResult,
                 message: isCapital && result !== 'defeat'
                     ? `🏚️ ¡Capital conquistada! ${cascadedFiefs.length} feudos colapsaron automáticamente.`
                     : result === 'victory' ? 'El feudo ahora es tuyo.'

@@ -376,10 +376,120 @@ async function buyWorker(client, playerId, { h3_index, worker_type_id }, meta = 
     return { worker_id: worker.id, message: `${workerType.name} contratado exitosamente` };
 }
 
+// ─── Conquest Loot ────────────────────────────────────────────────────────────
+
+/**
+ * Returns a random integer in [min, max] inclusive.
+ */
+function getRandomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * Processes loot when an army wins or draws a conquest.
+ * Must be called INSIDE an active transaction (BEGIN already issued by caller).
+ *
+ * Mechanic:
+ *   lootPct  ∈ [10%, 30%]  — fraction of each resource taken from the fief
+ *   armyPct  ∈ [40%, 60%]  — fraction of the loot that goes to the army
+ *   rest of loot            — destroyed (chaos of battle)
+ *
+ * @param {import('pg').PoolClient} client
+ * @param {number} armyId
+ * @param {string} h3_index  - conquered hex
+ * @returns {{ loot: Object, armyGains: Object, destroyed: Object }}
+ */
+async function processConquestLoot(client, armyId, h3_index) {
+    // 1. Lock resource row
+    const tdResult = await client.query(
+        `SELECT food_stored, wood_stored, stone_stored, iron_stored, gold_stored
+         FROM territory_details
+         WHERE h3_index = $1
+         FOR UPDATE`,
+        [h3_index]
+    );
+
+    if (tdResult.rows.length === 0) {
+        // No territory_details row yet — nothing to loot
+        return { loot: {}, armyGains: {}, destroyed: {} };
+    }
+
+    const td = tdResult.rows[0];
+
+    // 2. Roll percentages once for the whole event
+    const lootPct = getRandomInt(10, 30) / 100;   // 10 – 30 %
+    const armyPct = getRandomInt(40, 60) / 100;   // 40 – 60 % of loot
+
+    const resources = ['food_stored', 'wood_stored', 'stone_stored', 'iron_stored', 'gold_stored'];
+    const provisionKeys = {
+        food_stored:  'food_provisions',
+        wood_stored:  'wood_provisions',
+        stone_stored: 'stone_provisions',
+        iron_stored:  'iron_provisions',
+        gold_stored:  'gold_provisions',
+    };
+
+    const loot      = {};   // total removed from fief  (per resource)
+    const armyGains = {};   // army receives             (per resource)
+    const destroyed = {};   // lost to destruction       (per resource)
+
+    for (const col of resources) {
+        const available = Math.floor(parseFloat(td[col]) || 0);
+        if (available <= 0) continue;
+
+        const totalLoot  = Math.min(available, Math.floor(available * lootPct));
+        if (totalLoot <= 0) continue;
+
+        const armyShare  = Math.floor(totalLoot * armyPct);
+        const lostShare  = totalLoot - armyShare;
+
+        loot[col]      = totalLoot;
+        armyGains[col] = armyShare;
+        destroyed[col] = lostShare;
+    }
+
+    // 3. Deduct from fief (only columns where we actually looted)
+    if (Object.keys(loot).length > 0) {
+        const setClauses = Object.keys(loot)
+            .map((col, i) => `${col} = GREATEST(0, ${col} - $${i + 2})`)
+            .join(', ');
+        const values = [h3_index, ...Object.values(loot)];
+        await client.query(
+            `UPDATE territory_details SET ${setClauses} WHERE h3_index = $1`,
+            values
+        );
+    }
+
+    // 4. Add army gains to provisions
+    if (Object.keys(armyGains).length > 0) {
+        const setClauses = Object.keys(armyGains)
+            .map((col, i) => `${provisionKeys[col]} = ${provisionKeys[col]} + $${i + 2}`)
+            .join(', ');
+        const values = [armyId, ...Object.values(armyGains)];
+        await client.query(
+            `UPDATE armies SET ${setClauses} WHERE army_id = $1`,
+            values
+        );
+    }
+
+    // 5. Log
+    const totalLooted    = Object.values(loot).reduce((s, v) => s + v, 0);
+    const totalArmyGains = Object.values(armyGains).reduce((s, v) => s + v, 0);
+    const totalDestroyed = Object.values(destroyed).reduce((s, v) => s + v, 0);
+    Logger.engine(
+        `[SAQUEO] Ejército ${armyId} saqueó ${h3_index}: ` +
+        `total=${totalLooted} | ejército=${totalArmyGains} | destruido=${totalDestroyed} ` +
+        `| lootPct=${Math.round(lootPct * 100)}% armyPct=${Math.round(armyPct * 100)}%`
+    );
+
+    return { loot, armyGains, destroyed };
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
     executeRecruitment, executeConstruction, buyWorker,
     canPerformAction, applyCooldown,
+    processConquestLoot,
     GameActionError, COOLDOWN_TURNS,
 };
