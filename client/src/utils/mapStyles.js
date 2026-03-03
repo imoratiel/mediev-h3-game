@@ -63,13 +63,8 @@ export function getHexagonBorderStyle(hex, config) {
   let borderColor = '#d32f2f';
   let borderWeight = 3;
 
-  // Logic from requirements for CAPITAL
-  if (isCapital) {
-    borderColor = '#ff0000';
-    borderWeight = 6;
-  }
-  // Logic for other cases (Roads, Enemies)
-  else if (isMyTerritory) {
+  // Capital uses the same border style as any own territory (icon is enough distinction)
+  if (isMyTerritory) {
     borderColor = '#d32f2f';
     borderWeight = 3;
   } else if (isPoliticalView && playerColor) {
