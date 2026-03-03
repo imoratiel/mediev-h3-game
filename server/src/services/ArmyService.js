@@ -661,19 +661,54 @@ class ArmyService {
                 );
             }
 
-            // Refresh detection ranges
-            await ArmyModel.refreshDetectionRange(client, from_army_id);
-            await ArmyModel.refreshDetectionRange(client, to_army_id);
+            // Check if either army is now empty — dissolve it and pass remaining provisions to the other
+            const PROV_COLS = ['gold_provisions', 'food_provisions', 'wood_provisions', 'stone_provisions', 'iron_provisions'];
+            let dissolved_army_id = null;
+            let dissolved_name    = null;
+            let survivor_army_id  = null;
+
+            for (const [emptyId, survivorId] of [[from_army_id, to_army_id], [to_army_id, from_army_id]]) {
+                const troopCheck = await client.query(
+                    'SELECT COALESCE(SUM(quantity), 0) AS total FROM troops WHERE army_id = $1',
+                    [emptyId]
+                );
+                if (parseInt(troopCheck.rows[0].total) === 0) {
+                    // Transfer all remaining provisions to survivor
+                    const emptyRow = await client.query(
+                        `SELECT ${PROV_COLS.join(', ')} FROM armies WHERE army_id = $1`, [emptyId]
+                    );
+                    const ep = emptyRow.rows[0];
+                    const setClauses = PROV_COLS.map(c => `${c} = ${c} + ${parseFloat(ep[c] || 0)}`).join(', ');
+                    if (setClauses) {
+                        await client.query(`UPDATE armies SET ${setClauses} WHERE army_id = $1`, [survivorId]);
+                    }
+                    // Delete routes and army
+                    await client.query('DELETE FROM army_routes WHERE army_id = $1', [emptyId]);
+                    await client.query('DELETE FROM armies WHERE army_id = $1', [emptyId]);
+                    dissolved_army_id = emptyId;
+                    dissolved_name    = emptyId === from_army_id ? fromArmy.name : toArmy.name;
+                    survivor_army_id  = survivorId;
+                    break;
+                }
+            }
+
+            // Refresh detection ranges (only for armies that still exist)
+            if (dissolved_army_id !== from_army_id) await ArmyModel.refreshDetectionRange(client, from_army_id);
+            if (dissolved_army_id !== to_army_id)   await ArmyModel.refreshDetectionRange(client, to_army_id);
 
             await client.query('COMMIT');
+
+            const msg = dissolved_army_id
+                ? `Transferencia aplicada. El ejército "${dissolved_name}" quedó vacío y fue disuelto.`
+                : 'Transferencia realizada correctamente';
 
             Logger.action(
                 `Transferencia entre ejércitos "${fromArmy.name}" → "${toArmy.name}" (${fromArmy.h3_index})`,
                 player_id,
-                { from_army_id, to_army_id, troop_types: troops.length, provisions }
+                { from_army_id, to_army_id, troop_types: troops.length, provisions, dissolved_army_id }
             );
 
-            res.json({ success: true, message: 'Transferencia realizada correctamente' });
+            res.json({ success: true, message: msg, dissolved_army_id });
         } catch (error) {
             await client.query('ROLLBACK');
             Logger.error(error, { endpoint: '/military/transfer', method: 'POST', userId: req.user?.player_id, payload: req.body });

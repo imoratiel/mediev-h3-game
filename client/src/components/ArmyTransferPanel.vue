@@ -7,9 +7,9 @@
           <!-- Header -->
           <div class="atp-header">
             <div class="atp-header-left">
-              <span class="atp-icon">↔️</span>
+              <span class="atp-icon">🔗</span>
               <div>
-                <h2 class="atp-title">Gestión de Ejércitos</h2>
+                <h2 class="atp-title">Unir Ejércitos</h2>
                 <span class="atp-subtitle">{{ fiefName || h3_index }}</span>
               </div>
             </div>
@@ -26,20 +26,22 @@
             </select>
           </div>
 
-          <!-- Loading -->
+          <!-- Loading / Error -->
           <div v-if="loading" class="atp-loading">Cargando ejércitos...</div>
           <div v-else-if="errorMsg" class="atp-error">❌ {{ errorMsg }}</div>
 
           <template v-else-if="armyA && armyB">
-            <!-- Army column headers -->
+
+            <!-- Army name headers -->
             <div class="atp-army-headers">
-              <div class="atp-army-name army-a">
-                {{ armyA.army.is_garrison ? '🏰' : '⚔️' }} {{ armyA.army.name }}
+              <div class="atp-army-label army-a">
+                {{ armyA.army.is_garrison ? '🏰' : '⚔️' }}
+                {{ armyA.army.name }}
                 <span v-if="armyA.army.is_garrison" class="atp-garrison-tag">GUARNICIÓN</span>
               </div>
-              <div class="atp-center-col"></div>
-              <div class="atp-army-name army-b">
-                {{ armyB.army.is_garrison ? '🏰' : '⚔️' }} {{ armyB.army.name }}
+              <div class="atp-army-label army-b">
+                {{ armyB.army.is_garrison ? '🏰' : '⚔️' }}
+                {{ armyB.army.name }}
                 <span v-if="armyB.army.is_garrison" class="atp-garrison-tag">GUARNICIÓN</span>
               </div>
             </div>
@@ -47,121 +49,99 @@
             <!-- Troops section -->
             <div class="atp-section-label">🗡 TROPAS</div>
             <div v-if="allUnitTypes.length === 0" class="atp-empty">Ningún ejército tiene tropas.</div>
-            <div v-else class="atp-troops-table">
-              <div class="atp-troops-header">
-                <span>Ejército A</span>
-                <span class="atp-unit-col">Unidad</span>
-                <span class="atp-transfer-col">Transferir</span>
-                <span>Ejército B</span>
-              </div>
-              <div
-                v-for="ut in allUnitTypes"
-                :key="ut.unit_type_id"
-                class="atp-troop-row"
-              >
-                <!-- Army A qty (with preview) -->
-                <div class="atp-qty-cell army-a-cell">
-                  <span class="atp-qty-current">{{ qtyA(ut.unit_type_id) }}</span>
-                  <span v-if="pendingA(ut.unit_type_id) !== qtyA(ut.unit_type_id)" class="atp-qty-preview">
-                    → {{ pendingA(ut.unit_type_id) }}
-                  </span>
+            <div v-else class="atp-rows">
+              <div v-for="ut in allUnitTypes" :key="ut.unit_type_id" class="atp-row">
+                <div class="atp-row-title">
+                  <span class="atp-row-name">{{ ut.unit_name }}</span>
+                  <span class="atp-row-total">Total: {{ troopTotal(ut.unit_type_id) }}</span>
                 </div>
-
-                <!-- Unit name -->
-                <div class="atp-unit-name">{{ ut.unit_name }}</div>
-
-                <!-- Transfer controls -->
-                <div class="atp-transfer-controls">
-                  <button
-                    class="atp-dir-btn"
-                    :disabled="qtyA(ut.unit_type_id) === 0"
-                    @click="setTransferDir(ut.unit_type_id, 1)"
-                    title="Enviar A → B"
-                  >→</button>
+                <div class="atp-slider-row">
+                  <span class="atp-val army-a">{{ troopAllocA(ut.unit_type_id) }}</span>
+                  <div class="atp-slider-wrap">
+                    <input
+                      type="range"
+                      class="atp-slider"
+                      :min="0"
+                      :max="troopTotal(ut.unit_type_id)"
+                      :value="troopAllocA(ut.unit_type_id)"
+                      :disabled="troopTotal(ut.unit_type_id) === 0"
+                      :style="sliderStyle(troopAllocA(ut.unit_type_id), troopTotal(ut.unit_type_id))"
+                      @input="onTroopSlider(ut.unit_type_id, $event)"
+                    />
+                  </div>
+                  <span class="atp-val army-b">{{ troopTotal(ut.unit_type_id) - troopAllocA(ut.unit_type_id) }}</span>
+                </div>
+                <div class="atp-input-row">
+                  <label class="atp-input-label">{{ armyA.army.name }}:</label>
                   <input
                     type="number"
-                    class="atp-qty-input"
-                    :value="Math.abs(troopTransfer(ut.unit_type_id))"
-                    min="0"
+                    class="atp-num-input"
+                    :min="0"
+                    :max="troopTotal(ut.unit_type_id)"
+                    :value="troopAllocA(ut.unit_type_id)"
                     @change="onTroopInput(ut.unit_type_id, $event)"
                   />
-                  <button
-                    class="atp-dir-btn"
-                    :disabled="qtyB(ut.unit_type_id) === 0"
-                    @click="setTransferDir(ut.unit_type_id, -1)"
-                    title="Enviar B → A"
-                  >←</button>
-                </div>
-
-                <!-- Army B qty (with preview) -->
-                <div class="atp-qty-cell army-b-cell">
-                  <span class="atp-qty-current">{{ qtyB(ut.unit_type_id) }}</span>
-                  <span v-if="pendingB(ut.unit_type_id) !== qtyB(ut.unit_type_id)" class="atp-qty-preview">
-                    → {{ pendingB(ut.unit_type_id) }}
-                  </span>
                 </div>
               </div>
             </div>
 
             <!-- Provisions section -->
             <div class="atp-section-label">📦 SUMINISTROS</div>
-            <div class="atp-prov-table">
-              <div class="atp-prov-row" v-for="p in PROVISIONS" :key="p.key">
-                <div class="atp-prov-qty army-a-cell">
-                  <span class="atp-qty-current">{{ provA(p.key) }}</span>
-                  <span v-if="pendingProvA(p.key) !== provA(p.key)" class="atp-qty-preview">
-                    → {{ pendingProvA(p.key) }}
-                  </span>
+            <div class="atp-rows">
+              <div v-for="p in PROVISIONS" :key="p.key" class="atp-row">
+                <div class="atp-row-title">
+                  <span class="atp-row-name">{{ p.icon }} {{ p.label }}</span>
+                  <span class="atp-row-total">Total: {{ provTotal(p.key) }}</span>
                 </div>
-                <div class="atp-prov-label">{{ p.icon }} {{ p.label }}</div>
-                <div class="atp-transfer-controls">
-                  <button
-                    class="atp-dir-btn"
-                    :disabled="provA(p.key) <= 0"
-                    @click="setProvDir(p.key, 1)"
-                    title="Enviar A → B"
-                  >→</button>
+                <div class="atp-slider-row">
+                  <span class="atp-val army-a">{{ provAllocA(p.key) }}</span>
+                  <div class="atp-slider-wrap">
+                    <input
+                      type="range"
+                      class="atp-slider"
+                      :min="0"
+                      :max="provTotal(p.key)"
+                      step="1"
+                      :value="provAllocA(p.key)"
+                      :disabled="provTotal(p.key) === 0"
+                      :style="sliderStyle(provAllocA(p.key), provTotal(p.key))"
+                      @input="onProvSlider(p.key, $event)"
+                    />
+                  </div>
+                  <span class="atp-val army-b">{{ provTotal(p.key) - provAllocA(p.key) }}</span>
+                </div>
+                <div class="atp-input-row">
+                  <label class="atp-input-label">{{ armyA.army.name }}:</label>
                   <input
                     type="number"
-                    class="atp-qty-input"
-                    :value="Math.abs(provTransfer(p.key))"
-                    min="0"
-                    step="any"
+                    class="atp-num-input"
+                    :min="0"
+                    :max="provTotal(p.key)"
+                    step="1"
+                    :value="provAllocA(p.key)"
                     @change="onProvInput(p.key, $event)"
                   />
-                  <button
-                    class="atp-dir-btn"
-                    :disabled="provB(p.key) <= 0"
-                    @click="setProvDir(p.key, -1)"
-                    title="Enviar B → A"
-                  >←</button>
-                </div>
-                <div class="atp-prov-qty army-b-cell">
-                  <span class="atp-qty-current">{{ provB(p.key) }}</span>
-                  <span v-if="pendingProvB(p.key) !== provB(p.key)" class="atp-qty-preview">
-                    → {{ pendingProvB(p.key) }}
-                  </span>
                 </div>
               </div>
             </div>
 
-            <!-- Error display -->
+            <!-- Error -->
             <div v-if="applyError" class="atp-apply-error">❌ {{ applyError }}</div>
 
-            <!-- Footer actions -->
+            <!-- Footer -->
             <div class="atp-footer">
-              <button class="atp-btn atp-btn-reset" @click="resetTransfers" :disabled="applying">
-                🔄 Resetear
+              <button class="atp-btn atp-btn-reset" @click="resetAllocations" :disabled="applying">
+                🔄 Restablecer
               </button>
               <button class="atp-btn atp-btn-merge" @click="mergeAll" :disabled="applying || merging">
-                {{ merging ? 'Fusionando...' : '⚔️ Fusionar B → A' }}
+                {{ merging ? 'Fusionando...' : '⚔️ Fusionar todo' }}
               </button>
               <button
                 class="atp-btn atp-btn-apply"
                 @click="applyTransfers"
-                :disabled="applying || !hasTransfers"
+                :disabled="applying || !hasChanges"
               >
-                {{ applying ? 'Aplicando...' : '↔️ Aplicar Transferencias' }}
+                {{ applying ? 'Aplicando...' : '✔ Aplicar' }}
               </button>
             </div>
           </template>
@@ -176,11 +156,11 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import * as mapApi from '@/services/mapApi.js';
 
 const props = defineProps({
-  show:      { type: Boolean, default: false },
-  armyAId:   { type: Number, required: true },
-  armyBId:   { type: Number, default: null },
-  h3_index:  { type: String, required: true },
-  fiefName:  { type: String, default: '' },
+  show:     { type: Boolean, default: false },
+  armyAId:  { type: Number, required: true },
+  armyBId:  { type: Number, default: null },
+  h3_index: { type: String, required: true },
+  fiefName: { type: String, default: '' },
 });
 
 const emit = defineEmits(['close', 'done']);
@@ -192,127 +172,118 @@ const merging    = ref(false);
 const errorMsg   = ref('');
 const applyError = ref('');
 
-const armyA     = ref(null);   // { army: {}, troops: [] }
+const armyA     = ref(null);  // { army: {}, troops: [] }
 const armyB     = ref(null);
-const coLocated = ref([]);     // Other armies at same hex (excluding armyA)
+const coLocated = ref([]);
 const selectedBId = ref(null);
 
-// transfers: Map<unit_type_id, signed_qty>  positive = A→B, negative = B→A
-const troopTransfers = ref({});  // { [unit_type_id]: signedQty }
-const provTransfers  = ref({});  // { [key]: signedAmount }
+// allocationsA[uid] = quantity assigned to Army A  (0..total)
+const allocationsA    = ref({});  // troops
+const provAllocationsA = ref({}); // provisions (rounded integers for slider)
 
 const PROVISIONS = [
-  { key: 'gold',  icon: '🥇', label: 'Oro'     },
-  { key: 'food',  icon: '🍖', label: 'Comida'  },
-  { key: 'wood',  icon: '🌲', label: 'Madera'  },
-  { key: 'stone', icon: '⛰️', label: 'Piedra'  },
-  { key: 'iron',  icon: '⛏️', label: 'Hierro'  },
+  { key: 'gold',  icon: '🥇', label: 'Oro'    },
+  { key: 'food',  icon: '🍖', label: 'Comida' },
+  { key: 'wood',  icon: '🌲', label: 'Madera' },
+  { key: 'stone', icon: '⛰️', label: 'Piedra' },
+  { key: 'iron',  icon: '⛏️', label: 'Hierro' },
 ];
 
-// ── Computed ───────────────────────────────────────────────────────────────
+// ── Raw data helpers ───────────────────────────────────────────────────────
+function rawQtyA(uid) {
+  if (!armyA.value) return 0;
+  const row = armyA.value.troops.find(t => t.unit_type_id === uid);
+  return row ? parseInt(row.quantity) : 0;
+}
+function rawQtyB(uid) {
+  if (!armyB.value) return 0;
+  const row = armyB.value.troops.find(t => t.unit_type_id === uid);
+  return row ? parseInt(row.quantity) : 0;
+}
+function rawProvA(key) {
+  if (!armyA.value) return 0;
+  return Math.round(parseFloat(armyA.value.army[`${key}_provisions`] || 0));
+}
+function rawProvB(key) {
+  if (!armyB.value) return 0;
+  return Math.round(parseFloat(armyB.value.army[`${key}_provisions`] || 0));
+}
+
+// ── Derived values ─────────────────────────────────────────────────────────
 const allUnitTypes = computed(() => {
   const map = {};
-  for (const t of (armyA.value?.troops || [])) {
+  for (const t of (armyA.value?.troops || []))
     map[t.unit_type_id] = { unit_type_id: t.unit_type_id, unit_name: t.unit_name };
-  }
-  for (const t of (armyB.value?.troops || [])) {
+  for (const t of (armyB.value?.troops || []))
     map[t.unit_type_id] = { unit_type_id: t.unit_type_id, unit_name: t.unit_name };
-  }
   return Object.values(map).sort((a, b) => a.unit_name.localeCompare(b.unit_name));
 });
 
-const hasTransfers = computed(() => {
-  return Object.values(troopTransfers.value).some(v => v !== 0) ||
-         Object.values(provTransfers.value).some(v => v !== 0);
+function troopTotal(uid) { return rawQtyA(uid) + rawQtyB(uid); }
+function troopAllocA(uid) { return allocationsA.value[uid] ?? rawQtyA(uid); }
+
+function provTotal(key) { return rawProvA(key) + rawProvB(key); }
+function provAllocA(key) { return provAllocationsA.value[key] ?? rawProvA(key); }
+
+const hasChanges = computed(() => {
+  for (const ut of allUnitTypes.value) {
+    if (troopAllocA(ut.unit_type_id) !== rawQtyA(ut.unit_type_id)) return true;
+  }
+  for (const p of PROVISIONS) {
+    if (provAllocA(p.key) !== rawProvA(p.key)) return true;
+  }
+  return false;
 });
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function troopQty(army, unit_type_id) {
-  if (!army) return 0;
-  const row = army.troops.find(t => t.unit_type_id === unit_type_id);
-  return row ? parseInt(row.quantity) : 0;
+// ── Slider style (dual-color track: blue left = A, red right = B) ──────────
+function sliderStyle(value, max) {
+  if (max === 0) return '';
+  const pct = Math.round((value / max) * 100);
+  return `background: linear-gradient(to right, #2a6ab5 0%, #3d8ae0 ${pct}%, #7a2020 ${pct}%, #b03030 100%);`;
 }
 
-function qtyA(uid) { return troopQty(armyA.value, uid); }
-function qtyB(uid) { return troopQty(armyB.value, uid); }
-function troopTransfer(uid) { return troopTransfers.value[uid] || 0; }
-
-function pendingA(uid) {
-  const delta = troopTransfer(uid);
-  return qtyA(uid) - delta;
+// ── Controls ───────────────────────────────────────────────────────────────
+function onTroopSlider(uid, event) {
+  allocationsA.value = { ...allocationsA.value, [uid]: parseInt(event.target.value) };
 }
-function pendingB(uid) {
-  const delta = troopTransfer(uid);
-  return qtyB(uid) + delta;
-}
-
-function provVal(army, key) {
-  if (!army) return 0;
-  const val = parseFloat(army.army[`${key}_provisions`] || 0);
-  return Math.round(val * 100) / 100;
-}
-function provA(key) { return provVal(armyA.value, key); }
-function provB(key) { return provVal(armyB.value, key); }
-function provTransfer(key) { return provTransfers.value[key] || 0; }
-function pendingProvA(key) { return Math.round((provA(key) - provTransfer(key)) * 100) / 100; }
-function pendingProvB(key) { return Math.round((provB(key) + provTransfer(key)) * 100) / 100; }
-
-// ── Transfer controls ──────────────────────────────────────────────────────
-function setTransferDir(uid, dir) {
-  // dir: 1 = A→B, -1 = B→A
-  const current = troopTransfers.value[uid] || 0;
-  const absVal  = Math.abs(current) || 0;
-  // If already going in same direction keep magnitude, else flip and keep magnitude
-  troopTransfers.value = { ...troopTransfers.value, [uid]: dir * absVal };
-}
-
 function onTroopInput(uid, event) {
-  const raw = parseInt(event.target.value) || 0;
-  const dir = (troopTransfers.value[uid] || 0) >= 0 ? 1 : -1;
-  // Clamp to available source
-  const maxA = qtyA(uid);
-  const maxB = qtyB(uid);
-  const clamped = dir === 1
-    ? Math.min(raw, maxA)
-    : Math.min(raw, maxB);
-  troopTransfers.value = { ...troopTransfers.value, [uid]: dir * clamped };
-  event.target.value = clamped;
+  const val = Math.min(Math.max(parseInt(event.target.value) || 0, 0), troopTotal(uid));
+  allocationsA.value = { ...allocationsA.value, [uid]: val };
+  event.target.value = val;
 }
 
-function setProvDir(key, dir) {
-  const current = provTransfers.value[key] || 0;
-  const absVal  = Math.abs(current) || 0;
-  provTransfers.value = { ...provTransfers.value, [key]: dir * absVal };
+function onProvSlider(key, event) {
+  provAllocationsA.value = { ...provAllocationsA.value, [key]: parseInt(event.target.value) };
 }
-
 function onProvInput(key, event) {
-  const raw = parseFloat(event.target.value) || 0;
-  const dir = (provTransfers.value[key] || 0) >= 0 ? 1 : -1;
-  const maxA = provA(key);
-  const maxB = provB(key);
-  const clamped = dir === 1
-    ? Math.min(raw, maxA)
-    : Math.min(raw, maxB);
-  const rounded = Math.round(clamped * 100) / 100;
-  provTransfers.value = { ...provTransfers.value, [key]: dir * rounded };
-  event.target.value = rounded;
+  const val = Math.min(Math.max(parseInt(event.target.value) || 0, 0), provTotal(key));
+  provAllocationsA.value = { ...provAllocationsA.value, [key]: val };
+  event.target.value = val;
 }
 
-function resetTransfers() {
-  troopTransfers.value = {};
-  provTransfers.value  = {};
-  applyError.value     = '';
+function resetAllocations() {
+  allocationsA.value     = {};
+  provAllocationsA.value = {};
+  applyError.value       = '';
+}
+
+function setMergeAllocations() {
+  const ta = {};
+  for (const ut of allUnitTypes.value) ta[ut.unit_type_id] = troopTotal(ut.unit_type_id);
+  allocationsA.value = ta;
+  const pa = {};
+  for (const p of PROVISIONS) pa[p.key] = provTotal(p.key);
+  provAllocationsA.value = pa;
 }
 
 // ── Data loading ───────────────────────────────────────────────────────────
 async function loadData() {
   if (!props.show) return;
-  loading.value  = true;
-  errorMsg.value = '';
+  loading.value    = true;
+  errorMsg.value   = '';
   applyError.value = '';
   try {
     const targetBId = selectedBId.value;
-
     const [detailA, detailB, hexRes] = await Promise.all([
       mapApi.getArmyDetail(props.armyAId),
       targetBId ? mapApi.getArmyDetail(targetBId) : Promise.resolve(null),
@@ -322,25 +293,23 @@ async function loadData() {
     armyA.value = detailA?.success ? { army: detailA.army, troops: detailA.troops } : null;
     armyB.value = detailB?.success ? { army: detailB.army, troops: detailB.troops } : null;
 
-    // Co-located: other armies at same hex, excluding armyA
     coLocated.value = (hexRes?.armies || []).filter(a => a.army_id !== props.armyAId);
 
-    // Auto-select armyB if not yet set
     if (!selectedBId.value && coLocated.value.length > 0) {
       const preferred = props.armyBId
         ? coLocated.value.find(a => a.army_id === props.armyBId)
         : null;
       selectedBId.value = preferred?.army_id ?? coLocated.value[0].army_id;
-
       if (!armyB.value) {
-        const detailB2 = await mapApi.getArmyDetail(selectedBId.value);
-        armyB.value = detailB2?.success ? { army: detailB2.army, troops: detailB2.troops } : null;
+        const d = await mapApi.getArmyDetail(selectedBId.value);
+        armyB.value = d?.success ? { army: d.army, troops: d.troops } : null;
       }
     }
 
+    resetAllocations();
     if (!armyA.value) errorMsg.value = 'No se pudo cargar el Ejército A.';
     if (!armyB.value) errorMsg.value = (errorMsg.value ? errorMsg.value + ' ' : '') + 'No se pudo cargar el Ejército B.';
-  } catch (e) {
+  } catch {
     errorMsg.value = 'Error al cargar los ejércitos.';
   } finally {
     loading.value = false;
@@ -349,71 +318,65 @@ async function loadData() {
 
 async function onSelectB() {
   armyB.value = null;
-  resetTransfers();
+  resetAllocations();
   loading.value = true;
   try {
-    const detail = await mapApi.getArmyDetail(selectedBId.value);
-    armyB.value = detail?.success ? { army: detail.army, troops: detail.troops } : null;
+    const d = await mapApi.getArmyDetail(selectedBId.value);
+    armyB.value = d?.success ? { army: d.army, troops: d.troops } : null;
   } finally {
     loading.value = false;
   }
 }
 
-// ── Actions ────────────────────────────────────────────────────────────────
+// ── Apply ──────────────────────────────────────────────────────────────────
 async function applyTransfers() {
   applyError.value = '';
   applying.value   = true;
+  const bId = parseInt(selectedBId.value || props.armyBId);
   try {
-    // Build troops payload (A→B): positive sign → from A to B
-    const troops = [];
-    for (const [uid, signed] of Object.entries(troopTransfers.value)) {
-      if (signed === 0) continue;
-      if (signed > 0) {
-        troops.push({ unit_type_id: parseInt(uid), quantity: signed });
-      } else {
-        // negative = B→A, swap direction
-        troops.push({ unit_type_id: parseInt(uid), quantity: -signed });
-      }
+    // Troops: compare allocation vs original
+    const troopsAtoB = [];
+    const troopsBtoA = [];
+    for (const ut of allUnitTypes.value) {
+      const uid   = ut.unit_type_id;
+      const delta = troopAllocA(uid) - rawQtyA(uid); // positive = B→A, negative = A→B
+      if (delta > 0) troopsBtoA.push({ unit_type_id: uid, quantity:  delta });
+      if (delta < 0) troopsAtoB.push({ unit_type_id: uid, quantity: -delta });
     }
 
-    // Split into A→B and B→A calls as needed
-    const troopsAtoB = Object.entries(troopTransfers.value)
-      .filter(([, v]) => v > 0)
-      .map(([uid, v]) => ({ unit_type_id: parseInt(uid), quantity: v }));
-    const troopsBtoA = Object.entries(troopTransfers.value)
-      .filter(([, v]) => v < 0)
-      .map(([uid, v]) => ({ unit_type_id: parseInt(uid), quantity: -v }));
-
+    // Provisions
     const provAtoBFields = {};
     const provBtoAFields = {};
-    for (const { key } of PROVISIONS) {
-      const v = provTransfers.value[key] || 0;
-      if (v > 0) provAtoBFields[key] = v;
-      else if (v < 0) provBtoAFields[key] = -v;
+    for (const p of PROVISIONS) {
+      const delta = provAllocA(p.key) - rawProvA(p.key);
+      if (delta > 0) provBtoAFields[p.key] =  delta;
+      if (delta < 0) provAtoBFields[p.key] = -delta;
     }
 
     const hasAtoB = troopsAtoB.length > 0 || Object.keys(provAtoBFields).length > 0;
     const hasBtoA = troopsBtoA.length > 0 || Object.keys(provBtoAFields).length > 0;
 
-    if (!hasAtoB && !hasBtoA) {
-      applyError.value = 'No hay transferencias pendientes.';
-      return;
-    }
+    if (!hasAtoB && !hasBtoA) { applyError.value = 'Sin cambios que aplicar.'; return; }
 
-    const bId = parseInt(selectedBId.value || props.armyBId);
-
+    let dissolved = false;
     if (hasAtoB) {
       const res = await mapApi.transferArmy(props.armyAId, bId, troopsAtoB, provAtoBFields);
       if (!res.success) { applyError.value = res.message; return; }
+      if (res.dissolved_army_id) dissolved = true;
     }
-    if (hasBtoA) {
+    if (hasBtoA && !dissolved) {
       const res = await mapApi.transferArmy(bId, props.armyAId, troopsBtoA, provBtoAFields);
       if (!res.success) { applyError.value = res.message; return; }
+      if (res.dissolved_army_id) dissolved = true;
     }
 
-    resetTransfers();
-    await loadData();  // Reload fresh data
     emit('done');
+    if (dissolved) {
+      emit('close');
+    } else {
+      resetAllocations();
+      await loadData();
+    }
   } catch (e) {
     applyError.value = e?.response?.data?.message || 'Error al aplicar la transferencia.';
   } finally {
@@ -422,7 +385,8 @@ async function applyTransfers() {
 }
 
 async function mergeAll() {
-  merging.value = true;
+  // Set sliders to max then apply — uses existing /merge endpoint for clean dissolution
+  merging.value    = true;
   applyError.value = '';
   try {
     const res = await mapApi.mergeArmies(props.armyAId, props.h3_index);
@@ -443,206 +407,193 @@ async function mergeAll() {
 watch(() => props.show, (val) => {
   if (val) {
     selectedBId.value = props.armyBId || null;
-    resetTransfers();
+    resetAllocations();
     loadData();
   }
 }, { immediate: true });
 
-function onKeydown(e) {
-  if (e.key === 'Escape' && props.show) emit('close');
-}
+function onKeydown(e) { if (e.key === 'Escape' && props.show) emit('close'); }
 onMounted(() => document.addEventListener('keydown', onKeydown));
 onUnmounted(() => document.removeEventListener('keydown', onKeydown));
 </script>
 
 <style scoped>
 .atp-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.7);
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.72);
   z-index: 3000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
 }
-
 .atp-box {
   background: #1a1a2e;
   border: 1.5px solid #4a3f6b;
   border-radius: 8px;
-  width: min(900px, 95vw);
-  max-height: 85vh;
+  width: min(620px, 96vw);
+  max-height: 88vh;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  color: #e0d9f0;
-  font-size: 13px;
+  display: flex; flex-direction: column;
+  color: #e0d9f0; font-size: 13px;
 }
 
-/* Header */
+/* ── Header ── */
 .atp-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px 10px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 18px 10px;
   border-bottom: 1px solid #2e2550;
-  background: #16122a;
-  flex-shrink: 0;
+  background: #16122a; flex-shrink: 0;
 }
 .atp-header-left { display: flex; align-items: center; gap: 10px; }
-.atp-icon { font-size: 20px; }
-.atp-title { font-size: 16px; font-weight: 700; color: #c8b8f0; margin: 0; }
-.atp-subtitle { font-size: 11px; color: #888; }
+.atp-icon { font-size: 19px; }
+.atp-title { font-size: 15px; font-weight: 700; color: #c8b8f0; margin: 0; }
+.atp-subtitle { font-size: 11px; color: #777; }
 .atp-close {
-  background: none; border: none; color: #888; font-size: 18px;
+  background: none; border: none; color: #777; font-size: 17px;
   cursor: pointer; padding: 4px 8px; border-radius: 4px;
 }
 .atp-close:hover { background: rgba(255,255,255,0.1); color: #fff; }
 
-/* Army B selector */
+/* ── Army B selector ── */
 .atp-selector-row {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 18px; background: rgba(255,255,255,0.03);
+  padding: 7px 18px; background: rgba(255,255,255,0.03);
   border-bottom: 1px solid #2e2550;
 }
-.atp-selector-label { font-size: 12px; color: #aaa; }
+.atp-selector-label { font-size: 12px; color: #999; }
 .atp-selector {
   background: #0d0b1e; border: 1px solid #4a3f6b; color: #e0d9f0;
   border-radius: 4px; padding: 4px 8px; font-size: 12px;
 }
 
-/* Loading/error */
-.atp-loading, .atp-error { padding: 20px; text-align: center; color: #aaa; }
+/* ── Status ── */
+.atp-loading, .atp-error { padding: 20px; text-align: center; color: #999; }
 .atp-error { color: #ef9a9a; }
-.atp-empty { padding: 10px 18px; color: #888; font-style: italic; }
+.atp-empty { padding: 8px 18px; color: #666; font-style: italic; font-size: 12px; }
 
-/* Army headers */
+/* ── Army name headers ── */
 .atp-army-headers {
-  display: grid;
-  grid-template-columns: 1fr 80px 1fr;
-  gap: 0;
-  padding: 10px 18px 6px;
+  display: flex; justify-content: space-between;
+  padding: 9px 18px 7px;
   border-bottom: 1px solid #2e2550;
 }
-.atp-army-name {
-  font-weight: 700; font-size: 13px; color: #c8b8f0;
-  display: flex; align-items: center; gap: 6px;
+.atp-army-label {
+  font-weight: 700; font-size: 13px;
+  display: flex; align-items: center; gap: 5px;
 }
-.atp-army-name.army-a { justify-content: flex-start; color: #7eb8f7; }
-.atp-army-name.army-b { justify-content: flex-end;  color: #f78787; }
+.atp-army-label.army-a { color: #7eb8f7; }
+.atp-army-label.army-b { color: #f78787; }
 .atp-garrison-tag {
   font-size: 9px; background: #2a3f5f; border: 1px solid #607d9e;
   color: #9ecaff; border-radius: 3px; padding: 1px 4px; letter-spacing: 0.5px;
 }
 
-/* Section label */
+/* ── Section label ── */
 .atp-section-label {
   font-size: 10px; font-weight: 700; letter-spacing: 1px;
-  color: #666; padding: 8px 18px 4px;
-  text-transform: uppercase;
+  color: #555; padding: 9px 18px 3px; text-transform: uppercase;
 }
 
-/* Troops table */
-.atp-troops-table { padding: 0 18px 8px; }
-.atp-troops-header {
-  display: grid;
-  grid-template-columns: 1fr 100px 120px 1fr;
-  gap: 4px;
-  padding: 4px 0;
-  border-bottom: 1px solid #2e2550;
-  font-size: 10px; color: #666; text-transform: uppercase;
-  text-align: center;
-}
-.atp-troops-header span:first-child { text-align: left; color: #7eb8f7; }
-.atp-troops-header span:last-child  { text-align: right; color: #f78787; }
+/* ── Rows ── */
+.atp-rows { padding: 0 18px 8px; display: flex; flex-direction: column; gap: 10px; }
 
-.atp-troop-row {
-  display: grid;
-  grid-template-columns: 1fr 100px 120px 1fr;
-  gap: 4px;
-  align-items: center;
-  padding: 5px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+.atp-row {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 6px;
 }
-.atp-troop-row:hover { background: rgba(255,255,255,0.03); }
 
-.atp-qty-cell {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 600;
+.atp-row-title {
+  display: flex; justify-content: space-between; align-items: baseline;
 }
-.atp-qty-cell.army-a-cell { color: #7eb8f7; justify-content: flex-start; }
-.atp-qty-cell.army-b-cell { color: #f78787; justify-content: flex-end; }
+.atp-row-name { font-size: 12px; font-weight: 600; color: #d0c8e8; }
+.atp-row-total { font-size: 10px; color: #666; }
 
-.atp-qty-current { min-width: 28px; text-align: center; }
-.atp-qty-preview { font-size: 11px; color: #aaa; font-weight: 400; }
+/* ── Slider row ── */
+.atp-slider-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.atp-val {
+  font-size: 13px; font-weight: 700; min-width: 38px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.atp-val.army-a { color: #7eb8f7; text-align: left; }
+.atp-val.army-b { color: #f78787; text-align: right; }
 
-.atp-unit-name { text-align: center; font-size: 12px; color: #ccc; }
+.atp-slider-wrap { flex: 1; }
 
-/* Transfer controls */
-.atp-transfer-controls {
-  display: flex; align-items: center; justify-content: center; gap: 3px;
-}
-.atp-dir-btn {
-  background: #2d2450; border: 1px solid #5040a0; color: #c8b8f0;
-  border-radius: 3px; width: 22px; height: 22px;
-  cursor: pointer; font-size: 11px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
-  padding: 0; flex-shrink: 0;
-  transition: background 0.15s;
-}
-.atp-dir-btn:hover:not(:disabled) { background: #3d3460; }
-.atp-dir-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-
-.atp-qty-input {
-  width: 46px; background: #0d0b1e; border: 1px solid #4a3f6b;
-  color: #e0d9f0; border-radius: 3px; padding: 2px 4px;
-  font-size: 11px; text-align: center;
-}
-.atp-qty-input::-webkit-inner-spin-button { opacity: 0.5; }
-
-/* Provisions table */
-.atp-prov-table { padding: 0 18px 8px; }
-.atp-prov-row {
-  display: grid;
-  grid-template-columns: 1fr 80px 120px 1fr;
-  gap: 4px;
-  align-items: center;
-  padding: 4px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-}
-.atp-prov-label { text-align: center; font-size: 12px; color: #ccc; }
-.atp-prov-qty {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 600;
-}
-.atp-prov-qty.army-a-cell { color: #7eb8f7; justify-content: flex-start; }
-.atp-prov-qty.army-b-cell { color: #f78787; justify-content: flex-end; }
-
-/* Footer */
-.atp-footer {
-  display: flex; align-items: center; justify-content: flex-end;
-  gap: 10px;
-  padding: 12px 18px;
-  border-top: 1px solid #2e2550;
-  background: #16122a;
-  flex-shrink: 0;
-}
-.atp-btn {
-  padding: 7px 14px; border: none; border-radius: 5px;
-  font-size: 12px; font-weight: 600; cursor: pointer;
+.atp-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 7px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
   transition: opacity 0.15s;
 }
-.atp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.atp-btn-reset  { background: #2d2450; color: #c8b8f0; border: 1px solid #5040a0; }
+.atp-slider:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Thumb — Webkit */
+.atp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #e0d9f0;
+  border: 2px solid #8870d0;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+.atp-slider::-webkit-slider-thumb:hover { background: #fff; }
+
+/* Thumb — Firefox */
+.atp-slider::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #e0d9f0;
+  border: 2px solid #8870d0;
+  cursor: pointer;
+}
+
+/* ── Textbox row ── */
+.atp-input-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.atp-input-label { font-size: 11px; color: #7eb8f7; white-space: nowrap; }
+.atp-num-input {
+  width: 72px;
+  background: #0d0b1e; border: 1px solid #4a3f6b; color: #e0d9f0;
+  border-radius: 4px; padding: 3px 6px; font-size: 12px; text-align: center;
+}
+.atp-num-input:focus { outline: none; border-color: #8870d0; }
+
+/* ── Error / Footer ── */
+.atp-apply-error {
+  margin: 0 18px 8px;
+  padding: 6px 10px;
+  background: rgba(183,28,28,0.2); border: 1px solid #b71c1c;
+  border-radius: 4px; color: #ef9a9a; font-size: 12px;
+}
+.atp-footer {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 11px 18px;
+  border-top: 1px solid #2e2550;
+  background: #16122a; flex-shrink: 0;
+}
+.atp-btn {
+  padding: 6px 13px; border: none; border-radius: 5px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.atp-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.atp-btn-reset { background: #2d2450; color: #c8b8f0; border: 1px solid #5040a0; }
 .atp-btn-reset:hover:not(:disabled) { background: #3d3460; }
-.atp-btn-merge  { background: #5a2a2a; color: #ffb3b3; border: 1px solid #8b3a3a; }
+.atp-btn-merge { background: #5a2a2a; color: #ffb3b3; border: 1px solid #8b3a3a; }
 .atp-btn-merge:hover:not(:disabled) { background: #6e3333; }
-.atp-btn-apply  { background: #1e4d2e; color: #a5d6b3; border: 1px solid #2e7d50; }
+.atp-btn-apply { background: #1e4d2e; color: #a5d6b3; border: 1px solid #2e7d50; }
 .atp-btn-apply:hover:not(:disabled) { background: #265d38; }
 
-.atp-apply-error { margin: 0 18px 8px; padding: 6px 10px; background: rgba(183,28,28,0.2); border: 1px solid #b71c1c; border-radius: 4px; color: #ef9a9a; font-size: 12px; }
-
-/* Transitions */
+/* ── Transition ── */
 .atp-fade-enter-active, .atp-fade-leave-active { transition: opacity 0.2s; }
 .atp-fade-enter-from, .atp-fade-leave-to { opacity: 0; }
 </style>
