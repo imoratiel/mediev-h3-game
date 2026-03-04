@@ -333,17 +333,36 @@ class KingdomService {
             await KingdomModel.InsertTerritoryDetails(client, h3_index, eco);
             await KingdomModel.DeductGold(client, player_id, CLAIM_COST);
 
+            // On first claim (capital/exile), also claim all colonizable ring-1 neighbors for free
+            let bonusHexes = [];
+            if (isFirstTerritory || isExiled) {
+                const ring1 = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+                const neighbors = await KingdomModel.GetColonizableNeighbors(client, ring1);
+                for (const neighbor of neighbors) {
+                    await KingdomModel.ClaimHex(client, neighbor.h3_index, player_id);
+                    await KingdomModel.InsertTerritoryDetails(client, neighbor.h3_index, {
+                        population: Math.floor(Math.random() * 201) + 200,
+                        happiness: Math.floor(Math.random() * 21) + 50,
+                        food: Math.floor(Math.random() * 2001),
+                        wood: Math.floor(Math.random() * 2001),
+                        stone: Math.floor(Math.random() * 2001),
+                    });
+                    bonusHexes.push(neighbor.h3_index);
+                }
+            }
+
             await client.query('COMMIT');
 
-            logGameEvent(`[COLONIZACIÓN] Jugador ${player_id} colonizó ${h3_index}${isFirstTerritory || isExiled ? ' (capital)' : ''}`);
+            logGameEvent(`[COLONIZACIÓN] Jugador ${player_id} colonizó ${h3_index}${isFirstTerritory || isExiled ? ` (capital) + ${bonusHexes.length} adyacentes` : ''}`);
 
             const updatedGold = playerRow.gold - CLAIM_COST;
             res.json({
                 success: true,
                 new_gold_balance: updatedGold,
                 is_capital: isFirstTerritory || isExiled,
+                bonus_hexes: bonusHexes,
                 message: (isFirstTerritory || isExiled)
-                    ? '👑 ¡Capital fundada! Tu reino comienza aquí.'
+                    ? `👑 ¡Capital fundada! Tu reino comienza aquí. (+${bonusHexes.length} territorios adyacentes)`
                     : `🏰 ¡Territorio #${territoryCount + 1} colonizado!`
             });
         } catch (error) {
