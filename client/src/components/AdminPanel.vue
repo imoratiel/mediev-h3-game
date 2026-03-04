@@ -333,6 +333,33 @@
           </div>
         </section>
 
+        <!-- ── ZONA DE PELIGRO ────────────────────────────────────────────── -->
+        <section class="admin-section danger-section">
+          <h3 class="section-title danger-title">⚠️ Zona de Peligro</h3>
+          <p class="danger-hint">Estas acciones son irreversibles y afectan a todos los jugadores.</p>
+
+          <div v-if="!showResetConfirm">
+            <button class="ctrl-btn btn-danger-reset" @click="showResetConfirm = true" :disabled="acting">
+              🗑️ Resetear Partida
+            </button>
+          </div>
+
+          <div v-else class="reset-confirm-box">
+            <p class="reset-confirm-text">
+              ¿Seguro? Esto eliminará <strong>todos los bots, ejércitos, feudos, edificios, mensajes y notificaciones</strong>.
+              Los jugadores conservan su cuenta pero empezarán con 50.000 de oro.
+            </p>
+            <div class="reset-confirm-actions">
+              <button class="ctrl-btn btn-danger-confirm" :disabled="acting" @click="handleResetGame">
+                {{ acting ? '⏳ Reseteando...' : '⚠️ Sí, resetear todo' }}
+              </button>
+              <button class="ctrl-btn btn-cancel" @click="showResetConfirm = false" :disabled="acting">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </section>
+
         <!-- Feedback message -->
         <div v-if="message" class="admin-message" :class="messageType">{{ message }}</div>
 
@@ -362,7 +389,7 @@ import {
   forceTurn, forceHarvest, forceExploration,
   getAIAgents, spawnAIFarmer, spawnAIAgent, forceAITurn,
   getAISettings, updateAISetting, getAIUsageStats, resetAIUsageStats, testAIConnection,
-  deleteAIAgent,
+  deleteAIAgent, resetGame,
 } from '../services/mapApi.js';
 
 const emit = defineEmits(['close', 'go-to-hex']);
@@ -375,6 +402,7 @@ const message = ref('');
 const messageType = ref('msg-ok');
 const turnDurationInput = ref(60);
 const savingDuration = ref(false);
+const showResetConfirm = ref(false);
 
 // AI agents state
 const agents       = ref([]);
@@ -680,6 +708,25 @@ const handleResume      = () => runAction(resumeGame,       'Juego reanudado');
 const handleForceTurn   = () => runAction(forceTurn,        'Turno procesado');
 const handleForceHarvest     = () => runAction(forceHarvest,    'Cosecha procesada');
 const handleForceExploration = () => runAction(forceExploration,'Exploraciones procesadas');
+
+const handleResetGame = async () => {
+  if (acting.value) return;
+  acting.value = true;
+  error.value  = '';
+  message.value = '';
+  try {
+    const data = await resetGame();
+    showResetConfirm.value = false;
+    messageType.value = 'msg-ok';
+    message.value = data.message || 'Partida reseteada correctamente.';
+    await fetchStatus();
+  } catch (err) {
+    messageType.value = 'msg-error';
+    message.value = err?.response?.data?.message || 'Error al resetear la partida.';
+  } finally {
+    acting.value = false;
+  }
+};
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 onMounted(() => {
@@ -1341,5 +1388,63 @@ onUnmounted(() => {
   border-radius: 3px;
   padding: 1px 4px;
   color: #90caf9;
+}
+
+/* ── Danger zone ──────────────────────────────────────────────────── */
+.danger-section {
+  border: 1px solid rgba(239, 83, 80, 0.25);
+  border-radius: 6px;
+  margin: 12px 8px;
+  background: rgba(239, 83, 80, 0.04);
+}
+.danger-title { color: #ef5350 !important; }
+.danger-hint {
+  font-size: 0.76rem;
+  color: #888;
+  margin: 0 0 12px;
+}
+.btn-danger-reset {
+  background: rgba(183, 28, 28, 0.15);
+  border-color: rgba(239, 83, 80, 0.4);
+  color: #ef9a9a;
+}
+.btn-danger-reset:hover:not(:disabled) {
+  background: rgba(183, 28, 28, 0.3);
+  border-color: #ef5350;
+  color: #fff;
+}
+.reset-confirm-box {
+  background: rgba(183, 28, 28, 0.12);
+  border: 1px solid rgba(239, 83, 80, 0.35);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.reset-confirm-text {
+  font-size: 0.8rem;
+  color: #ef9a9a;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.reset-confirm-text strong { color: #fff; }
+.reset-confirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-danger-confirm {
+  background: rgba(183, 28, 28, 0.6);
+  border-color: #ef5350;
+  color: #fff;
+  font-weight: 700;
+}
+.btn-danger-confirm:hover:not(:disabled) {
+  background: #c62828;
+  border-color: #ef5350;
+}
+.btn-cancel {
+  background: transparent;
+  border-color: rgba(255,255,255,0.2);
+  color: #999;
+}
+.btn-cancel:hover:not(:disabled) {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.4);
+  color: #ccc;
 }
 </style>

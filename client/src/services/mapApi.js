@@ -635,3 +635,8 @@ export async function deleteAIAgent(botId) {
   const response = await axios.delete(`${API_URL}/api/admin/bots/${botId}`);
   return response.data;
 }
+
+export async function resetGame() {
+  const response = await axios.post(`${API_URL}/api/admin/reset-game`);
+  return response.data;
+}

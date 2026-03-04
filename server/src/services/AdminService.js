@@ -14,6 +14,17 @@ class AdminService {
             res.status(500).json({ success: false, message: 'Error al resetear mundo' });
         }
     }
+    async ResetGame(req, res) {
+        try {
+            Logger.action('⚠️ RESET DE PARTIDA iniciado por administrador', req.user.player_id);
+            await AdminModel.ResetGame();
+            Logger.action('✅ RESET DE PARTIDA completado: bots eliminados, territorios liberados, jugadores reiniciados', req.user.player_id);
+            res.json({ success: true, message: 'Partida reseteada. Los jugadores pueden iniciar una nueva partida.' });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/reset-game', method: 'POST', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al resetear la partida: ' + error.message });
+        }
+    }
     async GetStats(req, res) {
         try {
             Logger.action('Acceso administrativo a /admin/stats', req.user.player_id);

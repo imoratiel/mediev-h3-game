@@ -101,6 +101,7 @@ module.exports = function () {
     // ADMIN AND MESSAGES
     // ============================================
     router.post('/admin/reset', authenticateToken, requireAdmin, AdminService.ResetWorld);
+    router.post('/admin/reset-game', authenticateToken, requireAdmin, (req, res) => AdminService.ResetGame(req, res));
     router.get('/admin/stats', authenticateToken, requireAdmin, AdminService.GetStats);
     router.post('/admin/reset-explorations', authenticateToken, requireAdmin, AdminService.ResetExplorations);
     router.post('/admin/config', authenticateToken, requireAdmin, AdminService.UpdateConfig);
