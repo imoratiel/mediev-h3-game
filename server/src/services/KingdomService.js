@@ -262,6 +262,99 @@ class KingdomService {
         }
     }
 
+    async ClaimTerritory(req, res) {
+        const client = await pool.connect();
+        try {
+            const player_id = req.user.player_id;
+            const { h3_index } = req.body;
+
+            if (!h3_index) {
+                return res.status(400).json({ success: false, message: 'Falta parámetro: h3_index' });
+            }
+
+            await client.query('BEGIN');
+
+            const territoryCount = await KingdomModel.GetTerritoryCount(client, player_id);
+            const isFirstTerritory = (territoryCount === 0);
+
+            const isExiled = await KingdomModel.GetPlayerExileStatus(client, player_id);
+
+            const hex = await KingdomModel.GetHexForClaim(client, h3_index);
+            if (!hex) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Hexágono no encontrado en el mapa' });
+            }
+            if (!hex.is_colonizable) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: '🌊 No puedes colonizar este tipo de terreno' });
+            }
+            if (hex.player_id !== null) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: '🛡️ Este territorio ya está ocupado' });
+            }
+
+            const playerRow = await KingdomModel.GetPlayerGoldForUpdate(client, player_id);
+            if (!playerRow) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Jugador no encontrado' });
+            }
+
+            const CLAIM_COST = 100;
+            if (playerRow.gold < CLAIM_COST) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: `💰 Oro insuficiente. Necesitas: ${CLAIM_COST}, Tienes: ${playerRow.gold}` });
+            }
+
+            if (!isFirstTerritory && !isExiled) {
+                const neighbors = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+                const adjResult = await client.query(
+                    'SELECT COUNT(*) as count FROM h3_map WHERE player_id = $1 AND h3_index = ANY($2::text[])',
+                    [player_id, neighbors]
+                );
+                if (parseInt(adjResult.rows[0].count) === 0) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: '📍 Debes colonizar territorios contiguos a los tuyos' });
+                }
+            }
+
+            const eco = {
+                population: Math.floor(Math.random() * 201) + 200,
+                happiness: Math.floor(Math.random() * 21) + 50,
+                food: Math.floor(Math.random() * 2001),
+                wood: Math.floor(Math.random() * 2001),
+                stone: Math.floor(Math.random() * 2001),
+            };
+
+            await KingdomModel.ClaimHex(client, h3_index, player_id);
+            if (isFirstTerritory || isExiled) {
+                await KingdomModel.SetCapital(client, h3_index, player_id);
+                if (isExiled) await KingdomModel.ClearExileStatus(client, player_id);
+            }
+            await KingdomModel.InsertTerritoryDetails(client, h3_index, eco);
+            await KingdomModel.DeductGold(client, player_id, CLAIM_COST);
+
+            await client.query('COMMIT');
+
+            logGameEvent(`[COLONIZACIÓN] Jugador ${player_id} colonizó ${h3_index}${isFirstTerritory || isExiled ? ' (capital)' : ''}`);
+
+            const updatedGold = playerRow.gold - CLAIM_COST;
+            res.json({
+                success: true,
+                new_gold_balance: updatedGold,
+                is_capital: isFirstTerritory || isExiled,
+                message: (isFirstTerritory || isExiled)
+                    ? '👑 ¡Capital fundada! Tu reino comienza aquí.'
+                    : `🏰 ¡Territorio #${territoryCount + 1} colonizado!`
+            });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            Logger.error(error, { endpoint: '/game/claim', method: 'POST', userId: req.user?.player_id, payload: req.body });
+            res.status(500).json({ success: false, message: 'Error interno del servidor: ' + error.message });
+        } finally {
+            client.release();
+        }
+    }
+
     /**
      * Conquista un hexágono enemigo.
      * Requiere que el jugador tenga un ejército propio en ese hexágono
