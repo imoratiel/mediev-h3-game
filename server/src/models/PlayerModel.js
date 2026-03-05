@@ -21,7 +21,7 @@ class PlayerModel {
         return result;
     }
     async GetPlayerByUsername(username){
-        const result = await pool.query('SELECT player_id, username, display_name, password, role, capital_h3, gold FROM players WHERE username = $1', [username]);
+        const result = await pool.query('SELECT player_id, username, display_name, password, role, capital_h3, gold, is_initialized FROM players WHERE username = $1', [username]);
         return result;
     }
 }

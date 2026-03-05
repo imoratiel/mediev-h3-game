@@ -70,7 +70,8 @@ class LoginService {
                     display_name: user.display_name,
                     role: user.role || 'player',
                     capital_h3: user.capital_h3,
-                    gold: user.gold
+                    gold: user.gold,
+                    is_initialized: user.is_initialized ?? false
                 }
             });
         } catch (error) {
@@ -101,17 +102,29 @@ class LoginService {
 
         res.json({ success: true, message: 'Sesión cerrada exitosamente' });
     }
-    async AuthMe(req,res){
-        // authenticateToken middleware already verified the JWT and set req.user
-        res.json({
-            success: true,
-            user: {
-                player_id: req.user.player_id,
-                username: req.user.username,
-                display_name: req.user.display_name,
-                role: req.user.role
-            }
-        });
+    async AuthMe(req, res) {
+        const pool = require('../../db.js');
+        try {
+            // Fetch is_initialized from DB (not in JWT payload)
+            const result = await pool.query(
+                'SELECT is_initialized FROM players WHERE player_id = $1',
+                [req.user.player_id]
+            );
+            const is_initialized = result.rows[0]?.is_initialized ?? false;
+            res.json({
+                success: true,
+                user: {
+                    player_id:      req.user.player_id,
+                    username:       req.user.username,
+                    display_name:   req.user.display_name,
+                    role:           req.user.role,
+                    is_initialized,
+                }
+            });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/api/auth/me', method: 'GET', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al verificar sesión' });
+        }
     }
 
     async UpdateProfile(req, res) {

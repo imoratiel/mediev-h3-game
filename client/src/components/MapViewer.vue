@@ -924,6 +924,12 @@
       @close="showTransferPanel = false"
       @done="handleArmiesTransferred"
     />
+
+    <!-- Epic Initialization Panel (first-time players only) -->
+    <WelcomePanel
+      v-if="showWelcomePanel"
+      @done="onInitDone"
+    />
   </div>
 </template>
 
@@ -952,6 +958,7 @@ import BattleSummaryModal from './BattleSummaryModal.vue';
 import EconomyPanel from './EconomyPanel.vue';
 import AdminPanel from './AdminPanel.vue';
 import ArmyTransferPanel from './ArmyTransferPanel.vue';
+import WelcomePanel from './WelcomePanel.vue';
 
 const mapContainer = ref(null);
 const loading = ref(false);
@@ -967,7 +974,8 @@ const isPoliticalView = ref(true); // Vista política para resaltar territorios 
 const mouseH3Index = ref(''); // H3 index under cursor
 
 // Player state (from session)
-const currentUser = ref(null); // Current logged-in user { player_id, username, role }
+const currentUser = ref(null);       // Current logged-in user { player_id, username, role }
+const showWelcomePanel = ref(false); // Epic Initialization overlay for new players
 const playerId = computed(() => currentUser.value?.player_id || 1); // Player ID from session
 const playerGold = ref(0); // Oro inicial (se carga del servidor)
 const playerHexes = ref(new Set()); // Track player's owned hexagons for adjacency checks
@@ -4848,6 +4856,10 @@ const checkAuth = async () => {
       currentUser.value = response.user;
       localStorage.setItem('user', JSON.stringify(response.user));
       console.log(`[Auth] ✓ Session verified: ${currentUser.value.username} (${currentUser.value.role})`);
+      if (!response.user.is_initialized) {
+        showWelcomePanel.value = true;
+        console.log('[Auth] New player detected — showing Epic Initialization panel');
+      }
     } else {
       // No session, clear user data and redirect immediately
       currentUser.value = null;
@@ -4888,6 +4900,31 @@ const saveProfile = async () => {
   } finally {
     savingProfile.value = false;
   }
+};
+
+/**
+ * Called when the Epic Initialization panel completes.
+ * Updates local user state and centers the map on the new capital.
+ */
+const onInitDone = ({ capital_h3 } = {}) => {
+  showWelcomePanel.value = false;
+  if (currentUser.value) {
+    currentUser.value.is_initialized = true;
+    localStorage.setItem('user', JSON.stringify(currentUser.value));
+  }
+  // Center map on the new capital and refresh data
+  if (capital_h3) {
+    import('h3-js').then(({ cellToLatLng }) => {
+      const [lat, lng] = cellToLatLng(capital_h3);
+      if (map) map.setView([lat, lng], 13);
+    }).catch(() => {});
+  }
+  // Refresh fiefs and army capacity
+  updateFiefsUI();
+  fetchArmyCapacity();
+  mapApi.getCapital().then(r => {
+    if (r?.success) { capitalH3Index.value = r.h3_index; isExiled.value = r.is_exiled ?? false; }
+  }).catch(() => {});
 };
 
 const handleLogout = async () => {

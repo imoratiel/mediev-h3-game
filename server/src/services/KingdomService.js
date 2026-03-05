@@ -1,4 +1,5 @@
 const { Logger, logGameEvent } = require('../utils/logger');
+const { initializePlayer } = require('../logic/playerInit.js');
 const KingdomModel = require('../models/KingdomModel.js');
 const ArmyModel = require('../models/ArmyModel.js');
 const CombatModel = require('../models/CombatModel.js');
@@ -815,6 +816,24 @@ class KingdomService {
             return res.status(500).json({ success: false, message: 'Error al procesar la conquista del feudo' });
         } finally {
             client.release();
+        }
+    }
+    async InitializePlayer(req, res) {
+        const player_id = req.user.player_id;
+        try {
+            const result = await initializePlayer(player_id);
+            if (result.alreadyInitialized) {
+                return res.status(409).json({ success: false, message: 'El jugador ya ha sido inicializado' });
+            }
+            Logger.action(
+                `✅ Inicialización épica completada. Capital: ${result.capitalHex}, feudos bonus: ${result.bonusHexes.length}`,
+                player_id
+            );
+            logGameEvent(`[INIT] Jugador ${player_id} inicializado. Capital: ${result.capitalHex}`);
+            res.json({ success: true, capital_h3: result.capitalHex, bonus_hexes: result.bonusHexes });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/game/initialize', method: 'POST', userId: player_id });
+            res.status(500).json({ success: false, message: 'Error al inicializar jugador: ' + error.message });
         }
     }
 }

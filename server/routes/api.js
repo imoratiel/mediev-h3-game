@@ -40,6 +40,7 @@ module.exports = function () {
     // ============================================
     router.get('/game/capital', authenticateToken, KingdomService.GetCapital);
     router.post('/game/claim', authenticateToken, (req, res) => KingdomService.ClaimTerritory(req, res));
+    router.post('/game/initialize', authenticateToken, (req, res) => KingdomService.InitializePlayer(req, res));
 
     router.get('/map/cell-details/:h3_index', TerrainService.GetCellDetails);
 

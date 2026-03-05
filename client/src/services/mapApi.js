@@ -222,6 +222,15 @@ export async function getCapital() {
 // ============================================
 
 /**
+ * Trigger Epic Initialization for a new player (first-time setup).
+ * Idempotent — safe to call multiple times; returns 409 if already initialized.
+ */
+export async function initializePlayer() {
+  const response = await axios.post(`${API_URL}/api/game/initialize`);
+  return response.data;
+}
+
+/**
  * Claim/colonize a territory
  * @param {string} h3_index - H3 index to claim
  */
