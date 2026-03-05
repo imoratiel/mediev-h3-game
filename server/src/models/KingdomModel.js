@@ -78,11 +78,7 @@ class KingdomModel {
         await client.query(
             `INSERT INTO territory_details (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored, gold_stored)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             ON CONFLICT (h3_index) DO UPDATE SET
-                 population = EXCLUDED.population, happiness = EXCLUDED.happiness,
-                 food_stored = EXCLUDED.food_stored, wood_stored = EXCLUDED.wood_stored,
-                 stone_stored = EXCLUDED.stone_stored, iron_stored = EXCLUDED.iron_stored,
-                 gold_stored = EXCLUDED.gold_stored`,
+             ON CONFLICT (h3_index) DO NOTHING`,
             [h3_index, eco.population, eco.happiness, eco.food, eco.wood, eco.stone, 0, eco.gold ?? 0]
         );
     }

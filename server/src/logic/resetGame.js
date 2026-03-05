@@ -9,7 +9,7 @@ const pool = require('../../db.js');
  *  3. Elimina construcciones activas
  *  4. Restaura terreno original en hexes de puentes y elimina puentes
  *  5. Elimina edificios de feudos
- *  6. Elimina datos económicos de territorios (territory_details)
+ *  6. Resetea metadatos de territorios (preserva oro, comida, recursos y población)
  *  7. Libera todos los hexes del mapa (player_id = NULL)
  *  8. Elimina mensajes y notificaciones
  *  9. Elimina bots (is_ai = TRUE)
@@ -56,8 +56,19 @@ async function resetGame() {
         // 5. Buildings in fiefs
         await client.query('DELETE FROM fief_buildings');
 
-        // 6. Territory economic data
-        await client.query('DELETE FROM territory_details');
+        // 6. Reset territory metadata, preserve economic state (gold, food, resources, population)
+        await client.query(`
+            UPDATE territory_details SET
+                custom_name          = NULL,
+                discovered_resource  = NULL,
+                exploration_end_turn = NULL,
+                grace_turns          = 0,
+                farm_level           = 0,
+                mine_level           = 0,
+                lumber_level         = 0,
+                port_level           = 0,
+                defense_level        = 0
+        `);
 
         // 7. Release hex ownership
         await client.query('UPDATE h3_map SET player_id = NULL');
