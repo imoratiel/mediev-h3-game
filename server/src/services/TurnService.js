@@ -84,7 +84,6 @@ class TurnService {
 
             const engineRunning = isEngineActive();
             const gamePaused = state.is_paused;
-            const titheActive = CONFIG.gameplay?.tithe_active === true;
 
             res.json({
                 success: true,
@@ -96,20 +95,6 @@ class TurnService {
                         status: engineRunning ? (gamePaused ? 'paused' : 'active') : 'stopped',
                         startTime: engineInfo.startTime,
                         uptimeMs: engineInfo.uptimeMs,
-                    },
-                    {
-                        id: 'tax_collector',
-                        name: 'Recaudación Fiscal',
-                        description: `${CONFIG.gameplay?.tax_rate ?? 5}% del oro en feudos — día 10 de cada mes`,
-                        status: engineRunning && !gamePaused ? 'active' : 'inactive',
-                    },
-                    {
-                        id: 'tithe_system',
-                        name: 'Sistema de Diezmo',
-                        description: '10% de recursos hacia la capital — día 10 de cada mes',
-                        status: titheActive
-                            ? (engineRunning && !gamePaused ? 'active' : 'inactive')
-                            : 'disabled',
                     },
                     {
                         id: 'army_movement',

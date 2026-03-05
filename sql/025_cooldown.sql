@@ -25,5 +25,12 @@ ALTER TABLE notifications DROP CONSTRAINT IF EXISTS check_notification_type;
 ALTER TABLE notifications ADD CONSTRAINT check_notification_type 
 CHECK (type IN ('Militar', 'Económico', 'Impuestos', 'General', 'Hambre'));
 
+-- Migración: Añadir configuración individual de impuestos a la tabla jugadores
+ALTER TABLE players 
+ADD COLUMN tax_percentage DECIMAL(5,2) DEFAULT 10.00,
+ADD COLUMN tithe_active BOOLEAN DEFAULT FALSE;
+
+-- Nota: Como ya tienes jugadores, el DEFAULT se aplica automáticamente a los existentes.
+
 INSERT INTO schema_migrations (script_name)
 VALUES ('025_cooldown.sql');

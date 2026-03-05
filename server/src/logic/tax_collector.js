@@ -13,10 +13,9 @@ const { auditEvent, TOPICS } = require('../infrastructure/kafkaFacade');
  *
  * @param {Object} client   - Cliente PostgreSQL (dentro de transacción)
  * @param {number} turn     - Turno actual (para logs y notificaciones)
- * @param {Object} config   - Configuración del juego (cargada desde game_config)
  * @param {Date}   gameDate - Fecha actual del calendario de juego
  */
-async function processTaxCollection(client, turn, config, gameDate) {
+async function processTaxCollection(client, turn, gameDate) {
     // ── Safety check 1: solo el día 10 del mes del calendario de juego ──────
     const gd = new Date(gameDate);
     const dayOfMonth = gd.getDate();
@@ -39,16 +38,13 @@ async function processTaxCollection(client, turn, config, gameDate) {
         return;
     }
 
-    // Tax rate: 1–10 (percentage). Default 5 if not configured.
-    const taxRate = Math.min(10, Math.max(1, config.gameplay?.tax_rate ?? 5));
-    const effectiveRate = taxRate;
-
-    Logger.engine(`[TURN ${turn}] Tax collection started — game month ${gameYearMonth} (rate: ${taxRate}%)`);
+    Logger.engine(`[TURN ${turn}] Tax collection started — game month ${gameYearMonth}`);
 
     try {
         // Only players who actually own territories (active players)
         const playersResult = await client.query(`
-            SELECT DISTINCT p.player_id, p.username
+            SELECT DISTINCT p.player_id, p.username,
+                            COALESCE(p.tax_percentage, 10) AS tax_percentage
             FROM players p
             JOIN h3_map m ON p.player_id = m.player_id
             WHERE m.player_id IS NOT NULL
@@ -58,6 +54,7 @@ async function processTaxCollection(client, turn, config, gameDate) {
         let totalGoldCollected = 0;
 
         for (const player of playersResult.rows) {
+            const taxRate = Math.min(100, Math.max(0, parseFloat(player.tax_percentage)));
             try {
                 // Fetch all territories for this player with their current gold stock
                 const territoriesResult = await client.query(`
@@ -77,7 +74,7 @@ async function processTaxCollection(client, turn, config, gameDate) {
 
                     // FLOOR to avoid decimal issues in INTEGER columns.
                     // Clamped to goldStock so the fief can never go negative.
-                    const taxAmount = Math.min(goldStock, Math.floor(goldStock * effectiveRate / 100));
+                    const taxAmount = Math.min(goldStock, Math.floor(goldStock * taxRate / 100));
                     if (taxAmount <= 0) continue;
 
                     // Deduct from fief storehouse

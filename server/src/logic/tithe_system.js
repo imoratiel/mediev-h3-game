@@ -16,16 +16,9 @@ const TITHE_RATE = 0.10;
  *
  * @param {Object} client   - Cliente PostgreSQL (dentro de transacción)
  * @param {number} turn     - Turno actual (para logs y notificaciones)
- * @param {Object} config   - Configuración del juego (cargada desde game_config)
  * @param {Date}   gameDate - Fecha actual del calendario de juego
  */
-async function processTithe(client, turn, config, gameDate) {
-    // Guard: tithe only runs when explicitly enabled
-    if (!config.gameplay?.tithe_active) {
-        Logger.engine(`[TURN ${turn}] Tithe system: disabled (tithe_active = false)`);
-        return;
-    }
-
+async function processTithe(client, turn, gameDate) {
     // ── Safety check 1: solo el día 10 del mes del calendario de juego ──────
     const gd = new Date(gameDate);
     const dayOfMonth = gd.getDate();
@@ -52,7 +45,7 @@ async function processTithe(client, turn, config, gameDate) {
     try {
         // Only players who own territories AND have a capital defined
         const playersResult = await client.query(`
-            SELECT DISTINCT p.player_id, p.username, p.capital_h3
+            SELECT DISTINCT p.player_id, p.username, p.capital_h3, p.tithe_active
             FROM players p
             JOIN h3_map m ON p.player_id = m.player_id
             WHERE m.player_id IS NOT NULL
@@ -62,6 +55,7 @@ async function processTithe(client, turn, config, gameDate) {
         let totalPlayers = 0;
 
         for (const player of playersResult.rows) {
+            if (!player.tithe_active) continue;
             try {
                 const capitalH3 = player.capital_h3;
 

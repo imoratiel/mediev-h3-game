@@ -59,6 +59,7 @@
           step="1"
           v-model.number="localTaxRate"
           class="eco-slider"
+          :style="{ '--pct': sliderPct }"
           :disabled="saving"
         />
         <span class="eco-slider-label">10%</span>
@@ -121,11 +122,11 @@ const summary  = ref({
 });
 
 // Settings loaded from server
-const serverTaxRate     = ref(5);
+const serverTaxRate     = ref(10);
 const serverTitheActive = ref(false);
 
 // Local editable copies
-const localTaxRate     = ref(5);
+const localTaxRate     = ref(10);
 const localTitheActive = ref(false);
 
 const saving   = ref(false);
@@ -136,6 +137,9 @@ const saveError = ref('');
 const estimatedTax = computed(() =>
   Math.floor(summary.value.total_gold * localTaxRate.value / 100)
 );
+
+// Slider fill: maps range [1,10] → [0%,100%]
+const sliderPct = computed(() => `${((localTaxRate.value - 1) / 9 * 100).toFixed(1)}%`);
 
 const isDirty = computed(() =>
   localTaxRate.value !== serverTaxRate.value ||

@@ -492,7 +492,7 @@ export async function getMyRoutes() {
 // ============================================
 
 /**
- * Get aggregated resource summary and economy settings for the player
+ * Get aggregated resource summary and player's individual economy settings
  */
 export async function getEconomySummary() {
   const response = await axios.get(`${API_URL}/api/economy/summary`);
@@ -500,7 +500,7 @@ export async function getEconomySummary() {
 }
 
 /**
- * Update economy settings (tax_rate, tithe_active)
+ * Update player's individual economy settings (tax_rate, tithe_active)
  * @param {Object} payload - { tax_rate?: number, tithe_active?: boolean }
  */
 export async function updateEconomySettings(payload) {

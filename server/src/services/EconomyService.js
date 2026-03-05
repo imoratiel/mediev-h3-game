@@ -1,38 +1,41 @@
 const { Logger } = require('../utils/logger');
-const AdminModel = require('../models/AdminModel.js');
-const { CONFIG } = require('../config.js');
 const pool = require('../../db.js');
 
 class EconomyService {
     /**
      * GET /economy/summary
      * Returns aggregated resource totals across all fiefs for the requesting player,
-     * plus current tax_rate and tithe_active settings.
+     * plus the player's individual tax_percentage and tithe_active settings.
      */
     async GetEconomySummary(req, res) {
         const player_id = req.user.player_id;
         try {
-            const result = await pool.query(`
-                SELECT
-                    COUNT(td.h3_index)::int            AS fief_count,
-                    COALESCE(SUM(td.food_stored),  0)  AS total_food,
-                    COALESCE(SUM(td.wood_stored),  0)  AS total_wood,
-                    COALESCE(SUM(td.stone_stored), 0)  AS total_stone,
-                    COALESCE(SUM(td.iron_stored),  0)  AS total_iron,
-                    COALESCE(SUM(td.gold_stored),  0)  AS total_gold,
-                    COALESCE(SUM(td.population),   0)  AS total_population
-                FROM territory_details td
-                JOIN h3_map m ON td.h3_index = m.h3_index
-                WHERE m.player_id = $1
-            `, [player_id]);
+            const [totalsResult, playerResult] = await Promise.all([
+                pool.query(`
+                    SELECT
+                        COUNT(td.h3_index)::int            AS fief_count,
+                        COALESCE(SUM(td.food_stored),  0)  AS total_food,
+                        COALESCE(SUM(td.wood_stored),  0)  AS total_wood,
+                        COALESCE(SUM(td.stone_stored), 0)  AS total_stone,
+                        COALESCE(SUM(td.iron_stored),  0)  AS total_iron,
+                        COALESCE(SUM(td.gold_stored),  0)  AS total_gold,
+                        COALESCE(SUM(td.population),   0)  AS total_population
+                    FROM territory_details td
+                    JOIN h3_map m ON td.h3_index = m.h3_index
+                    WHERE m.player_id = $1
+                `, [player_id]),
+                pool.query(
+                    'SELECT tax_percentage, tithe_active FROM players WHERE player_id = $1',
+                    [player_id]
+                ),
+            ]);
 
-            const totals = result.rows[0];
+            const totals = totalsResult.rows[0];
+            const player = playerResult.rows[0];
 
-            // Current economy settings from in-memory CONFIG (loaded from game_config table)
-            const taxRate     = CONFIG.gameplay?.tax_rate      ?? 5;
-            const titheActive = CONFIG.gameplay?.tithe_active  ?? false;
+            const taxRate     = parseFloat(player?.tax_percentage ?? 10);
+            const titheActive = player?.tithe_active === true;
 
-            // Estimate next tax yield: taxRate% of total_gold across all fiefs
             const estimatedTaxYield = Math.floor(Number(totals.total_gold) * taxRate / 100);
 
             res.json({
@@ -47,8 +50,8 @@ class EconomyService {
                     total_population: Number(totals.total_population),
                 },
                 settings: {
-                    tax_rate:           taxRate,
-                    tithe_active:       titheActive === true || titheActive === 'true' || titheActive === 1,
+                    tax_rate:            taxRate,
+                    tithe_active:        titheActive,
                     estimated_tax_yield: estimatedTaxYield,
                 }
             });
@@ -57,12 +60,9 @@ class EconomyService {
             res.status(500).json({ success: false, message: 'Error al obtener resumen económico' });
         }
     }
-
     /**
      * PATCH /economy/settings
-     * Allows any authenticated player to adjust their tax rate and tithe toggle.
-     * These are global settings stored in game_config (shared, admin-level in a real game,
-     * but exposed here as player-facing controls per design).
+     * Actualiza tax_percentage y/o tithe_active del jugador autenticado.
      */
     async UpdateEconomySettings(req, res) {
         const player_id = req.user.player_id;
@@ -70,34 +70,35 @@ class EconomyService {
             const { tax_rate, tithe_active } = req.body;
 
             const updates = [];
+            const params  = [];
 
             if (tax_rate !== undefined) {
-                const rate = Math.min(10, Math.max(1, parseInt(tax_rate, 10)));
+                const rate = Math.min(100, Math.max(0, parseFloat(tax_rate)));
                 if (isNaN(rate)) {
-                    return res.status(400).json({ success: false, message: 'tax_rate debe ser un número entre 1 y 10' });
+                    return res.status(400).json({ success: false, message: 'tax_rate debe ser un número entre 0 y 100' });
                 }
-                await AdminModel.UpsertConfig('gameplay', 'tax_rate', rate);
-                // Sync in-memory config immediately
-                if (!CONFIG.gameplay) CONFIG.gameplay = {};
-                CONFIG.gameplay.tax_rate = rate;
-                updates.push(`Tasa de impuestos: ${rate}%`);
+                params.push(rate);
+                updates.push(`tax_percentage = $${params.length}`);
             }
 
             if (tithe_active !== undefined) {
                 const active = tithe_active === true || tithe_active === 'true' || tithe_active === 1;
-                await AdminModel.UpsertConfig('gameplay', 'tithe_active', active ? 'true' : 'false');
-                // Sync in-memory config immediately
-                if (!CONFIG.gameplay) CONFIG.gameplay = {};
-                CONFIG.gameplay.tithe_active = active;
-                updates.push(`Diezmo: ${active ? 'activado' : 'desactivado'}`);
+                params.push(active);
+                updates.push(`tithe_active = $${params.length}`);
             }
 
             if (updates.length === 0) {
                 return res.status(400).json({ success: false, message: 'No se proporcionaron parámetros válidos' });
             }
 
-            Logger.action(`Configuración económica actualizada por jugador ${player_id}: ${updates.join(', ')}`, player_id);
-            res.json({ success: true, message: `Configuración guardada: ${updates.join(', ')}` });
+            params.push(player_id);
+            await pool.query(
+                `UPDATE players SET ${updates.join(', ')} WHERE player_id = $${params.length}`,
+                params
+            );
+
+            Logger.action(`Configuración fiscal actualizada por jugador ${player_id}: ${updates.join(', ')}`, player_id);
+            res.json({ success: true, message: 'Configuración guardada' });
 
         } catch (error) {
             Logger.error(error, { context: 'EconomyService.UpdateEconomySettings', userId: player_id, payload: req.body });

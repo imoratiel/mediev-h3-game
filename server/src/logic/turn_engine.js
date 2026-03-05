@@ -1084,11 +1084,11 @@ async function processGameTurn(pool, config) {
 
         // Tax collection (day 10 of each game month only)
         // processTaxCollection has its own guards: day-of-month check + DB idempotency key
-        await processTaxCollection(client, newTurn, config, gameDate);
+        await processTaxCollection(client, newTurn, gameDate);
 
         // Tithe system (day 10 of each game month, same as tax collection)
         // processTithe has its own guards: day-of-month check + DB idempotency key
-        await processTithe(client, newTurn, config, gameDate);
+        await processTithe(client, newTurn, gameDate);
 
         await client.query('COMMIT');
 
