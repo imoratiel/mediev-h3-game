@@ -299,7 +299,7 @@ class KingdomService {
                 return res.status(404).json({ success: false, message: 'Jugador no encontrado' });
             }
 
-            const CLAIM_COST = 100;
+            const CLAIM_COST = (isFirstTerritory || isExiled) ? 0 : 100;
             if (playerRow.gold < CLAIM_COST) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: `💰 Oro insuficiente. Necesitas: ${CLAIM_COST}, Tienes: ${playerRow.gold}` });
