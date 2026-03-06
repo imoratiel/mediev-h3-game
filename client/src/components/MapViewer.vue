@@ -81,10 +81,10 @@
           class="nav-button"
           :class="{ active: activeOverlay === 'reino' }"
           @click="openOverlay('reino')"
-          title="Reino"
+          title="Dominio"
         >
           <span class="nav-icon">🏰</span>
-          <span class="nav-label">Reino</span>
+          <span class="nav-label">Dominio</span>
         </button>
         <button
           class="nav-button"
@@ -681,7 +681,7 @@
       <div class="overlay-container">
         <!-- Header -->
         <div class="overlay-header">
-          <h1 class="overlay-title">🏰 Gestión del Reino</h1>
+          <h1 class="overlay-title">🏰 Gestión del Dominio</h1>
           <button class="overlay-close" @click="closeOverlay" title="Cerrar">✕</button>
         </div>
 
@@ -700,15 +700,7 @@
                 >
                   🏰 Feudos
                 </button>
-                <button
-                  class="kingdom-action-btn-sidebar"
-                  :class="{ active: activeKingdomTab === 'military' }"
-                  @click="openMilitaryTab"
-                  title="Reclutar tropas"
-                >
-                  ⚔️ Reclutar
-                </button>
-                <button class="kingdom-action-btn-sidebar" title="Próximamente" disabled>📜 Leyes</button>
+                <button class="kingdom-action-btn-sidebar" title="Próximamente" disabled>📜 Fueros y Leyes</button>
               </div>
             </div>
 
@@ -1156,7 +1148,7 @@ const panelTitle = computed(() => {
     layers: '🗺️ Capas del Mapa',
     troops: '⚔️ Tropas',
     market: '🏪 Mercado',
-    kingdom: '🏰 Reino',
+    kingdom: '🏰 Dominio',
     messages: '📜 Mensajes',
     notifications: '🔔 Notificaciones',
     profile: '👤 Perfil'

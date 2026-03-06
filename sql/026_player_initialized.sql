@@ -10,3 +10,6 @@ ALTER TABLE players
 UPDATE players
     SET is_initialized = TRUE
     WHERE capital_h3 IS NOT NULL;
+
+INSERT INTO schema_migrations (script_name)
+VALUES ('026_player_initialized.sql');

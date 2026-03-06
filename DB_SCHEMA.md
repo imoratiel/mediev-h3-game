@@ -30,6 +30,7 @@
 - wood_stored, iron_stored, stone_stored, food_stored (INT)
 - discovered_resource (VARCHAR)
 - grace_turns (INT)
+- division_id (INT FK -> political_divisions.id) - Pertenece a una división política (opcional)
 
 ## Tabla: terrain_types
 - terrain_type_id (SERIAL PK)
@@ -160,3 +161,44 @@
 ## Tabla: bridges
 - h3_index (VARCHAR 15 PK)
 - constructed_at (TIMESTAMP)
+
+## Tabla: noble_ranks
+- id (SERIAL PK)
+- title_male (VARCHAR 50)
+- title_female (VARCHAR 50)
+- territory_name (VARCHAR 100)
+- min_fiefs_required (INT)
+- level_order (INT)
+- required_parent_rank_id (INT, FK -> noble_ranks.id) - ID del rango inferior necesario para ascender
+- required_count (INT) - Cantidad de divisiones del rango inferior necesarias
+
+## Tabla: political_divisions
+- id (SERIAL PK)
+- player_id (INT FK -> players.player_id)
+- name (VARCHAR 100)
+- noble_rank_id (INT FK -> noble_ranks.id)
+- capital_territory_id (INT FK -> territory_details.id)
+- created_at (TIMESTAMP)
+
+## Tabla: players
+- player_id (SERIAL PK)
+- username (VARCHAR 50)
+- color (VARCHAR 7)
+- gold (INT)
+- created_at (TIMESTAMP)
+- role (VARCHAR 20)
+- password (VARCHAR 255)
+- capital_h3 (VARCHAR 20)
+- display_name (VARCHAR 50)
+- is_exiled (BOOLEAN)
+- is_ai (BOOLEAN)
+- ai_profile (VARCHAR 50)
+- deleted (BOOLEAN)
+- tax_percentage (NUMERIC 5, 2)
+- tithe_active (BOOLEAN)
+- is_initialized (BOOLEAN)
+- first_name (VARCHAR 100)
+- last_name (VARCHAR 100)
+- gender (CHAR 1)
+- noble_rank_id (INT FK -> noble_ranks.id)
+
