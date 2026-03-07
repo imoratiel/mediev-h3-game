@@ -335,10 +335,10 @@ class KingdomService {
             await KingdomModel.InsertTerritoryDetails(client, h3_index, eco);
             await KingdomModel.DeductGold(client, player_id, CLAIM_COST);
 
-            // On first claim (capital/exile), also claim all colonizable ring-1 neighbors for free
+            // On first claim (capital/exile), also claim all colonizable ring-2 neighbors for free
             let bonusHexes = [];
             if (isFirstTerritory || isExiled) {
-                const ring1 = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+                const ring1 = h3.gridDisk(h3_index, 2).filter(n => n !== h3_index);
                 const neighbors = await KingdomModel.GetColonizableNeighbors(client, ring1);
                 for (const neighbor of neighbors) {
                     await KingdomModel.ClaimHex(client, neighbor.h3_index, player_id);

@@ -5,7 +5,7 @@
  * Runs inside a single atomic transaction:
  *  1. Idempotency guard (FOR UPDATE on players row)
  *  2. Find a free, isolated capital hex (≥10 cells from any occupied territory)
- *  3. Claim capital + ring-1 colonizable neighbors
+ *  3. Claim capital + ring-2 colonizable neighbors
  *  4. Create starting army (Milicia x100, Arqueros x50, Caballería Ligera x50)
  *  5. Build a completed Barracks (Cuartel) in the capital
  *  6. Set capital_h3 and is_initialized = TRUE
@@ -97,8 +97,8 @@ async function initializePlayer(player_id) {
             gold:       Math.floor(Math.random() * 501)  + 300,
         });
 
-        // ── 3. Claim ring-1 colonizable neighbors ────────────────────────────
-        const ring1 = h3.gridDisk(capitalHex, 1).filter(n => n !== capitalHex);
+        // ── 3. Claim ring-2 colonizable neighbors ────────────────────────────
+        const ring1 = h3.gridDisk(capitalHex, 2).filter(n => n !== capitalHex);
         const neighborsResult = await client.query(`
             SELECT m.h3_index
             FROM h3_map m
@@ -166,9 +166,9 @@ async function initializePlayer(player_id) {
             );
         }
 
-        // ── 8. Mark player as initialized ────────────────────────────────────
+        // ── 8. Mark player as initialized and set starting gold ──────────────
         await client.query(
-            'UPDATE players SET is_initialized = TRUE WHERE player_id = $1',
+            'UPDATE players SET is_initialized = TRUE, gold = 100000 WHERE player_id = $1',
             [player_id]
         );
 

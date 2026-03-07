@@ -60,7 +60,7 @@
 
         <!-- Not enough contiguous fiefs warning -->
         <div v-if="!lawsData.can_found" class="fuero-warn">
-          <p>⚠️ Necesitas al menos <strong>{{ lawsData.rank.min_fiefs_required }}</strong> feudos contiguos libres para fundar un {{ lawsData.rank.territory_name }}. Tienes {{ lawsData.contiguous_fiefs.length }} disponibles.</p>
+          <p>⚠️ Necesitas al menos <strong>{{ lawsData.rank.min_fiefs_required }}</strong> feudos contiguos libres para fundar un {{ lawsData.rank.territory_name }}. Tienes {{ lawsData.contiguous_fiefs.length }} conquistados.</p>
         </div>
 
         <template v-else>

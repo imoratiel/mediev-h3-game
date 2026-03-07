@@ -30,7 +30,7 @@ const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = requir
 // ── Constantes del perfil Agricultor ─────────────────────────────────────────
 // ── Constantes del perfil Expansionista ──────────────────────────────────────
 const EXPANSIONIST = {
-    STARTING_GOLD:       60_000,
+    STARTING_GOLD:      100_000,
     CLAIM_COST:          100,
     GOLD_TO_BUILD:       8_000,   // Build military only if well-funded
     GOLD_TO_RECRUIT:     5_000,   // Recruit unconditionally above this
@@ -45,7 +45,7 @@ const EXPANSIONIST = {
 
 // ── Constantes del perfil Equilibrado ────────────────────────────────────────
 const BALANCED = {
-    STARTING_GOLD:        55_000,
+    STARTING_GOLD:       100_000,
     CLAIM_COST:           100,
     GOLD_TO_EXPAND:       20_000,  // More conservative than farmer (15K)
     GOLD_TO_BUILD:        5_000,
@@ -61,7 +61,7 @@ const BALANCED = {
 
 // ── Constantes del perfil Agricultor ─────────────────────────────────────────
 const FARMER = {
-    STARTING_GOLD:       50_000,
+    STARTING_GOLD:      100_000,
     CLAIM_COST:          100,
     GOLD_TO_BUILD:       4_000,   // Gold mínimo para iniciar construcción
     GOLD_TO_EXPAND:      15_000,  // Gold mínimo para colonizar
@@ -146,7 +146,7 @@ class AIManagerService {
             await KingdomModel.InsertTerritoryDetails(client, spawnHex, capitalEco);
             await KingdomModel.SetCapital(client, spawnHex, aiPlayerId);
 
-            const ring1     = h3.gridDisk(spawnHex, 1).filter(n => n !== spawnHex);
+            const ring1     = h3.gridDisk(spawnHex, 2).filter(n => n !== spawnHex);
             const neighbors = await KingdomModel.GetColonizableNeighbors(client, ring1);
             for (const neighbor of neighbors) {
                 const eco = generateInitialEconomy();
