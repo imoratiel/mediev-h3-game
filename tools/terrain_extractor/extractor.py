@@ -1654,6 +1654,73 @@ def postprocess_coastal_detection(terrain_data: List[Tuple[str, int, int, int]])
     return updated_terrain_data
 
 
+def fix_isolated_rivers(terrain_data: List[Tuple[str, int, int, int]]) -> List[Tuple[str, int, int, int]]:
+    """
+    Reclasifica rios (ID 4) aislados como pantanos (ID 5).
+
+    Un rio se considera aislado si ninguno de sus 6 vecinos H3 inmediatos
+    es tambien un rio. Estos rios sueltos son artefactos del proceso de
+    extraccion y no representan cauces reales continuos.
+
+    PROCESO:
+    1. Construye un Set con todos los h3_index de tipo Rio (ID 4)
+    2. Para cada celda de tipo Rio, comprueba si al menos un vecino
+       (h3.grid_disk k=1, excluyendo el propio) esta en el set de rios
+    3. Si ningun vecino es rio -> celda aislada -> reclasificar como Pantanos (ID 5)
+
+    Args:
+        terrain_data: Lista de tuplas (h3_index, terrain_type_id, coord_x, coord_y)
+
+    Returns:
+        Lista actualizada con rios aislados convertidos en pantanos
+    """
+    logger.info("=" * 80)
+    logger.info("PASO 2.6: Reclasificacion de rios aislados como pantanos")
+    logger.info("=" * 80)
+    start_time = time.time()
+
+    # Set de todos los h3_index con tipo Rio para lookup O(1)
+    river_set = {h3_idx for h3_idx, terrain_id, _, _ in terrain_data if terrain_id == 4}
+    logger.info(f"Total celdas de tipo Rio (ID 4): {len(river_set)}")
+
+    if not river_set:
+        logger.info("No hay celdas de tipo Rio. Saltando paso.")
+        return terrain_data
+
+    isolated_rivers = set()
+
+    for h3_idx in river_set:
+        try:
+            neighbors = h3.grid_disk(h3_idx, 1)
+            # Comprobar si algun vecino (distinto del propio) es rio
+            has_river_neighbor = any(
+                n != h3_idx and n in river_set
+                for n in neighbors
+            )
+            if not has_river_neighbor:
+                isolated_rivers.add(h3_idx)
+        except Exception as e:
+            logger.warning(f"Error comprobando vecinos de {h3_idx}: {e}")
+            continue
+
+    logger.info(f"Rios aislados detectados (sin vecino rio): {len(isolated_rivers)}")
+    logger.info(f"Rios validos que permanecen: {len(river_set) - len(isolated_rivers)}")
+
+    # Reclasificar celdas aisladas: ID 4 (Rio) -> ID 5 (Pantanos)
+    updated_terrain_data = []
+    for h3_idx, terrain_id, coord_x, coord_y in terrain_data:
+        if h3_idx in isolated_rivers:
+            updated_terrain_data.append((h3_idx, 5, coord_x, coord_y))  # Pantanos
+        else:
+            updated_terrain_data.append((h3_idx, terrain_id, coord_x, coord_y))
+
+    elapsed = time.time() - start_time
+    logger.info(f"Reclasificacion completada en {elapsed:.2f}s: {len(isolated_rivers)} rios -> pantanos")
+    logger.info("=" * 80)
+
+    return updated_terrain_data
+
+
 def main():
     """
     Main execution function.
@@ -1683,6 +1750,9 @@ def main():
 
         # Step 2.5: Post-procesamiento - Detección de Costa Inteligente
         terrain_data = postprocess_coastal_detection(terrain_data)
+
+        # Step 2.6: Reclasificar rios aislados (sin vecinos rio) como pantanos
+        terrain_data = fix_isolated_rivers(terrain_data)
 
         # Step 3: Insert data into database (includes coord_x, coord_y)
         insert_terrain_data_batch(DB_CONFIG, terrain_data)
