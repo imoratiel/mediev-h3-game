@@ -178,6 +178,7 @@
 - name (VARCHAR 100)
 - noble_rank_id (INT FK -> noble_ranks.id)
 - capital_territory_id (INT FK -> territory_details.id)
+- boundary_geojson (JSONB) - Polígono en formato GeoJSON que representa el borde exterior del dominio para renderizado eficiente en mapa.
 - created_at (TIMESTAMP)
 
 ## Tabla: players

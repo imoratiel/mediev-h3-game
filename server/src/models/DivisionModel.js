@@ -208,6 +208,45 @@ class DivisionModel {
     }
 
     /**
+     * Devuelve todos los h3_index asignados a una division.
+     * Se usa para recalcular el boundary_geojson.
+     */
+    async GetDivisionFiefs(pool, divisionId) {
+        const result = await pool.query(`
+            SELECT m.h3_index
+            FROM h3_map m
+            JOIN territory_details td ON m.h3_index = td.h3_index
+            WHERE td.division_id = $1
+        `, [divisionId]);
+        return result.rows.map(r => r.h3_index);
+    }
+
+    /**
+     * Actualiza el campo boundary_geojson de una division.
+     */
+    async UpdateBoundary(pool, divisionId, geojson) {
+        await pool.query(
+            'UPDATE political_divisions SET boundary_geojson = $1 WHERE id = $2',
+            [geojson ? JSON.stringify(geojson) : null, divisionId]
+        );
+    }
+
+    /**
+     * Devuelve todas las divisiones que tienen boundary_geojson calculado.
+     * Usada por GET /divisions/boundaries.
+     */
+    async GetAllActiveBoundaries(pool) {
+        const result = await pool.query(`
+            SELECT pd.id, pd.name, pd.player_id, pd.capital_h3, pd.boundary_geojson,
+                   nr.territory_name, nr.title_male, nr.title_female
+            FROM political_divisions pd
+            JOIN noble_ranks nr ON pd.noble_rank_id = nr.id
+            WHERE pd.boundary_geojson IS NOT NULL
+        `);
+        return result.rows;
+    }
+
+    /**
      * Asigna masivamente un division_id a una lista de feudos.
      * Solo actualiza feudos que siguen con division_id IS NULL (seguridad extra).
      */

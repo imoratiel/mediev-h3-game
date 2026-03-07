@@ -21,6 +21,7 @@ module.exports = function () {
     const EconomyService = require('../src/services/EconomyService.js');
     const WorkerService = require('../src/services/WorkerService.js');
     const DivisionService = require('../src/services/DivisionService.js');
+    const MapService = require('../src/services/MapService.js');
 
     // ============================================
     // AUTHENTICATION ENDPOINTS
@@ -107,6 +108,7 @@ module.exports = function () {
     router.get('/territory/:h3_index/laws', authenticateToken, (req, res) => DivisionService.GetTerritoryLaws(req, res));
     router.post('/divisions/proclaim', authenticateToken, (req, res) => DivisionService.ProclaimDivision(req, res));
     router.get('/divisions/my', authenticateToken, (req, res) => DivisionService.GetMyDivisions(req, res));
+    router.get('/divisions/boundaries', authenticateToken, (req, res) => MapService.GetAllBoundaries(req, res));
 
     // ============================================
     // ADMIN AND MESSAGES

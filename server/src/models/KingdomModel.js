@@ -197,7 +197,8 @@ class KingdomModel {
                 upgrade_bld.id            AS upgrade_building_id,
                 upgrade_bld.name          AS upgrade_building_name,
                 upgrade_bld.gold_cost     AS upgrade_gold_cost,
-                upgrade_bld.construction_time_turns AS upgrade_turns
+                upgrade_bld.construction_time_turns AS upgrade_turns,
+                pd.name AS division_name
             FROM h3_map m
             JOIN territory_details td ON m.h3_index = td.h3_index
             JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
@@ -207,6 +208,7 @@ class KingdomModel {
             LEFT JOIN buildings bld ON fb.building_id = bld.id
             LEFT JOIN building_types bt ON bld.type_id = bt.building_type_id
             LEFT JOIN buildings upgrade_bld ON upgrade_bld.required_building_id = fb.building_id
+            LEFT JOIN political_divisions pd ON td.division_id = pd.id
             LEFT JOIN (
                 SELECT a.h3_index, SUM(tr.quantity) AS total_troops
                 FROM armies a

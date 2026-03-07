@@ -10,6 +10,7 @@
 const pool = require('../../db.js');
 const { Logger } = require('../utils/logger');
 const DivisionModel = require('../models/DivisionModel.js');
+const MapService = require('./MapService.js');
 const { findContiguousFiefs, suggestDivisionName } = require('../logic/contiguitySearch.js');
 
 class DivisionService {
@@ -260,6 +261,9 @@ class DivisionService {
             await DivisionModel.AssignFiefsToDivision(client, division.id, fiefs);
 
             await client.query('COMMIT');
+
+            // Pre-calculate boundary GeoJSON (fast: pure h3 computation + 1 UPDATE)
+            await MapService.generateDivisionBoundary(division.id);
 
             Logger.action(
                 `Division "${divisionName}" proclamada por jugador ${player_id}. Capital: ${capital_h3}, feudos: ${fiefs.length}`,

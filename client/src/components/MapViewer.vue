@@ -944,6 +944,7 @@
       v-if="showFueroPanel"
       :h3_index="fueroPanelH3"
       :fiefName="fueroPanelFiefName"
+      :gender="currentUser?.gender || 'M'"
       @close="showFueroPanel = false; clearDivisionHighlights()"
       @highlight-fiefs="highlightDivisionFiefs"
       @clear-highlights="clearDivisionHighlights"
@@ -1352,6 +1353,7 @@ let constructionMarkersLayer = null;  // Layer for in-progress bridge constructi
 let hexStackerLayer = null;           // Layer for combined HexStacker markers (owner+building+troops)
 let highlightLayer = null; // Temporary highlight polygon for navigation
 let divisionHighlightLayer = null; // Gold overlay for division fief selection
+let divisionBoundaryLayer = null;  // Political division borders (GeoJSON)
 let debounceTimer = null;
 
 // Configuration
@@ -1523,6 +1525,11 @@ const initMap = () => {
   map.createPane('stackerPane');
   map.getPane('stackerPane').style.zIndex = 675;
 
+  // Division Border Pane — above hex borders (450), below all icons (650)
+  map.createPane('divisionBorderPane');
+  map.getPane('divisionBorderPane').style.zIndex = 460;
+  map.getPane('divisionBorderPane').style.pointerEvents = 'auto';
+
   // Inicializar visualizador de rutas (crea su propio pane routePane z-600)
   RouteVisualizer.init(map);
 
@@ -1581,6 +1588,7 @@ const initMap = () => {
   constructionMarkersLayer = L.layerGroup().addTo(map);
   hexStackerLayer = L.layerGroup().addTo(map);
   divisionHighlightLayer = L.layerGroup().addTo(map);
+  divisionBoundaryLayer = L.layerGroup().addTo(map);
 
   // Track zoom level
   currentZoom.value = map.getZoom();
@@ -3182,12 +3190,65 @@ const clearDivisionHighlights = () => {
 };
 
 /**
+ * Fetch all active division boundary GeoJSON from the server and render them
+ * as a political border layer. Called on map init and after each proclamation.
+ */
+const fetchDivisionBoundaries = async () => {
+  if (!divisionBoundaryLayer) return;
+  try {
+    const fc = await mapApi.getDivisionBoundaries();
+    divisionBoundaryLayer.clearLayers();
+    if (!fc || !fc.features || fc.features.length === 0) return;
+
+    L.geoJSON(fc, {
+      pane: 'divisionBorderPane',
+      style: () => ({
+        color: '#8B1A1A',
+        weight: 3,
+        opacity: 0.88,
+        fillColor: '#8B1A1A',
+        fillOpacity: 0.06,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }),
+      onEachFeature: (feature, layer) => {
+        const props = feature.properties;
+
+        // Tooltip: always show division name on hover
+        layer.bindTooltip(
+          `<div class="division-boundary-tooltip"><strong>⚜️ ${props.name}</strong><br><small>${props.territory_name}</small></div>`,
+          { sticky: true, className: 'leaflet-division-tooltip' }
+        );
+
+        // Click: open FueroPanel for own divisions, popup for foreign ones
+        layer.on('click', () => {
+          if (props.player_id == playerId.value) {
+            openFueroPanel(props.capital_h3, props.name);
+          } else {
+            layer.openPopup();
+          }
+        });
+
+        layer.bindPopup(
+          `<div style="font-family: serif; padding: 4px 2px;">
+            <strong style="color: #8B1A1A; font-size: 1rem;">⚜️ ${props.name}</strong><br>
+            <small style="color: #666;">${props.territory_name} de otro senor</small>
+          </div>`
+        );
+      },
+    }).addTo(divisionBoundaryLayer);
+  } catch (err) {
+    console.error('[Fronteras] Error al cargar fronteras de divisiones:', err);
+  }
+};
+
+/**
  * Called after a division is successfully proclaimed
  */
 const onDivisionProclaimed = () => {
   clearDivisionHighlights();
-  // Refresh hex layer to reflect new division coloring in future
   fetchHexagonData();
+  fetchDivisionBoundaries();
 };
 
 /**
@@ -5317,6 +5378,7 @@ onMounted(() => {
   loadMessages(); // Load initial messages
   startSync(); // Start server synchronization (polls every 30 seconds)
   startNotifPolling(); // Start background notification polling (every 45 seconds)
+  fetchDivisionBoundaries(); // Load political division borders
   // Pre-fetch capital so the "Fundar Capital" button condition is reliable from the first click
   mapApi.getCapital().then(r => {
     if (r?.success) { capitalH3Index.value = r.h3_index; isExiled.value = r.is_exiled ?? false; }

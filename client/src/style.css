@@ -646,6 +646,22 @@ button {
   filter: brightness(1.2);
 }
 
+/* Division boundary tooltip */
+.leaflet-division-tooltip {
+  background: rgba(20, 10, 5, 0.92) !important;
+  border: 1px solid rgba(139, 26, 26, 0.6) !important;
+  border-radius: 6px !important;
+  color: #e8d5b5 !important;
+  font-family: serif !important;
+  font-size: 0.82rem !important;
+  padding: 5px 10px !important;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.5) !important;
+  white-space: nowrap;
+}
+.leaflet-division-tooltip small {
+  color: #a08060;
+}
+
 .btn-fueros {
   background: linear-gradient(135deg, #3a2a0a 0%, #8a6020 100%) !important;
   color: #e8d5b5 !important;

@@ -13,7 +13,7 @@
             <th class="col-number">⛰️</th>
             <th class="col-number">⛏️</th>
             <th class="col-number">💰</th>
-            <th class="col-prospection">Prospección</th>
+            <th class="col-division">Señorío</th>
             <th class="col-edificio">🏛️</th>
             <th class="col-number">Auton.</th>
             <th class="col-number">Dist.</th>
@@ -37,22 +37,11 @@
             <td class="text-right">{{ formatNumber(fief.stone) }}</td>
             <td class="text-right">{{ formatNumber(fief.iron) }}</td>
             <td class="text-gold text-right">{{ formatGold(fief.gold) }}</td>
-            <td class="text-center">
-              <template v-if="fief.discovered_resource !== null">
-                <span
-                  :class="{
-                    'exploration-badge': true,
-                    'exploration-badge-completed': fief.explorationStatus === 'completed',
-                    'exploration-badge-exploring': fief.explorationStatus === 'exploring'
-                  }"
-                  :title="fief.explorationStatusText"
-                >
-                  {{ fief.explorationStatusIcon }} {{ fief.explorationStatusShort }}
-                </span>
-              </template>
-              <template v-else>
-                <span class="dimmed-dash" title="Sin explorar">—</span>
-              </template>
+            <td class="division-cell">
+              <span v-if="fief.division_name" class="division-badge" :title="fief.division_name">
+                ⚜️ {{ fief.division_name }}
+              </span>
+              <span v-else class="dimmed-dash">—</span>
             </td>
             <td class="text-center building-cell">
               <template v-if="fief.fief_building">
@@ -307,7 +296,7 @@ const formatGold = (val) => {
 .col-feudo { width: 160px; }
 .col-terreno { width: 110px; }
 .col-number { width: 70px; }
-.col-prospection { width: 120px; }
+.col-division { width: 130px; }
 .col-edificio { width: 130px; }
 .col-actions { width: 160px; }
 

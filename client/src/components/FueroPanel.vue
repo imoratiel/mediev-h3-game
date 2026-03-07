@@ -47,19 +47,6 @@
             </div>
           </div>
 
-          <!-- Fief count progress bar -->
-          <div class="division-progress-section">
-            <div class="progress-label">
-              <span>Ocupacion del territorio</span>
-              <span>{{ Math.round((lawsData.division.fief_count / lawsData.division.rank.max_fiefs_limit) * 100) }}%</span>
-            </div>
-            <div class="progress-bar-track">
-              <div
-                class="progress-bar-fill"
-                :style="{ width: Math.min(100, (lawsData.division.fief_count / lawsData.division.rank.max_fiefs_limit) * 100) + '%' }"
-              ></div>
-            </div>
-          </div>
         </div>
 
         <div class="fuero-info-note">
@@ -81,21 +68,21 @@
           <div class="fuero-rank-banner">
             <div class="rank-banner-icon">⚜️</div>
             <div>
-              <p class="rank-banner-title">Rango disponible: <strong>{{ lawsData.rank.title_male }}</strong></p>
-              <p class="rank-banner-sub">Tipo de territorio: {{ lawsData.rank.territory_name }} · Maximo {{ lawsData.rank.max_fiefs_limit }} feudos</p>
+              <p class="rank-banner-title">Declarar fueros para el <strong>{{ lawsData.suggested_name }}</strong></p>
+              <p class="rank-banner-sub">Maximo {{ lawsData.rank.max_fiefs_limit }} feudos por {{ lawsData.rank.territory_name }}</p>
             </div>
           </div>
 
           <!-- Fief count summary -->
           <div class="fuero-fiefs-summary">
             <span class="fiefs-count-badge">{{ selectedFiefs.size }}</span>
-            <span>feudos contiguos incluidos <span class="fiefs-min-note">(minimo {{ lawsData.rank.min_fiefs_required }})</span></span>
+            <span>El nuevo {{ lawsData.rank.territory_name }} constara de <strong>{{ selectedFiefs.size }} feudos</strong></span>
           </div>
 
-          <!-- Auto-generated name preview -->
+          <!-- Noble title preview -->
           <div class="fuero-name-preview">
-            <span class="fuero-label">Nombre asignado automaticamente</span>
-            <span class="fuero-name-value">{{ lawsData.suggested_name }}</span>
+            <span class="fuero-label">Tu titulo</span>
+            <span class="fuero-name-value">Ahora seras {{ nobleArticle }} {{ nobleTitle }} {{ nameGenitivo }}</span>
           </div>
 
           <!-- Validation error -->
@@ -127,12 +114,13 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { getTerritoryLaws, proclaimDivision } from '@/services/mapApi.js';
 
 const props = defineProps({
   h3_index: { type: String, required: true },
   fiefName: { type: String, default: '' },
+  gender:   { type: String, default: 'M' },
 });
 
 const emit = defineEmits(['close', 'highlight-fiefs', 'clear-highlights', 'division-proclaimed']);
@@ -143,6 +131,25 @@ const lawsData = ref(null);
 const selectedFiefs = ref(new Set());
 const proclaiming = ref(false);
 const resultMsg = ref(null);
+
+// ─── Computed ─────────────────────────────────────────────────────────────────
+
+// Título nobiliario según género: "Señor" / "Señora"
+const nobleTitle = computed(() => {
+  const rank = lawsData.value?.rank;
+  if (!rank) return '';
+  return props.gender === 'F' ? rank.title_female : rank.title_male;
+});
+
+// Artículo según género: "el" / "la"
+const nobleArticle = computed(() => props.gender === 'F' ? 'la' : 'el');
+
+// Genitivo: "de los Llanos" (extrae la parte tras el territory_name)
+const nameGenitivo = computed(() => {
+  const suggested = lawsData.value?.suggested_name ?? '';
+  const prefix    = (lawsData.value?.rank?.territory_name ?? '') + ' ';
+  return suggested.startsWith(prefix) ? suggested.slice(prefix.length) : suggested;
+});
 
 // ─── Fetch ────────────────────────────────────────────────────────────────────
 
@@ -209,9 +216,17 @@ async function proclaim() {
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
-onMounted(fetchLaws);
+function onKeydown(e) {
+  if (e.key === 'Escape') emit('close');
+}
+
+onMounted(() => {
+  fetchLaws();
+  window.addEventListener('keydown', onKeydown);
+});
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
   emit('clear-highlights');
 });
 </script>
@@ -369,7 +384,6 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
-  margin-bottom: 20px;
 }
 
 .division-stat {
@@ -394,30 +408,6 @@ onBeforeUnmount(() => {
 .stat-mono {
   font-family: monospace;
   font-size: 0.8rem;
-}
-
-.division-progress-section {}
-
-.progress-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.78rem;
-  color: #8a7a5a;
-  margin-bottom: 6px;
-}
-
-.progress-bar-track {
-  background: rgba(255,255,255,0.08);
-  border-radius: 4px;
-  height: 8px;
-  overflow: hidden;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #c5a059, #e8d5b5);
-  border-radius: 4px;
-  transition: width 0.6s ease;
 }
 
 /* Info note */

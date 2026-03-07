@@ -706,3 +706,11 @@ export async function getPlayerDivisions() {
   const response = await axios.get(`${API_URL}/api/divisions/my`);
   return response.data;
 }
+
+/**
+ * Get GeoJSON FeatureCollection of all active division boundaries
+ */
+export async function getDivisionBoundaries() {
+  const response = await axios.get(`${API_URL}/api/divisions/boundaries`);
+  return response.data;
+}
