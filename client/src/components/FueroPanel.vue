@@ -57,13 +57,12 @@
           </div>
           <input
             v-model.number="divisionTaxRate"
-            type="range" min="0" max="100" step="1"
+            type="range" min="1" max="15" step="1"
             class="fuero-tax-slider"
           />
           <div class="fuero-tax-hints">
-            <span>0% — Sin impuestos</span>
-            <span>Felicidad: +10% ✨</span>
-            <span>100% — Máximo</span>
+            <span>1% — Mínimo</span>
+            <span>15% — Máximo</span>
           </div>
           <div v-if="taxMsg" class="fuero-result" :class="taxMsg.type">{{ taxMsg.text }}</div>
           <button class="fuero-btn fuero-btn-primary fuero-btn-sm" :disabled="taxSaving" @click="saveTax">
@@ -77,8 +76,8 @@
         </div>
 
         <div class="fuero-info-note fuero-info-recruit">
-          <span>🪖</span>
-          <span>Los feudos dentro de un señorío tienen un límite de <strong>200 reclutas</strong> por feudo (feudos libres: 400). La felicidad aumenta un <strong>+10%</strong>.</span>
+          <span>&#x2694;&#xFE0F;</span>
+          <span>Los feudos del señorío permiten reclutar hasta <strong>400 hab.</strong> por feudo. Los feudos libres solo hasta <strong>200 hab.</strong> La felicidad aumenta un <strong>+10%</strong>.</span>
         </div>
       </div>
 
@@ -145,8 +144,8 @@
 
           <!-- Recruitment cap note -->
           <div class="fuero-info-note fuero-info-recruit">
-            <span>🪖</span>
-            <span>Al unirse al señorío, el límite de reclutamiento por feudo baja de <strong>400</strong> a <strong>200</strong> reclutas. A cambio, la felicidad aumenta un <strong>+10%</strong>.</span>
+            <span>&#x2694;&#xFE0F;</span>
+            <span>Crear un señorío sube el límite de reclutamiento por feudo de <strong>200</strong> a <strong>400 hab.</strong> y aumenta la felicidad un <strong>+10%</strong>.</span>
           </div>
 
           <!-- Confirm button -->

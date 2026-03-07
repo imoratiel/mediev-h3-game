@@ -30,7 +30,15 @@ class NotificationModel {
             'UPDATE notifications SET is_read = true WHERE player_id = $1 AND is_read = false RETURNING id',
             [player_id]
         );
-        return result.rowCount; // número de filas actualizadas
+        return result.rowCount;
+    }
+
+    async markAllAsUnread(player_id) {
+        const result = await pool.query(
+            'UPDATE notifications SET is_read = false WHERE player_id = $1 AND is_read = true RETURNING id',
+            [player_id]
+        );
+        return result.rowCount;
     }
 }
 

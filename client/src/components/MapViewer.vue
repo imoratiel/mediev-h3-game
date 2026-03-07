@@ -3195,27 +3195,36 @@ const fetchDivisionBoundaries = async () => {
     divisionBoundaryLayer.clearLayers();
     if (!fc || !fc.features || fc.features.length === 0) return;
 
+    // Fill layer — non-interactive so clicks pass through to the hexagons below
+    L.geoJSON(fc, {
+      pane: 'divisionBorderPane',
+      interactive: false,
+      style: () => ({
+        stroke: false,
+        fillColor: '#8B1A1A',
+        fillOpacity: 0.06,
+      }),
+    }).addTo(divisionBoundaryLayer);
+
+    // Border layer — interactive only on the stroke line, no fill area to block clicks
     L.geoJSON(fc, {
       pane: 'divisionBorderPane',
       style: () => ({
         color: '#8B1A1A',
         weight: 3,
         opacity: 0.88,
-        fillColor: '#8B1A1A',
-        fillOpacity: 0.06,
+        fill: false,
         lineJoin: 'round',
         lineCap: 'round',
       }),
       onEachFeature: (feature, layer) => {
         const props = feature.properties;
 
-        // Tooltip: always show division name on hover
         layer.bindTooltip(
           `<div class="division-boundary-tooltip"><strong>⚜️ ${props.name}</strong><br><small>${props.territory_name}</small></div>`,
           { sticky: true, className: 'leaflet-division-tooltip' }
         );
 
-        // Click: open FueroPanel for own divisions, popup for foreign ones
         layer.on('click', () => {
           if (props.player_id == playerId.value) {
             openFueroPanel(props.capital_h3, props.name);
@@ -3413,9 +3422,13 @@ const toggleLegend = () => {
 const togglePanel = (panelName) => {
   if (activePanel.value === panelName) {
     // Close if already open
+    if (panelName === 'notifications') onNotificationsPanelClose();
     activePanel.value = null;
     console.log(`✓ Panel cerrado: ${panelName}`);
   } else {
+    // If switching away from notifications, mark all as unread
+    if (activePanel.value === 'notifications') onNotificationsPanelClose();
+
     // Open the new panel (closes any other panel and any open overlay)
     activePanel.value = panelName;
     activeOverlay.value = null;
@@ -3438,8 +3451,18 @@ const togglePanel = (panelName) => {
  * Close the active panel
  */
 const closePanel = () => {
+  if (activePanel.value === 'notifications') onNotificationsPanelClose();
   activePanel.value = null;
   console.log('✓ Panel cerrado');
+};
+
+/**
+ * Called whenever the notifications panel is closed.
+ * Marks all notifications as unread so the badge reappears next time.
+ */
+const onNotificationsPanelClose = () => {
+  mapApi.markAllNotificationsUnread().catch(() => {});
+  notifications.value.forEach(n => { n.is_read = false; });
 };
 
 /**

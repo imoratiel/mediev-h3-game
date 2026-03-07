@@ -319,7 +319,7 @@ class DivisionService {
      * PATCH /divisions/:id/tax
      *
      * Actualiza la tasa impositiva (tax_rate) del señorío indicado.
-     * Solo el propietario puede modificarla. Rango válido: 0-100.
+     * Solo el propietario puede modificarla. Rango válido: 1-15.
      */
     async UpdateDivisionTax(req, res) {
         const player_id  = req.user.player_id;
@@ -334,8 +334,8 @@ class DivisionService {
         }
 
         const rate = parseFloat(tax_rate);
-        if (isNaN(rate) || rate < 0 || rate > 100) {
-            return res.status(400).json({ success: false, message: 'tax_rate debe ser un número entre 0 y 100' });
+        if (isNaN(rate) || rate < 1 || rate > 15) {
+            return res.status(400).json({ success: false, message: 'tax_rate debe ser un número entre 1 y 15' });
         }
 
         const client = await pool.connect();

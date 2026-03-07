@@ -41,6 +41,17 @@ class NotificationService {
         }
     }
 
+    async markAllAsUnread(req, res) {
+        try {
+            const player_id = req.user.player_id;
+            const count = await NotificationModel.markAllAsUnread(player_id);
+            res.json({ success: true, updated: count });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/notifications/unread-all', method: 'PUT', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al marcar notificaciones como no leídas' });
+        }
+    }
+
     /**
      * Creates a system notification for a player.
      * @param {number} player_id
