@@ -724,6 +724,21 @@
                   />
                 </div>
                 <div class="filter-group">
+                  <label>Señorío</label>
+                  <select
+                    v-model="kingdomFilters.division"
+                    class="kingdom-filter-input-sidebar"
+                  >
+                    <option value="">Todos</option>
+                    <option value="__none__">Sin señorío</option>
+                    <option
+                      v-for="div in myDivisions"
+                      :key="div.id"
+                      :value="div.name"
+                    >{{ div.name }}</option>
+                  </select>
+                </div>
+                <div class="filter-group">
                   <label>Población Máxima</label>
                   <input
                     v-model.number="kingdomFilters.maxPopulation"
@@ -737,7 +752,7 @@
 
             <div class="sidebar-section kingdom-summary">
               <h4 class="sidebar-subtitle">📊 Resumen</h4>
-              <p>Total Feudos: <strong>{{ myFiefs.length }}</strong></p>
+              <p>Total Feudos: <strong>{{ fiefsTotalCount }}</strong></p>
               <p>Pob. Total: <strong>{{ formatNumber(myFiefs.reduce((acc, f) => acc + Number(f.population || 0), 0)) }}</strong></p>
             </div>
           </div>
@@ -1088,8 +1103,10 @@ const isExiled = ref(false);      // True when the player has no territories (ex
 // Kingdom management state
 const kingdomFilters = ref({
   name: '',
-  maxPopulation: null
+  maxPopulation: null,
+  division: '',
 });
+const myDivisions = ref([]); // Player's señoríos for the filter dropdown
 const kingdomSort = ref({
   field: 'distance', // Default: sort by distance
   asc: true
@@ -2527,10 +2544,11 @@ const updateFiefsUI = async ({ page, limit } = {}) => {
     const requestLimit = limit ?? fiefsLimit.value;
 
     const data = await mapApi.getMyFiefs({
-      page:           requestPage,
-      limit:          requestLimit,
-      filter_name:    kingdomFilters.value.name    || '',
-      filter_maxpop:  kingdomFilters.value.maxPopulation ?? null,
+      page:             requestPage,
+      limit:            requestLimit,
+      filter_name:      kingdomFilters.value.name     || '',
+      filter_maxpop:    kingdomFilters.value.maxPopulation ?? null,
+      filter_division:  kingdomFilters.value.division || '',
     });
 
     if (data.success) {
@@ -2558,6 +2576,15 @@ const handleFiefsLimitChange = (l) => {
   fiefsPage.value  = 1;
   fiefsLimit.value = l;
   updateFiefsUI({ page: 1, limit: l });
+};
+
+const loadMyDivisions = async () => {
+  try {
+    const data = await mapApi.getPlayerDivisions();
+    myDivisions.value = data.divisions ?? [];
+  } catch (_) {
+    myDivisions.value = [];
+  }
 };
 
 /**
@@ -3437,6 +3464,7 @@ const togglePanel = (panelName) => {
     // Reset infinite scroll when opening kingdom panel
     if (panelName === 'kingdom') {
       displayedFiefsCount.value = FIEFS_PER_PAGE;
+      loadMyDivisions();
     }
     if (panelName === 'notifications') {
       fetchNotifications(); // refresh con spinner al abrir el panel
@@ -3473,9 +3501,11 @@ const openOverlay = (overlayName) => {
   activePanel.value = null; // Close any open panel
   console.log(`✓ Overlay abierto: ${overlayName}`);
 
-  // Fetch troops data when opening troops overlay
   if (overlayName === 'troops') {
     fetchTroops();
+  }
+  if (overlayName === 'reino') {
+    loadMyDivisions();
   }
 };
 

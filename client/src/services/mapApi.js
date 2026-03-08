@@ -201,10 +201,11 @@ export async function getGameConfig() {
  * Get user's fiefs/territories (server-side paginated)
  * @param {Object} opts - { page, limit, filter_name, filter_maxpop }
  */
-export async function getMyFiefs({ page = 1, limit = 10, filter_name = '', filter_maxpop = null } = {}) {
+export async function getMyFiefs({ page = 1, limit = 10, filter_name = '', filter_maxpop = null, filter_division = '' } = {}) {
   const params = { page, limit };
-  if (filter_name) params.filter_name = filter_name;
+  if (filter_name)     params.filter_name = filter_name;
   if (filter_maxpop != null) params.filter_maxpop = filter_maxpop;
+  if (filter_division) params.filter_division = filter_division;
   const response = await axios.get(`${API_URL}/api/game/my-fiefs`, { params });
   return response.data;
 }

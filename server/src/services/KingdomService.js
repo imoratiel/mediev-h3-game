@@ -205,12 +205,13 @@ class KingdomService {
         try {
             const page         = Math.max(1, parseInt(req.query.page)  || 1);
             const limit        = Math.min(500, Math.max(1, parseInt(req.query.limit) || 10));
-            const filter_name  = (req.query.filter_name || '').trim();
+            const filter_name     = (req.query.filter_name     || '').trim();
+            const filter_division = (req.query.filter_division || '').trim();
             const filter_maxpop = req.query.filter_maxpop != null && req.query.filter_maxpop !== ''
                 ? parseInt(req.query.filter_maxpop) : null;
 
             const { rows, total } = await KingdomModel.GetMyFiefs(req.user.player_id, {
-                page, limit, filter_name, filter_maxpop
+                page, limit, filter_name, filter_maxpop, filter_division
             });
 
             const fiefs = rows.map(row => {

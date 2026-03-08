@@ -159,7 +159,7 @@ class KingdomModel {
             [next_building_id, turns, h3_index]
         );
     }
-    async GetMyFiefs(player_id, { page = 1, limit = 10, filter_name = '', filter_maxpop = null } = {}) {
+    async GetMyFiefs(player_id, { page = 1, limit = 10, filter_name = '', filter_maxpop = null, filter_division = '' } = {}) {
         const offset = (page - 1) * limit;
         const params = [player_id];
         const whereClauses = ['m.player_id = $1'];
@@ -171,6 +171,12 @@ class KingdomModel {
         if (filter_maxpop !== null && !isNaN(filter_maxpop)) {
             params.push(filter_maxpop);
             whereClauses.push(`td.population <= $${params.length}`);
+        }
+        if (filter_division === '__none__') {
+            whereClauses.push(`td.division_id IS NULL`);
+        } else if (filter_division) {
+            params.push(filter_division);
+            whereClauses.push(`pd.name = $${params.length}`);
         }
 
         params.push(limit, offset);
