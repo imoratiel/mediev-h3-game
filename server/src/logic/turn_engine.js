@@ -10,6 +10,7 @@ const { getPopulationCap } = require('../config/gameFunctions');
 const { Logger } = require('../utils/logger');
 const ArmySimulationService = require('../services/ArmySimulationService');
 const NotificationService = require('../services/NotificationService');
+const CharacterService = require('../services/CharacterService');
 const h3 = require('h3-js');
 
 /**
@@ -1063,6 +1064,17 @@ async function processGameTurn(pool, config) {
 
         // Action cooldowns tick (every turn)
         await processActionCooldowns(client, newTurn);
+
+        // Character movement (3 hexes/turn toward destination)
+        await CharacterService.processMovements();
+
+        // Personal guard regeneration (+1/turno, máx 25) — fuera de transacción, usa pool propio
+        await CharacterService.processGuardRegeneration();
+
+        // Character aging + mortality — solo una vez por año de juego (día 1 del año)
+        if (dayOfYear === 0) {
+            await CharacterService.processAging();
+        }
 
         // Military food consumption (every turn, after movements so no lock conflict)
         await processMilitaryConsumption(client, newTurn, config);

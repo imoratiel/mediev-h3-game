@@ -129,6 +129,8 @@ const handleMarkAll = async () => {
   markingAll.value = true;
   try {
     await markAllNotificationsRead();
+    // Actualizar estado local directamente para reactividad inmediata
+    props.notifications.forEach(n => { n.is_read = true; });
     emit('readAll');
   } catch (err) {
     console.error('Error al marcar notificaciones:', err);

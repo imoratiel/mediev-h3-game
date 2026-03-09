@@ -22,6 +22,7 @@ module.exports = function () {
     const WorkerService = require('../src/services/WorkerService.js');
     const DivisionService = require('../src/services/DivisionService.js');
     const MapService = require('../src/services/MapService.js');
+    const CharacterService = require('../src/services/CharacterService.js');
 
     // ============================================
     // AUTHENTICATION ENDPOINTS
@@ -385,6 +386,17 @@ module.exports = function () {
             res.status(500).json({ success: false, message: error.message });
         }
     });
+
+    // ============================================
+    // PERSONAJES Y DINASTÍAS
+    // ============================================
+    router.get('/characters',              authenticateToken, (req, res) => CharacterService.GetMyCharacters(req, res));
+    router.get('/characters/:id',          authenticateToken, (req, res) => CharacterService.GetCharacter(req, res));
+    router.post('/characters/:id/procreate', authenticateToken, (req, res) => CharacterService.Procreate(req, res));
+    router.patch('/characters/:id/heir',   authenticateToken, (req, res) => CharacterService.SetHeir(req, res));
+    router.put('/characters/:id/move',     authenticateToken, (req, res) => CharacterService.MoveCharacter(req, res));
+    router.delete('/characters/:id/move',  authenticateToken, (req, res) => CharacterService.StopCharacter(req, res));
+    router.put('/armies/:id/commander',    authenticateToken, (req, res) => CharacterService.AssignCommander(req, res));
 
     return router;
 };

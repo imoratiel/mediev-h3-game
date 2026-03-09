@@ -59,6 +59,18 @@ const GAME_CONFIG = {
         MAX_RECRUITS_INDEPENDENT: 200,  // Cap de reclutas por feudo cuando es independiente
     },
 
+    // 👑 Sistema de Personajes y Dinastías
+    CHARACTERS: {
+        GUARD_MAX:              25,   // Máximo de guardia personal
+        GUARD_REGEN_PER_TURN:    1,   // Guardia recuperada por turno
+        COMBAT_BUFF_BASE:       10,   // % de bono de combate en nivel 1
+        COMBAT_BUFF_PER_LEVEL:   1,   // % adicional por nivel > 1
+        DEATH_AGE_THRESHOLD:    60,   // Edad a partir de la cual hay riesgo de muerte
+        DEATH_CHANCE_PER_YEAR:   2,   // % de probabilidad de muerte por año sobre el umbral
+        DEFAULT_ABILITIES: ['estrategia', 'logistica', 'diplomacia'],
+        MOVEMENT_PER_TURN:       3,   // Hexágonos que avanza el personaje por turno
+    },
+
     // 🏰 Límite de Ejércitos por Jugador
     // Regla: max(BASE, floor(feudos / RATIO))
     // Ej: 0 feudos → 1 ejército, 3 → 1, 6 → 2, 30 → 10, 170 → 56

@@ -375,6 +375,26 @@ export function generateArmyPopup(armyData, config) {
       else popupContent += `<p class="status-text">📍 Estacionado</p>`;
       popupContent += '</div>';
 
+      // ── COMMANDER ────────────────────────────────────────────────────────
+      if (army.commander) {
+        const c = army.commander;
+        const guardFill = Math.round((c.personal_guard / 25) * 100);
+        const guardColor = guardFill < 30 ? '#ff6b6b' : guardFill < 70 ? '#ffd93d' : '#c5a059';
+        popupContent += `
+          <div class="army-commander-section">
+            <span class="commander-label">&#x2694;&#xFE0F; Comandante</span>
+            <div class="commander-info">
+              <span class="commander-name">${c.full_title || c.name}</span>
+              <span class="commander-buff">+${c.combat_buff_pct}% combate</span>
+            </div>
+            <div class="commander-guard">
+              <span class="guard-label">Guardia</span>
+              <div class="guard-bar"><div class="guard-bar-fill" style="width:${guardFill}%;background:${guardColor}"></div></div>
+              <span class="guard-value">${c.personal_guard}/25</span>
+            </div>
+          </div>`;
+      }
+
       // ── ACTIONS (own army only) ──────────────────────────────────────────
       popupContent += '<div class="army-actions-compact">';
 

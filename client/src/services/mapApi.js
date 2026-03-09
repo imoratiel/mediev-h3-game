@@ -730,3 +730,45 @@ export async function getDivisionBoundaries() {
   const response = await axios.get(`${API_URL}/api/divisions/boundaries`);
   return response.data;
 }
+
+// ─── Personajes y Dinastías ───────────────────────────────────────────────────
+
+export async function getMyCharacters() {
+  const response = await axios.get(`${API_URL}/api/characters`);
+  return response.data;
+}
+
+export async function getCharacter(id) {
+  const response = await axios.get(`${API_URL}/api/characters/${id}`);
+  return response.data;
+}
+
+export async function procreateCharacter(parentId, name) {
+  const response = await axios.post(`${API_URL}/api/characters/${parentId}/procreate`, { name });
+  return response.data;
+}
+
+export async function setCharacterHeir(characterId) {
+  const response = await axios.patch(`${API_URL}/api/characters/${characterId}/heir`);
+  return response.data;
+}
+
+export async function assignArmyCommander(armyId, characterId) {
+  const response = await axios.put(`${API_URL}/api/armies/${armyId}/commander`, { character_id: characterId });
+  return response.data;
+}
+
+export async function removeArmyCommander(armyId) {
+  const response = await axios.put(`${API_URL}/api/armies/${armyId}/commander`, { character_id: null });
+  return response.data;
+}
+
+export async function moveCharacter(characterId, targetH3) {
+  const response = await axios.put(`${API_URL}/api/characters/${characterId}/move`, { h3_index: targetH3 });
+  return response.data;
+}
+
+export async function stopCharacter(characterId) {
+  const response = await axios.delete(`${API_URL}/api/characters/${characterId}/move`);
+  return response.data;
+}

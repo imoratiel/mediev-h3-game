@@ -209,3 +209,22 @@
 - h3_index (VARCHAR 15) - Coordenada H3 (Resolución 7 recomendada)
 - type (VARCHAR 50) - Clasificación: 'pueblo', 'monte', 'río', 'pantano', 'valle'
 
+## Tabla: characters
+- id (SERIAL PK)
+- player_id (INT FK -> players.player_id)
+- name (VARCHAR 100)
+- age (INT)
+- health (INT) - 0 a 100
+- level (INT)
+- personal_guard (INT) - Guardia personal (max 25)
+- is_heir (BOOLEAN) - Define al sucesor
+- is_main_character (BOOLEAN) - True si es el avatar del jugador
+- parent_character_id (INT FK -> characters.id) - Referencia al padre/madre
+- army_id (INT FK -> armies.army_id) - NULL si no está asignado
+
+## Tabla: character_abilities
+- id (SERIAL PK)
+- character_id (INT FK -> characters.id)
+- ability_key (VARCHAR 50) - Identificador de la habilidad
+- level (INT) - Nivel de la habilidad
+

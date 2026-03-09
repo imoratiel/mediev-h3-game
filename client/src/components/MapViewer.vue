@@ -106,6 +106,15 @@
           <span class="nav-label">Notificaciones</span>
           <span v-if="unreadNotifCount > 0" class="nav-badge">{{ unreadNotifCount }}</span>
         </button>
+        <button
+          class="nav-button"
+          :class="{ active: activeOverlay === 'characters' }"
+          @click="openOverlay('characters')"
+          title="Personajes y Dinastía"
+        >
+          <span class="nav-icon">👑</span>
+          <span class="nav-label">Dinastía</span>
+        </button>
       </nav>
 
       <!-- Sidebar Footer -->
@@ -828,6 +837,19 @@
       </div>
     </div>
 
+    <!-- Characters Overlay -->
+    <div v-if="activeOverlay === 'characters'" class="game-overlay title-overlay">
+      <div class="overlay-container">
+        <div class="overlay-header">
+          <h1 class="overlay-title">👑 Personajes y Dinastía</h1>
+          <button class="overlay-close" @click="closeOverlay" title="Cerrar">✕</button>
+        </div>
+        <div class="overlay-content">
+          <CharacterPanel :armies="armies" @refresh="fetchArmyData" />
+        </div>
+      </div>
+    </div>
+
     <!-- Building Construction Modal -->
     <div v-if="showBuildModal" class="build-modal-overlay" @click.self="closeBuildModal">
       <div class="build-modal">
@@ -971,7 +993,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import L from 'leaflet';
-import { cellToBoundary, cellToLatLng, gridDistance, latLngToCell } from 'h3-js';
+import { cellToBoundary, cellToLatLng, gridDistance, gridPathCells, latLngToCell } from 'h3-js';
 import 'leaflet/dist/leaflet.css';
 
 // Import map utilities
@@ -996,6 +1018,7 @@ import ArmyTransferPanel from './ArmyTransferPanel.vue';
 import WelcomePanel from './WelcomePanel.vue';
 import FueroPanel from './FueroPanel.vue';
 import DivisionsTab from './DivisionsTab.vue';
+import CharacterPanel from './CharacterPanel.vue';
 
 const mapContainer = ref(null);
 const loading = ref(false);
@@ -1371,6 +1394,7 @@ let hexStackerLayer = null;           // Layer for combined HexStacker markers (
 let highlightLayer = null; // Temporary highlight polygon for navigation
 let divisionHighlightLayer = null; // Gold overlay for division fief selection
 let divisionBoundaryLayer = null;  // Political division borders (GeoJSON)
+let characterMarkersLayer = null;  // Character icons on the map
 let debounceTimer = null;
 
 // Configuration
@@ -1605,6 +1629,11 @@ const initMap = () => {
   divisionHighlightLayer = L.layerGroup().addTo(map);
   divisionBoundaryLayer = L.layerGroup().addTo(map);
 
+  // Character pane — above armies (680) so the icon is always visible
+  map.createPane('characterPane');
+  map.getPane('characterPane').style.zIndex = 685;
+  characterMarkersLayer = L.layerGroup().addTo(map);
+
   // Track zoom level
   currentZoom.value = map.getZoom();
 
@@ -1638,6 +1667,7 @@ const initMap = () => {
   // Initial load
   loadHexagonsIfZoomValid();
   fetchPlayerData();
+  fetchAndRenderCharacters();
 };
 
 /**
@@ -2177,7 +2207,11 @@ const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) =>
           MapInteractionController.handleMapClick(h3_index, {
             onNormal: async () => showArmyDetailsPopup(h3_index, [lat, lng]),
             onSelectDestination: async (armyId, targetH3, armyName) => {
-              await processArmyMovement(armyId, targetH3, armyName);
+              if (String(armyId).startsWith('char_')) {
+                await processCharacterMovement(parseInt(String(armyId).replace('char_', ''), 10), targetH3, armyName);
+              } else {
+                await processArmyMovement(armyId, targetH3, armyName);
+              }
             },
             onSelectWorkerDestination: async (workerId, fromH3, targetH3) => {
               await processWorkerMovement(workerId, fromH3, targetH3);
@@ -2188,7 +2222,11 @@ const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) =>
           MapInteractionController.handleMapClick(h3_index, {
             onNormal: async () => showCellDetailsPopup(h3_index, [lat, lng]),
             onSelectDestination: async (armyId, targetH3, armyName) => {
-              await processArmyMovement(armyId, targetH3, armyName);
+              if (String(armyId).startsWith('char_')) {
+                await processCharacterMovement(parseInt(String(armyId).replace('char_', ''), 10), targetH3, armyName);
+              } else {
+                await processArmyMovement(armyId, targetH3, armyName);
+              }
             },
             onSelectWorkerDestination: async (workerId, fromH3, targetH3) => {
               await processWorkerMovement(workerId, fromH3, targetH3);
@@ -2342,7 +2380,11 @@ const renderArmyMarkers = (armies, currentPlayerId) => {
         MapInteractionController.handleMapClick(h3_index, {
           onNormal: async () => showArmyDetailsPopup(h3_index, [lat, lng]),
           onSelectDestination: async (armyId, targetH3, armyName) => {
-            await processArmyMovement(armyId, targetH3, armyName);
+            if (String(armyId).startsWith('char_')) {
+              await processCharacterMovement(parseInt(String(armyId).replace('char_', ''), 10), targetH3, armyName);
+            } else {
+              await processArmyMovement(armyId, targetH3, armyName);
+            }
           },
           onSelectWorkerDestination: async (workerId, fromH3, targetH3) => {
             await processWorkerMovement(workerId, fromH3, targetH3);
@@ -2353,6 +2395,90 @@ const renderArmyMarkers = (armies, currentPlayerId) => {
     } catch (err) {
       console.error(`Error rendering army marker for ${h3_index}:`, err);
     }
+  }
+};
+
+/**
+ * Fetch characters and render their icons on the map.
+ * Only characters with army_id (deployed) get a map marker.
+ */
+const fetchAndRenderCharacters = async () => {
+  if (!characterMarkersLayer) return;
+  characterMarkersLayer.clearLayers();
+  try {
+    const data = await mapApi.getMyCharacters();
+    const characters = data.characters ?? [];
+    for (const char of characters) {
+      if (!char.h3_index) continue; // sin posición → sin marcador
+      try {
+        const [lat, lng] = cellToLatLng(char.h3_index);
+        const isMain = char.is_main_character;
+        const label  = char.full_title || char.name;
+
+        const iconHtml = `
+          <div class="char-map-marker ${isMain ? 'char-map-marker--main' : ''}" title="${label}">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <circle cx="12" cy="7" r="4"/>
+              <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
+            </svg>
+            <span class="char-map-name">${char.name.split(' ')[0]}</span>
+          </div>`;
+
+        const icon = L.divIcon({
+          html:       iconHtml,
+          className:  '',
+          iconSize:   [52, 36],
+          iconAnchor: [26, 36],
+        });
+
+        const marker = L.marker([lat, lng], { icon, pane: 'characterPane', interactive: true });
+
+        const isMoving    = !!char.destination;
+        const stopTitle   = isMoving ? 'Detener movimiento' : 'Retirar del mapa';
+        const movingBadge = isMoving
+          ? `<span class="char-popup-moving">&#8594; en marcha</span>`
+          : '';
+
+        const popupHtml = `
+          <div class="char-popup">
+            <div class="char-popup-header">
+              <span class="char-popup-icon">${isMain ? '👑' : '🧑'}</span>
+              <div>
+                <div class="char-popup-name">${label} ${movingBadge}</div>
+                <div class="char-popup-meta">Nv.${char.level} · +${char.combat_buff_pct}% combate · Guardia ${char.personal_guard}/25</div>
+              </div>
+            </div>
+            <div class="char-popup-actions">
+              <button id="char-move-${char.id}" class="army-action-icon" title="Establecer destino">📍</button>
+              <button id="char-stop-${char.id}" class="army-action-icon" title="${stopTitle}">🛑</button>
+            </div>
+          </div>`;
+
+        marker.bindPopup(popupHtml, { className: 'char-leaflet-popup', maxWidth: 220 });
+        marker.on('popupopen', () => {
+          setTimeout(() => {
+            const moveBtn = document.getElementById(`char-move-${char.id}`);
+            if (moveBtn) moveBtn.addEventListener('click', () => handleCharacterMove(char));
+            const stopBtn = document.getElementById(`char-stop-${char.id}`);
+            if (stopBtn) stopBtn.addEventListener('click', () => handleCharacterStop(char));
+          }, 50);
+        });
+
+        characterMarkersLayer.addLayer(marker);
+
+        // Dibujar ruta si el personaje ya tiene destino pendiente
+        if (char.destination && char.h3_index) {
+          try {
+            const path = gridPathCells(char.h3_index, char.destination).slice(1);
+            RouteVisualizer.drawPath(`char_${char.id}`, path, char.h3_index);
+          } catch (_) { /* ignorar si la ruta no es calculable */ }
+        }
+      } catch (e) {
+        console.error('Error rendering character marker:', e);
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching characters for map:', e);
   }
 };
 
@@ -2853,9 +2979,14 @@ const renderHexagons = (hexagons) => {
           onNormal: async (h3Index) => {
             await showCellDetailsPopup(h3Index, [lat, lng]);
           },
-          // Modo selección: procesar movimiento del ejército
+          // Modo selección: procesar movimiento del ejército o personaje
           onSelectDestination: async (armyId, targetH3, armyName) => {
-            await processArmyMovement(armyId, targetH3, armyName);
+            if (String(armyId).startsWith('char_')) {
+              const charId = parseInt(String(armyId).replace('char_', ''), 10);
+              await processCharacterMovement(charId, targetH3, armyName);
+            } else {
+              await processArmyMovement(armyId, targetH3, armyName);
+            }
           },
           // Modo selección: procesar movimiento de trabajadores
           onSelectWorkerDestination: async (workerId, fromH3, targetH3) => {
@@ -3507,6 +3638,9 @@ const openOverlay = (overlayName) => {
   if (overlayName === 'reino') {
     loadMyDivisions();
   }
+  if (overlayName === 'characters') {
+    fetchAndRenderCharacters();
+  }
 };
 
 /**
@@ -4018,6 +4152,23 @@ const handleArmyMove = (army) => {
   map.closePopup();
   if (activeOverlay.value === 'troops') activeOverlay.value = null;
   window.startArmyMovement(army.army_id, army.name, army.h3_index);
+};
+
+const handleCharacterMove = (char) => {
+  map.closePopup();
+  window.startCharacterMovement(char.id, char.name, char.h3_index);
+};
+
+const handleCharacterStop = async (char) => {
+  try {
+    await mapApi.stopCharacter(char.id);
+    RouteVisualizer.clearArmy(`char_${char.id}`);
+    map.closePopup();
+    await fetchAndRenderCharacters();
+    showToast(`🛑 ${char.name} detenido. Ruta cancelada.`, 'info');
+  } catch (err) {
+    showToast(`❌ ${err?.response?.data?.message || 'Error al retirar personaje'}`, 'error');
+  }
 };
 
 // Open transfer panel from map popup
@@ -5239,6 +5390,15 @@ const setupMapInteractionController = () => {
     showToast('🎯 Selecciona el destino para los trabajadores. Click derecho para cancelar.', 'info');
   };
 
+  // Exponer función global para iniciar movimiento de personaje
+  window.startCharacterMovement = (characterId, characterName, fromH3) => {
+    console.log(`[MapViewer] Iniciando movimiento personaje: ${characterName} (${characterId}) desde ${fromH3}`);
+    // Reutiliza el modo de selección de ejército pero guarda el contexto como personaje
+    MapInteractionController.startArmyMovement(`char_${characterId}`, characterName, fromH3);
+    if (map) map.getContainer().style.cursor = 'crosshair';
+    showToast(`🎯 Selecciona el destino para ${characterName}. Click derecho para cancelar.`, 'info');
+  };
+
   // Registrar callback para cambios de modo
   MapInteractionController.setOnModeChange((mode, data) => {
     console.log(`[MapViewer] Modo de interacción cambió a: ${mode}`, data);
@@ -5258,6 +5418,24 @@ const setupMapInteractionController = () => {
  * @param {string} targetH3 - Hexágono destino
  * @param {string} armyName - Nombre del ejército (para feedback)
  */
+const processCharacterMovement = async (characterId, targetH3, characterName) => {
+  try {
+    const response = await mapApi.moveCharacter(characterId, targetH3);
+    if (response.success) {
+      showToast(`✅ ${characterName} en marcha hacia destino`, 'success');
+      if (response.path && response.from) {
+        RouteVisualizer.drawPath(`char_${characterId}`, response.path, response.from);
+      }
+      await fetchAndRenderCharacters();
+    } else {
+      showToast(`⚠️ ${response.message || 'No se pudo mover el personaje'}`, 'warning');
+    }
+  } catch (error) {
+    const msg = error.response?.data?.message || 'Error al mover personaje';
+    showToast(`❌ ${msg}`, 'error');
+  }
+};
+
 const processArmyMovement = async (armyId, targetH3, armyName) => {
   try {
     console.log(`[MapViewer] Procesando movimiento: Ejército ${armyId} → ${targetH3}`);
@@ -9832,6 +10010,104 @@ onBeforeUnmount(() => {
 /* ============================================
    HEX STACKER MARKER
    ============================================ */
+
+/* ── Character map markers ─────────────────────────────────────── */
+:deep(.char-map-marker) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  color: #c5a059;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.8));
+  cursor: default;
+}
+
+:deep(.char-map-marker svg) {
+  background: #1a1008;
+  border: 2px solid #c5a059;
+  border-radius: 50%;
+  padding: 2px;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+}
+
+:deep(.char-map-marker--main svg) {
+  border-color: #ffd700;
+  color: #ffd700;
+  box-shadow: 0 0 8px 2px rgba(255,215,0,0.5);
+}
+
+:deep(.char-map-name) {
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+:deep(.char-map-tooltip) {
+  background: rgba(20, 12, 4, 0.92);
+  border: 1px solid rgba(197,160,89,0.5);
+  color: #e8d5a3;
+  border-radius: 5px;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+:deep(.char-leaflet-popup .leaflet-popup-content-wrapper) {
+  background: #1a1008;
+  border: 1px solid rgba(197,160,89,0.4);
+  border-radius: 8px;
+  color: #e8d5a3;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  padding: 0;
+}
+:deep(.char-leaflet-popup .leaflet-popup-tip) {
+  background: #1a1008;
+}
+:deep(.char-leaflet-popup .leaflet-popup-content) {
+  margin: 0;
+}
+
+:deep(.char-popup) {
+  padding: 10px 12px;
+  min-width: 180px;
+}
+:deep(.char-popup-header) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+:deep(.char-popup-icon) {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+:deep(.char-popup-name) {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #e8d5a3;
+  line-height: 1.3;
+}
+:deep(.char-popup-meta) {
+  font-size: 0.68rem;
+  color: #a89070;
+  margin-top: 2px;
+}
+:deep(.char-popup-actions) {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-start;
+}
+:deep(.char-popup-moving) {
+  font-size: 0.65rem;
+  color: #ffd93d;
+  font-weight: 600;
+  vertical-align: middle;
+}
 
 /* Strip Leaflet's default divIcon styles so our container is clean */
 :deep(.hex-stacker-icon) {

@@ -443,10 +443,25 @@ class ArmyModel {
 
     async GetArmiesAtHex(h3_index, player_id) {
         const result = await db.query(
-            `SELECT army_id, name, is_garrison
-             FROM armies
-             WHERE h3_index = $1 AND player_id = $2 AND destination IS NULL
-             ORDER BY army_id`,
+            `SELECT
+                a.army_id, a.name, a.is_garrison,
+                CASE WHEN c.id IS NOT NULL THEN json_build_object(
+                    'id',              c.id,
+                    'name',            c.name,
+                    'full_title',      CONCAT(
+                                           CASE WHEN p.gender = 'F' THEN nr.title_female ELSE nr.title_male END,
+                                           ' ', c.name
+                                       ),
+                    'level',           c.level,
+                    'personal_guard',  c.personal_guard,
+                    'combat_buff_pct', 10 + (c.level - 1)
+                ) ELSE NULL END AS commander
+             FROM armies a
+             LEFT JOIN characters c ON c.army_id = a.army_id
+             LEFT JOIN players p    ON p.player_id = a.player_id
+             LEFT JOIN noble_ranks nr ON nr.id = p.noble_rank_id
+             WHERE a.h3_index = $1 AND a.player_id = $2 AND a.destination IS NULL
+             ORDER BY a.army_id`,
             [h3_index, player_id]
         );
         return result.rows;
