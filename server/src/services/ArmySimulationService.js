@@ -684,6 +684,11 @@ class ArmySimulationService {
           'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
           [currentPos, armyId]
         );
+        // El comandante viaja con el ejército
+        await client.query(
+          'UPDATE characters SET h3_index = $1 WHERE army_id = $2',
+          [currentPos, armyId]
+        );
 
         Logger.army(armyId, 'ROUTE_STEP',
           `Army ${armyId} avanzado a ${currentPos}. Pasos restantes en ruta: ${remainingPath.length}`,

@@ -2411,7 +2411,8 @@ const fetchAndRenderCharacters = async () => {
     const characters = data.characters ?? [];
     _char_cache = characters;
     for (const char of characters) {
-      if (!char.h3_index) continue; // sin posición → sin marcador
+      if (!char.h3_index) continue;  // sin posición → sin marcador
+      if (char.army_id)  continue;   // viaja con el ejército → sin marcador propio
       try {
         const [lat, lng] = cellToLatLng(char.h3_index);
         const isMain = char.is_main_character;

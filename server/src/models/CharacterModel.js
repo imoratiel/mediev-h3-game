@@ -190,8 +190,9 @@ class CharacterModel {
             'UPDATE characters SET army_id = NULL WHERE army_id = $1',
             [armyId]
         );
+        // Asignar y limpiar destino propio (ahora viaja con el ejército)
         await (client || pool).query(
-            'UPDATE characters SET army_id = $1 WHERE id = $2',
+            'UPDATE characters SET army_id = $1, destination = NULL WHERE id = $2',
             [armyId, characterId]
         );
     }

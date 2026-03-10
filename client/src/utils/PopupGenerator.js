@@ -321,20 +321,44 @@ export function generateArmyPopup(armyData, config) {
 
     if (isOwnArmy) {
       // ── TROOPS ──────────────────────────────────────────────────────────
-      if (army.units && army.units.length > 0) {
+      if ((army.units && army.units.length > 0) || army.commander) {
         popupContent += '<div class="army-troops-section">';
         popupContent += '<p class="army-section-title">⚔️ Composición de Tropas</p>';
         popupContent += '<div class="army-troops-list">';
-        army.units.forEach(unit => {
-          const unitIcon = getUnitIcon(unit.unit_name);
-          popupContent += `<div class="army-troop-item">`;
-          popupContent += `<span class="troop-icon">${unitIcon}</span>`;
-          popupContent += `<span class="troop-name">${unit.unit_name}:</span>`;
-          popupContent += `<span class="troop-quantity">${unit.quantity}</span>`;
+
+        // Comandante como primera fila
+        if (army.commander) {
+          const c = army.commander;
+          const guardFill = Math.round((c.personal_guard / 25) * 100);
+          const guardColor = guardFill < 30 ? '#ff6b6b' : guardFill < 70 ? '#ffd93d' : '#c5a059';
+          popupContent += `<div class="army-troop-item army-troop-commander">`;
+          popupContent += `<span class="troop-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="#c5a059">
+              <circle cx="12" cy="7" r="4"/>
+              <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
+            </svg>
+          </span>`;
+          popupContent += `<span class="troop-name" style="flex:1;">${c.full_title || c.name}</span>`;
+          popupContent += `<span class="troop-quantity" style="color:#c5a059;font-size:0.72rem;">+${c.combat_buff_pct}%</span>`;
+          popupContent += `<div class="guard-bar-mini" title="Guardia ${c.personal_guard}/25">
+            <div style="width:${guardFill}%;background:${guardColor};height:100%;border-radius:2px;"></div>
+          </div>`;
           popupContent += `</div>`;
-        });
-        const totalTroops = army.total_count || army.units.reduce((sum, u) => sum + u.quantity, 0);
-        popupContent += `<div class="army-troop-total"><strong>Total:</strong> <span class="total-count">${totalTroops} soldados</span></div>`;
+        }
+
+        if (army.units) {
+          army.units.forEach(unit => {
+            const unitIcon = getUnitIcon(unit.unit_name);
+            popupContent += `<div class="army-troop-item">`;
+            popupContent += `<span class="troop-icon">${unitIcon}</span>`;
+            popupContent += `<span class="troop-name">${unit.unit_name}:</span>`;
+            popupContent += `<span class="troop-quantity">${unit.quantity}</span>`;
+            popupContent += `</div>`;
+          });
+          const totalTroops = army.total_count || army.units.reduce((sum, u) => sum + u.quantity, 0);
+          popupContent += `<div class="army-troop-total"><strong>Total:</strong> <span class="total-count">${totalTroops} soldados</span></div>`;
+        }
+
         popupContent += '</div></div>';
       }
 
@@ -376,25 +400,6 @@ export function generateArmyPopup(armyData, config) {
       else popupContent += `<p class="status-text">📍 Estacionado</p>`;
       popupContent += '</div>';
 
-      // ── COMMANDER ────────────────────────────────────────────────────────
-      if (army.commander) {
-        const c = army.commander;
-        const guardFill = Math.round((c.personal_guard / 25) * 100);
-        const guardColor = guardFill < 30 ? '#ff6b6b' : guardFill < 70 ? '#ffd93d' : '#c5a059';
-        popupContent += `
-          <div class="army-commander-section">
-            <span class="commander-label">&#x2694;&#xFE0F; Comandante</span>
-            <div class="commander-info">
-              <span class="commander-name">${c.full_title || c.name}</span>
-              <span class="commander-buff">+${c.combat_buff_pct}% combate</span>
-            </div>
-            <div class="commander-guard">
-              <span class="guard-label">Guardia</span>
-              <div class="guard-bar"><div class="guard-bar-fill" style="width:${guardFill}%;background:${guardColor}"></div></div>
-              <span class="guard-value">${c.personal_guard}/25</span>
-            </div>
-          </div>`;
-      }
 
       // ── ACTIONS (own army only) ──────────────────────────────────────────
       popupContent += '<div class="army-actions-compact">';

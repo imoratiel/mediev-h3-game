@@ -34,9 +34,23 @@ class ArmyModel {
                 p.display_name AS player_name,
                 p.color AS player_color,
                 a.destination,
-                a.recovering
+                a.recovering,
+                CASE WHEN c.id IS NOT NULL THEN json_build_object(
+                    'id',              c.id,
+                    'name',            c.name,
+                    'full_title',      CONCAT(
+                                           CASE WHEN p2.gender = 'F' THEN nr.title_female ELSE nr.title_male END,
+                                           ' ', c.name
+                                       ),
+                    'level',           c.level,
+                    'personal_guard',  c.personal_guard,
+                    'combat_buff_pct', 10 + (c.level - 1)
+                ) ELSE NULL END AS commander
             FROM armies a
-            JOIN players p ON a.player_id = p.player_id
+            JOIN players p  ON a.player_id = p.player_id
+            LEFT JOIN characters c  ON c.army_id = a.army_id
+            LEFT JOIN players p2    ON p2.player_id = c.player_id
+            LEFT JOIN noble_ranks nr ON nr.id = p2.noble_rank_id
             WHERE a.h3_index = $1
         `;
         const result = await db.query(query, [h3_index]);

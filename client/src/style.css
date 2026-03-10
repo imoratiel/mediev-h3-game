@@ -790,6 +790,22 @@ button {
   border-left: 2px solid #c5a059;
 }
 
+.army-troop-commander {
+  background: rgba(197, 160, 89, 0.15);
+  border-left: 2px solid #c5a059;
+  border-bottom: 1px solid rgba(197, 160, 89, 0.3);
+  margin-bottom: 3px;
+}
+
+.guard-bar-mini {
+  width: 32px;
+  height: 4px;
+  background: rgba(0,0,0,0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
 .troop-icon {
   font-size: 0.95rem;
 }
