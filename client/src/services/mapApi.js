@@ -738,8 +738,18 @@ export async function getMyCharacters() {
   return response.data;
 }
 
+export async function getVisibleEnemyCharacters() {
+  const response = await axios.get(`${API_URL}/api/characters/visible`);
+  return response.data;
+}
+
 export async function getCharacter(id) {
   const response = await axios.get(`${API_URL}/api/characters/${id}`);
+  return response.data;
+}
+
+export async function captureCharacter(id) {
+  const response = await axios.post(`${API_URL}/api/characters/${id}/capture`);
   return response.data;
 }
 

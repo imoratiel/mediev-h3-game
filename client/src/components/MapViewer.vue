@@ -2489,6 +2489,60 @@ const fetchAndRenderCharacters = async () => {
         console.error('Error rendering character marker:', e);
       }
     }
+
+    // ── Personajes enemigos visibles ─────────────────────────────────────────
+    const enemyData = await mapApi.getVisibleEnemyCharacters();
+    for (const char of (enemyData.characters ?? [])) {
+      if (!char.h3_index) continue;
+      try {
+        const [lat, lng] = cellToLatLng(char.h3_index);
+        const color = char.player_color || '#e53e3e';
+        const iconHtml = `
+          <div class="char-map-marker char-map-marker--enemy" title="${char.name} (${char.player_name})"
+               style="--enemy-color:${color}">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <circle cx="12" cy="7" r="4"/>
+              <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
+            </svg>
+            <span class="char-map-name">${char.name.split(' ')[0]}</span>
+          </div>`;
+        const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [52, 36], iconAnchor: [26, 36] });
+        const marker = L.marker([lat, lng], { icon, pane: 'characterPane', interactive: true });
+
+        marker.bindPopup(`
+          <div class="char-popup">
+            <div class="char-popup-header">
+              <span class="char-popup-icon">${char.is_main_character ? '👑' : '🧑'}</span>
+              <div>
+                <div class="char-popup-name">${char.name}</div>
+                <div class="char-popup-meta" style="color:#9ca3af">${char.player_name}</div>
+              </div>
+            </div>
+            <div class="char-popup-actions">
+              <button id="char-capture-${char.id}" class="army-action-icon army-action-disabled" title="Necesitas un ejército en este feudo para capturar">⛓️</button>
+            </div>
+          </div>`, { className: 'char-leaflet-popup', maxWidth: 220 });
+
+        marker.on('popupopen', () => {
+          setTimeout(() => {
+            const btn = document.getElementById(`char-capture-${char.id}`);
+            if (!btn) return;
+            // Habilitado solo si el jugador tiene un ejército parado en la misma celda
+            // y el personaje no tiene ejército (garantizado por getEnemyCharactersAtHexes)
+            const hasArmyHere = armies.value.some(a => a.h3_index === char.h3_index && !a.destination);
+            if (hasArmyHere) {
+              btn.classList.remove('army-action-disabled');
+              btn.title = 'Capturar';
+              btn.addEventListener('click', () => handleEnemyCharacterCapture(char, marker));
+            }
+          }, 50);
+        });
+
+        characterMarkersLayer.addLayer(marker);
+      } catch (e) {
+        console.error('Error rendering enemy character marker:', e);
+      }
+    }
   } catch (e) {
     console.error('Error fetching characters for map:', e);
   }
@@ -4212,6 +4266,17 @@ const handleCharacterLeave = async (char) => {
     showToast(`🚪 ${char.name} ha abandonado el ejército`, 'info');
   } catch (err) {
     showToast(`❌ ${err?.response?.data?.message || 'Error al abandonar el ejército'}`, 'error');
+  }
+};
+
+const handleEnemyCharacterCapture = async (char, marker) => {
+  try {
+    const result = await mapApi.captureCharacter(char.id);
+    marker.closePopup();
+    showToast(`⛓️ ${result.message}`, 'success');
+    await fetchAndRenderCharacters();
+  } catch (err) {
+    showToast(`❌ ${err?.response?.data?.message || 'Error al capturar el personaje'}`, 'error');
   }
 };
 
@@ -10118,6 +10183,16 @@ onBeforeUnmount(() => {
   color: #ffd700;
   box-shadow: 0 0 8px 2px rgba(255,215,0,0.5);
 }
+
+:deep(.char-map-marker--enemy) {
+  color: var(--enemy-color, #e53e3e);
+}
+:deep(.char-map-marker--enemy svg) {
+  background: #1a0808;
+  border-color: var(--enemy-color, #e53e3e);
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--enemy-color, #e53e3e) 40%, transparent);
+}
+
 
 :deep(.char-map-name) {
   font-size: 9px;

@@ -69,6 +69,7 @@ const GAME_CONFIG = {
         DEATH_CHANCE_PER_YEAR:   2,   // % de probabilidad de muerte por año sobre el umbral
         DEFAULT_ABILITIES: ['estrategia', 'logistica', 'diplomacia'],
         MOVEMENT_PER_TURN:       3,   // Hexágonos que avanza el personaje por turno
+        DETECTION_RANGE:         2,   // Hexágonos visibles desde un personaje autónomo (niebla de guerra)
     },
 
     // 🏰 Límite de Ejércitos por Jugador

@@ -274,6 +274,43 @@ class CharacterModel {
             [clamped, id]
         );
     }
+
+    /**
+     * Returns enemy standalone characters located at any of the given hexes.
+     * Used by the fog-of-war endpoint to show visible enemy characters on the map.
+     */
+    async getEnemyCharactersAtHexes(playerId, hexes) {
+        if (hexes.length === 0) return [];
+        const r = await pool.query(
+            `SELECT c.id, c.name, c.h3_index, c.is_main_character,
+                    p.display_name AS player_name, p.color AS player_color
+             FROM characters c
+             JOIN players p ON p.player_id = c.player_id
+             WHERE c.player_id != $1
+               AND c.army_id IS NULL
+               AND c.is_captive = FALSE
+               AND c.h3_index IS NOT NULL
+               AND c.h3_index = ANY($2::text[])`,
+            [playerId, hexes]
+        );
+        return r.rows;
+    }
+
+    /**
+     * Returns h3_index of standalone (not in army, not captive) characters for a player.
+     * Used to build fog-of-war visibility — each character reveals a small disk around them.
+     */
+    async getStandalonePositions(playerId) {
+        const r = await pool.query(
+            `SELECT h3_index FROM characters
+             WHERE player_id = $1
+               AND army_id IS NULL
+               AND is_captive = FALSE
+               AND h3_index IS NOT NULL`,
+            [playerId]
+        );
+        return r.rows.map(row => row.h3_index);
+    }
 }
 
 module.exports = new CharacterModel();

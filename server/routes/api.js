@@ -391,11 +391,13 @@ module.exports = function () {
     // PERSONAJES Y DINASTÍAS
     // ============================================
     router.get('/characters',              authenticateToken, (req, res) => CharacterService.GetMyCharacters(req, res));
+    router.get('/characters/visible',      authenticateToken, (req, res) => CharacterService.GetVisibleCharacters(req, res));
     router.get('/characters/:id',          authenticateToken, (req, res) => CharacterService.GetCharacter(req, res));
     router.post('/characters/:id/procreate', authenticateToken, (req, res) => CharacterService.Procreate(req, res));
     router.patch('/characters/:id/heir',   authenticateToken, (req, res) => CharacterService.SetHeir(req, res));
     router.put('/characters/:id/move',     authenticateToken, (req, res) => CharacterService.MoveCharacter(req, res));
     router.delete('/characters/:id/move',  authenticateToken, (req, res) => CharacterService.StopCharacter(req, res));
+    router.post('/characters/:id/capture', authenticateToken, (req, res) => CharacterService.CaptureCharacter(req, res));
     router.put('/armies/:id/commander',    authenticateToken, (req, res) => CharacterService.AssignCommander(req, res));
 
     return router;

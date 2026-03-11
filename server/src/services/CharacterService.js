@@ -1,5 +1,6 @@
 const { Logger } = require('../utils/logger');
 const CharacterModel = require('../models/CharacterModel');
+const ArmyModel = require('../models/ArmyModel');
 const DynastyService = require('./DynastyService');
 const GAME_CONFIG = require('../config/constants');
 const pool = require('../../db');
@@ -452,6 +453,123 @@ class CharacterService {
             } catch (err) {
                 Logger.error(err, { context: 'CharacterService.processMovements', characterId: char.id });
             }
+        }
+    }
+
+    /**
+     * GET /api/characters/visible
+     * Devuelve personajes enemigos autónomos visibles dentro del rango de detección
+     * del jugador (ejércitos + feudos + personajes propios), igual que la niebla de guerra
+     * aplicada a ejércitos. No incluye personajes en ejércitos (ya cubiertos por las tropas).
+     */
+    async GetVisibleCharacters(req, res) {
+        try {
+            const playerId = req.user.player_id;
+
+            const [ownArmyVision, ownFiefPositions, ownCharPositions] = await Promise.all([
+                ArmyModel.GetPlayerArmiesWithDetection(playerId),
+                ArmyModel.GetPlayerFiefPositions(playerId),
+                CharacterModel.getStandalonePositions(playerId),
+            ]);
+
+            const fiefRange = GAME_CONFIG.MILITARY.FIEF_DETECTION_RANGE;
+            const charRange = GAME_CONFIG.CHARACTERS.DETECTION_RANGE;
+            const visibleHexes = new Set();
+
+            for (const army of ownArmyVision) {
+                h3.gridDisk(army.h3_index, army.detection_range).forEach(hex => visibleHexes.add(hex));
+            }
+            for (const fiefH3 of ownFiefPositions) {
+                h3.gridDisk(fiefH3, fiefRange).forEach(hex => visibleHexes.add(hex));
+            }
+            for (const charH3 of ownCharPositions) {
+                h3.gridDisk(charH3, charRange).forEach(hex => visibleHexes.add(hex));
+            }
+
+            const characters = await CharacterModel.getEnemyCharactersAtHexes(playerId, [...visibleHexes]);
+            res.json({ success: true, characters });
+        } catch (err) {
+            Logger.error(err, { endpoint: 'GET /characters/visible', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener personajes visibles' });
+        }
+    }
+
+    /**
+     * POST /api/characters/:id/capture
+     * Captura a un personaje enemigo autónomo cuando uno de los ejércitos del jugador
+     * está en el mismo feudo. No requiere combate previo.
+     */
+    async CaptureCharacter(req, res) {
+        const playerId   = req.user.player_id;
+        const characterId = parseInt(req.params.id, 10);
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Cargar el personaje objetivo
+            const charResult = await client.query(
+                `SELECT c.id, c.name, c.level, c.player_id, c.army_id, c.is_captive, c.h3_index,
+                        p.username AS owner_name
+                 FROM characters c
+                 JOIN players p ON p.player_id = c.player_id
+                 WHERE c.id = $1`,
+                [characterId]
+            );
+            if (!charResult.rows[0]) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Personaje no encontrado.' });
+            }
+            const char = charResult.rows[0];
+
+            // 2. Validaciones
+            if (char.player_id === playerId) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'No puedes capturar a tu propio personaje.' });
+            }
+            if (char.is_captive) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Este personaje ya está cautivo.' });
+            }
+            if (char.army_id) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Este personaje está integrado en un ejército y no puede ser capturado directamente.' });
+            }
+            if (!char.h3_index) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'El personaje no tiene posición en el mapa.' });
+            }
+
+            // 3. Verificar que el jugador tiene un ejército en el mismo feudo (sin movimiento activo)
+            const armyResult = await client.query(
+                `SELECT army_id FROM armies
+                 WHERE player_id = $1 AND h3_index = $2 AND destination IS NULL
+                 LIMIT 1`,
+                [playerId, char.h3_index]
+            );
+            if (!armyResult.rows[0]) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Necesitas un ejército en el mismo feudo para capturar este personaje.' });
+            }
+            const capturingArmyId = armyResult.rows[0].army_id;
+
+            // 4. Ejecutar captura
+            await CharacterModel.setCaptive(client, characterId, capturingArmyId, char.level);
+
+            await client.query('COMMIT');
+
+            Logger.action(
+                `[CAPTURA] ${char.name} (jugador ${char.owner_name}) capturado por ejército ${capturingArmyId} del jugador ${playerId}`,
+                playerId
+            );
+
+            res.json({ success: true, message: `${char.name} ha sido capturado.`, army_id: capturingArmyId });
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: 'POST /characters/:id/capture', userId: playerId, characterId });
+            res.status(500).json({ success: false, message: 'Error al capturar el personaje.' });
+        } finally {
+            client.release();
         }
     }
 }
