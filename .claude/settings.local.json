@@ -54,7 +54,8 @@
       "Bash(claude mcp:*)",
       "Bash(npx --version)",
       "mcp__postgres__query",
-      "Bash(rtk grep:*)"
+      "Bash(rtk grep:*)",
+      "Bash(grep -E \"\\\\.\\(js\\)$\")"
     ]
   }
 }
