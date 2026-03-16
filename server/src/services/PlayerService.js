@@ -1,6 +1,7 @@
 const pool   = require('../../db.js');
 const { Logger } = require('../utils/logger');
 const PlayerModel = require('../models/PlayerModel.js');
+const GAME_CONFIG = require('../config/constants.js');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // In-memory cache: Map<h3_index, Array<{ culture_id: number, weight: number }>>
@@ -81,56 +82,22 @@ function assignCultureByLocation(h3Index) {
 // TROPAS DE INICIO POR CULTURA
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Starting quantity per unit class
-const STARTING_QUANTITIES = {
-    INFANTRY_1: 100,
-    ARCHER_1:   50,
-};
-
 /**
- * Returns the starting troop list for a culture.
- * Each entry: { unit_type_id, name, unit_class, quantity }
+ * Returns the starting troop list for a culture from GAME_CONFIG.STARTING_TROOPS.
+ * Each entry: { unit_type_id, quantity }
  *
- * Falls back to generic units (Milicia + Arqueros) if culture has none.
+ * Falls back to culture 1 (Roma) if the culture has no entry configured.
  *
  * @param {number|null} cultureId
- * @returns {Promise<Array<{ unit_type_id, name, unit_class, quantity }>>}
+ * @returns {Array<{ unit_type_id, quantity }>}
  */
-async function getStartingTroopsByCulture(cultureId) {
-    if (cultureId !== null && cultureId !== undefined) {
-        const result = await pool.query(
-            `SELECT unit_type_id, name, unit_class
-             FROM   unit_types
-             WHERE  culture_id = $1
-               AND  unit_class IN ('INFANTRY_1', 'ARCHER_1')
-             ORDER BY unit_class`,
-            [cultureId]
-        );
+function getStartingTroopsByCulture(cultureId) {
+    const troops = GAME_CONFIG.STARTING_TROOPS[cultureId];
+    if (troops && troops.length > 0) return troops;
 
-        if (result.rows.length > 0) {
-            return result.rows.map(r => ({
-                unit_type_id: r.unit_type_id,
-                name:         r.name,
-                unit_class:   r.unit_class,
-                quantity:     STARTING_QUANTITIES[r.unit_class] ?? 50,
-            }));
-        }
-    }
-
-    // Fallback: generic units (no culture assigned or culture has no basic units)
-    const fallback = await pool.query(
-        `SELECT unit_type_id, name
-         FROM   unit_types
-         WHERE  name IN ('Milicia', 'Arqueros')
-           AND  culture_id IS NULL`
-    );
-
-    return fallback.rows.map(r => ({
-        unit_type_id: r.unit_type_id,
-        name:         r.name,
-        unit_class:   r.name === 'Milicia' ? 'INFANTRY_1' : 'ARCHER_1',
-        quantity:     r.name === 'Milicia' ? STARTING_QUANTITIES.INFANTRY_1 : STARTING_QUANTITIES.ARCHER_1,
-    }));
+    // Fallback to Roma if culture not found in constants
+    Logger.action(`[PlayerService] No starting troops config for culture ${cultureId} — falling back to Roma`, null);
+    return GAME_CONFIG.STARTING_TROOPS[1];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

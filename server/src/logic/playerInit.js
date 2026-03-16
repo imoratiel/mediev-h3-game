@@ -275,7 +275,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
         }
 
         const troopMultiplier = randomBonus ? 2 : 1;
-        const startingTroopsBase = await getStartingTroopsByCulture(cultureId);
+        const startingTroopsBase = getStartingTroopsByCulture(cultureId);
         const startingTroops = startingTroopsBase.map(t => ({ ...t, quantity: t.quantity * troopMultiplier }));
 
         if (cultureId) {

@@ -72,6 +72,32 @@ const GAME_CONFIG = {
         DETECTION_RANGE:         2,   // Hexágonos visibles desde un personaje autónomo (niebla de guerra)
     },
 
+    // ⚔️ Tropas iniciales por cultura (IDs según 049_unit_types_reset_data.sql)
+    // Cada entrada: { unit_type_id, quantity }
+    // El multiplicador ×2 para "Aleatorio" se aplica en playerInit.js.
+    STARTING_TROOPS: {
+        1: [ // Roma
+            { unit_type_id:  1, quantity: 100 }, // Hastati
+            { unit_type_id:  5, quantity:  50 }, // Velites
+            { unit_type_id:  4, quantity:  50 }, // Auxilia (Cab)
+        ],
+        2: [ // Cartago
+            { unit_type_id:  9, quantity: 100 }, // Infantería Libia
+            { unit_type_id: 13, quantity:  50 }, // Honderos Baleares
+            { unit_type_id: 11, quantity:  50 }, // Caballería Numida
+        ],
+        3: [ // Íberos
+            { unit_type_id: 17, quantity: 100 }, // Caetrati
+            { unit_type_id: 21, quantity:  50 }, // Falarica
+            { unit_type_id: 19, quantity:  50 }, // Jin. Lanza
+        ],
+        4: [ // Celtas
+            { unit_type_id: 25, quantity: 100 }, // Celtíberos
+            { unit_type_id: 27, quantity:  50 }, // Cazadores
+            { unit_type_id: 29, quantity:  50 }, // Cab. de Exploración
+        ],
+    },
+
     // 🏰 Límite de Ejércitos por Jugador
     // Regla: max(BASE, floor(feudos / RATIO))
     // Ej: 0 feudos → 1 ejército, 3 → 1, 6 → 2, 30 → 10, 170 → 56
