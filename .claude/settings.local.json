@@ -55,7 +55,9 @@
       "Bash(npx --version)",
       "mcp__postgres__query",
       "Bash(rtk grep:*)",
-      "Bash(grep -E \"\\\\.\\(js\\)$\")"
+      "Bash(grep -E \"\\\\.\\(js\\)$\")",
+      "mcp__notion__API-post-page",
+      "mcp__notion__API-patch-block-children"
     ]
   }
 }
