@@ -938,7 +938,7 @@ class KingdomService {
         const player_id      = req.user.player_id;
         const forceCultureId = req.query?.culture_id ? parseInt(req.query.culture_id, 10) : null;
         const randomBonus    = req.query?.random_bonus === 'true';
-        const linaje         = (req.query?.linaje ?? '').trim();
+        const linaje         = (req.query?.linaje ?? '').trim().replace(/\p{L}+/gu, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 
         // Validate linaje
         if (!linaje || linaje.length < 3 || linaje.length > 30) {

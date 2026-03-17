@@ -126,7 +126,7 @@
           @click="togglePanel('profile')"
           title="Editar perfil"
         >
-          <span class="username">{{ currentUser.display_name || currentUser.username }}</span>
+          <span class="username">{{ currentUser.culture_id === 1 ? 'Gens' : 'Casa' }} {{ currentUser.display_name || currentUser.username }}</span>
           <span v-if="currentUser.culture_name" class="culture-badge">{{ currentUser.culture_name }}</span>
         </button>
         <button
@@ -6170,6 +6170,7 @@ onBeforeUnmount(() => {
 
 .username {
   font-family: var(--font-sans);
+  font-size: 0.75rem;
 }
 
 .culture-badge {

@@ -107,7 +107,7 @@ class LoginService {
         try {
             // Fetch is_initialized from DB (not in JWT payload)
             const result = await pool.query(
-                `SELECT p.is_initialized, p.gender, p.culture_id, c.name AS culture_name
+                `SELECT p.is_initialized, p.gender, p.culture_id, p.display_name, c.name AS culture_name
                  FROM players p
                  LEFT JOIN cultures c ON c.id = p.culture_id
                  WHERE p.player_id = $1`,
@@ -117,12 +117,13 @@ class LoginService {
             const gender         = result.rows[0]?.gender ?? 'M';
             const culture_id     = result.rows[0]?.culture_id ?? null;
             const culture_name   = result.rows[0]?.culture_name ?? null;
+            const display_name   = result.rows[0]?.display_name ?? req.user.display_name;
             res.json({
                 success: true,
                 user: {
                     player_id:      req.user.player_id,
                     username:       req.user.username,
-                    display_name:   req.user.display_name,
+                    display_name,
                     role:           req.user.role,
                     is_initialized,
                     gender,
