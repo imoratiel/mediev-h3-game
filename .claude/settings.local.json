@@ -67,7 +67,11 @@
       "Bash(do echo:*)",
       "Read(//d/claude/mediev-h3-game/**)",
       "Bash(done)",
-      "mcp__notion__API-post-search"
+      "mcp__notion__API-post-search",
+      "Bash(xargs cat:*)",
+      "Bash(sed -i 's/XXXXX/[NOMBRE_TITULAR]/g' d:/claude/mediev-h3-game/docs/legal/PRIVACIDAD.md d:/claude/mediev-h3-game/docs/legal/TERMINOS.md d:/claude/mediev-h3-game/docs/legal/AVISO_LEGAL.md)",
+      "Bash(sed -i 's/XXXXX\\\\XXXXX \\(España\\)/[DOMICILIO_TITULAR]/g' d:/claude/mediev-h3-game/docs/legal/PRIVACIDAD.md d:/claude/mediev-h3-game/docs/legal/TERMINOS.md d:/claude/mediev-h3-game/docs/legal/AVISO_LEGAL.md)",
+      "Bash(sed -i 's/Tribunales de XXXX \\(España\\)/Tribunales de [CIUDAD_TITULAR] \\(España\\)/g' d:/claude/mediev-h3-game/docs/legal/TERMINOS.md)"
     ]
   }
 }
