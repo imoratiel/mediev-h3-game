@@ -17,7 +17,7 @@ const GAME_CONFIG = {
         STAMINA_MAX: 100,               // Valor máximo de stamina (techo)
         FORCE_REST_THRESHOLD: 25,       // % de stamina necesario para salir de 'force_rest'
         STAMINA_MIN_FOR_MOVE: 0.1,      // Stamina mínima para intentar el "Último Esfuerzo"
-        STAMINA_COST_PER_HEX: 5,        // Coste de stamina por hexágono recorrido (× movement_cost del terreno)
+        STAMINA_COST_PER_HEX: 2,        // Coste de stamina por hexágono recorrido (× movement_cost del terreno)
 FIEF_DETECTION_RANGE: 2,        // Hexágonos visibles desde cada feudo propio (niebla de guerra)
         // 🎖️ Experiencia de Combate
         COMBAT_XP_MULTIPLIER: 15,       // Multiplicador aplicado a la XP ganada por unidades tras combate

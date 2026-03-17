@@ -22,20 +22,20 @@ import { cellToLatLng } from 'h3-js';
 // Máximo de casillas que recorre un ejército por turno (debe coincidir con backend)
 const MAX_CELLS_PER_TURN = 4;
 
-// Segmento del turno actual: naranja, más grueso y opaco
+// Segmento del turno actual: negro sólido
 const ROUTE_STYLE_CURRENT = {
-  color: '#f39c12',
+  color: '#000000',
   weight: 3,
-  opacity: 0.85,
+  opacity: 0.9,
   dashArray: '5, 8',
   pane: 'routePane'
 };
 
-// Segmento de turnos futuros: gris tenue y fino
+// Segmento de turnos futuros: negro tenue y fino
 const ROUTE_STYLE_FUTURE = {
-  color: '#8e9ba8',
+  color: '#000000',
   weight: 2,
-  opacity: 0.4,
+  opacity: 0.35,
   dashArray: '4, 10',
   pane: 'routePane'
 };

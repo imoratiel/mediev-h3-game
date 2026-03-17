@@ -29,17 +29,17 @@ CREATE TABLE terrain_types (
 INSERT INTO terrain_types (terrain_type_id, name, color, food_output, wood_output, fishing_output, stone_output, iron_output, movement_cost, defense_bonus) VALUES
 (1, 'Mar', '#0a4b78', 0, 0, 100, 0, 0, -1.0, 0),
 (2, 'Costa', '#fff59d', 10, 5, 85, 5, 0, 1.0, 0),
-(3, 'Agua', '#4fc3f7', 0, 0, 70, 0, 0, 5.0, 0),
-(4, 'Río', '#00bcd4', 90, 10, 50, 0, 0, 1.5, 20),
-(5, 'Pantanos', '#4e342e', 30, 15, 40, 0, 10, 3.0, 10),
+(3, 'Agua', '#4fc3f7', 0, 0, 70, 0, 0, -1.0, 0),
+(4, 'Río', '#00bcd4', 90, 10, 50, 0, 0, -1.0, 20),
+(5, 'Pantanos', '#4e342e', 30, 15, 40, 0, 10, 5.0, 10),
 (6, 'Tierras de Cultivo', '#7db35d', 100, 5, 0, 0, 0, 1.0, 0),
 (7, 'Tierras de Secano', '#b8a170', 55, 15, 0, 10, 5, 1.0, 5),
 (8, 'Estepas', '#d4e157', 35, 5, 0, 5, 5, 1.0, 0),
-(9, 'Bosque', '#558b2f', 20, 100, 0, 10, 0, 2.0, 30),
-(10, 'Espesuras', '#2d5a27', 10, 120, 0, 20, 0, 3.0, 50),
-(11, 'Oteros', '#a1887f', 15, 10, 0, 80, 40, 2.0, 40),
-(12, 'Colinas', '#8d6e63', 10, 20, 0, 60, 60, 2.0, 30),
-(13, 'Alta Montaña', '#546e7a', 0, 5, 0, 100, 100, 5.0, 80),
+(9, 'Bosque', '#558b2f', 20, 100, 0, 10, 0, 3.0, 30),
+(10, 'Espesuras', '#2d5a27', 10, 120, 0, 20, 0, 4.0, 50),
+(11, 'Cerros', '#a1887f', 15, 10, 0, 80, 40, 3.0, 40),
+(12, 'Colinas', '#8d6e63', 10, 20, 0, 60, 60, 3.0, 30),
+(13, 'Alta Montaña', '#546e7a', 0, 5, 0, 100, 100, 10.0, 80),
 (14, 'Asentamiento', '#e53935', 0, 0, 0, 0, 0, 1.0, 50);
 
 CREATE TABLE building_types (
