@@ -657,19 +657,17 @@ class ArmySimulationService {
           await this._consumeStaminaWithClient(client, armyId, cost);
         } else {
           // Esfuerzo extra: PM insuficiente pero el ejército fuerza el último paso
+          // La stamina se descuenta normalmente por el coste del terreno (puede llegar a 0 y activar force_rest)
           forceExhausted = true;
           const pmBeforeExhaustion = pm;
           pm = 0;
-          await client.query(
-            'UPDATE troops SET stamina = 0, force_rest = TRUE WHERE army_id = $1',
-            [armyId]
-          );
+          await this._consumeStaminaWithClient(client, armyId, cost);
           await client.query(
             'UPDATE armies SET recovering = 1 WHERE army_id = $1',
             [armyId]
           );
           Logger.army(armyId, 'FATIGUE_COLLAPSE',
-            `Esfuerzo extra! ${pmBeforeExhaustion} PM disponibles, coste ${cost}. force_rest activado`,
+            `Esfuerzo extra! ${pmBeforeExhaustion} PM disponibles, coste ${cost}. Stamina descontada normalmente`,
             { pm_available: pmBeforeExhaustion, terrain_cost: cost }
           );
         }

@@ -506,8 +506,8 @@ class CombatService {
             const qty    = troop.quantity;
             const attack = parseFloat(troop.attack);
 
-            const moraleFactor  = Math.max(0.5, parseFloat(troop.morale)  / 100);
-            const staminaFactor = troop.force_rest ? 0.5 : Math.max(0.1, parseFloat(troop.stamina) / 100);
+            const moraleFactor  = Math.max(0.1, parseFloat(troop.morale)  / 100);
+            const staminaFactor = troop.force_rest ? 0.1 : Math.max(0.1, parseFloat(troop.stamina) / 100);
 
             let terrainFactor = 1.0;
             if (terrainName) {

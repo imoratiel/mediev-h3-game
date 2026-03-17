@@ -70,8 +70,8 @@ Cada turno, el motor procesa cada ejército con destino asignado:
         - Mover ejército al hexágono
    c. Si PM < coste (esfuerzo extra):
         - Mover igualmente el hexágono
-        - stamina de todas las tropas → 0
-        - force_rest = TRUE en todas las tropas
+        - Descontar stamina por coste del terreno (igual que paso normal)
+        - Si alguna tropa llega a stamina = 0 → force_rest = TRUE en esa tropa
         - recovering = 1 (turno de descanso forzado)
         - Detener el bucle
 5. Si llegó al destino: limpiar destino y ruta
@@ -97,7 +97,7 @@ Si la stamina llega a **0**, la tropa entra en `force_rest = TRUE` automáticame
 
 Si el ejército no tiene suficientes PM para el siguiente hexágono pero aún queda ruta, puede hacer un **esfuerzo extra**:
 - Se mueve de todas formas al hexágono.
-- Todas las tropas quedan con `stamina = 0` y `force_rest = TRUE`.
+- La stamina se descuenta con el coste normal del terreno (igual que cualquier otro paso). Si llega a 0, esa tropa entra en `force_rest = TRUE`.
 - El ejército queda con `recovering = 1` (no puede moverse el siguiente turno).
 
 ### Recuperación pasiva
