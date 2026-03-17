@@ -221,7 +221,10 @@ async function begin() {
       loading.value = false;
     }
   } catch (err) {
-    if (err.response?.status === 409) {
+    if (err.response?.status === 409 && err.response?.data?.linaje_taken) {
+      linajeError.value = err.response.data.message;
+      loading.value = false;
+    } else if (err.response?.status === 409) {
       emit('done', {});
     } else {
       error.value   = err?.response?.data?.message || 'Error de conexión. Inténtalo de nuevo.';
