@@ -12,7 +12,7 @@ class TerrainModel {
         return result;
     }    
     async GetTerrainTypes() {
-        const result = await pool.query('SELECT terrain_type_id, name, color FROM terrain_types ORDER BY terrain_type_id');
+        const result = await pool.query('SELECT terrain_type_id, name, color, sort_order FROM terrain_types WHERE sort_order IS NOT NULL ORDER BY sort_order, terrain_type_id');
         return result;
     }
     async GetBuildingsInBounds(h3CellsArray) {

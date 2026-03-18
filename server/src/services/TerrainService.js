@@ -53,7 +53,8 @@ class TerrainService {
             const terrainTypes = result.rows.map(row => ({
                 terrain_type_id: row.terrain_type_id,
                 name: row.name,
-                color: getTerrainColor(row.name, row.color)
+                color: getTerrainColor(row.name, row.color),
+                sort_order: row.sort_order
             }));
             res.json(terrainTypes);
         } catch (error) {

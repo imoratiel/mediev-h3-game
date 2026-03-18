@@ -73,7 +73,8 @@
       "Bash(sed -i 's/XXXXX\\\\XXXXX \\(España\\)/[DOMICILIO_TITULAR]/g' d:/claude/mediev-h3-game/docs/legal/PRIVACIDAD.md d:/claude/mediev-h3-game/docs/legal/TERMINOS.md d:/claude/mediev-h3-game/docs/legal/AVISO_LEGAL.md)",
       "Bash(sed -i 's/Tribunales de XXXX \\(España\\)/Tribunales de [CIUDAD_TITULAR] \\(España\\)/g' d:/claude/mediev-h3-game/docs/legal/TERMINOS.md)",
       "Bash(rtk read:*)",
-      "Bash(rtk pnpm:*)"
+      "Bash(rtk pnpm:*)",
+      "Bash(find /d/claude/mediev-h3-game/client/public -name login* -o -name *.html)"
     ]
   }
 }

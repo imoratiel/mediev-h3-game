@@ -2605,8 +2605,8 @@ const fetchTerrainTypes = async () => {
   try {
     const data = await mapApi.getTerrainTypes();
     // Sort alphabetically by name
-    terrainTypes.value = data.sort((a, b) => a.name.localeCompare(b.name, 'es'));
-    console.log(`✓ Loaded ${terrainTypes.value.length} terrain types (sorted alphabetically)`);
+    terrainTypes.value = data.filter(t => t.sort_order != null).sort((a, b) => a.sort_order - b.sort_order);
+    console.log(`✓ Loaded ${terrainTypes.value.length} terrain types (sorted by sort_order)`);
   } catch (err) {
     console.error('Failed to fetch terrain types:', err);
   }
@@ -2649,8 +2649,7 @@ const loadExplorationConfig = async () => {
       console.error('❌ No autenticado - Se requiere login para acceder a configuración de admin');
       showToast('Sesión expirada o inválida', 'error');
     } else if (err.response?.status === 403) {
-      console.error('❌ Acceso denegado - Se requieren permisos de administrador');
-      showToast('⛔ Acceso Denegado: Se requieren permisos de administrador', 'error');
+      console.warn('No admin — config de exploración no disponible');
     } else {
       console.warn('Failed to load exploration config, using defaults:', err.message);
     }
@@ -2704,7 +2703,7 @@ const syncWithServer = async () => {
         console.log(`[Sync] ✓ Updated to Turn ${serverTurn}, Day ${dayOfYear.value}/365`);
 
         // Notify turn change
-        showToast(`⏳ Es ya ${formattedDate.value}`, 'info');
+        showToast(`⏳ Comienza un nuevo día: ${formattedDate.value}`, 'info');
 
         // Check if it's a harvest day
         if (dayOfYear.value === 75 || dayOfYear.value === 180) {
