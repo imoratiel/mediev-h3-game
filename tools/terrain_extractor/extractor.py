@@ -1699,50 +1699,67 @@ def fix_isolated_rivers(terrain_data: List[Tuple[str, int, int, int]]) -> List[T
     logger.info("=" * 80)
     start_time = time.time()
 
-    # Set de todos los h3_index con tipo Rio para lookup O(1)
-    river_set = {h3_idx for h3_idx, terrain_id, _, _ in terrain_data if terrain_id == 4}
-    # Set de celdas Mar para proteger desembocaduras
-    sea_set   = {h3_idx for h3_idx, terrain_id, _, _ in terrain_data if terrain_id == 1}
+    WATER_IDS = {1, 3, 4}  # Mar, Agua, Río
+
+    # Sets de lookup
+    river_set    = {h3_idx for h3_idx, terrain_id, _, _ in terrain_data if terrain_id == 4}
+    terrain_dict = {h3_idx: terrain_id for h3_idx, terrain_id, _, _ in terrain_data}
     logger.info(f"Total celdas de tipo Rio (ID 4): {len(river_set)}")
 
     if not river_set:
         logger.info("No hay celdas de tipo Rio. Saltando paso.")
         return terrain_data
 
-    isolated_rivers = set()
-    mouth_rivers    = set()  # Desembocaduras: rio aislado pero adyacente al mar
+    isolated_rivers = set()  # Sin vecino río ni mar → pantano
+    mouth_rivers    = set()  # Adyacente al mar con vecino río → proteger
+    river_to_sea    = set()  # Rodeado SOLO de mar → mar
+    river_to_coast  = set()  # Rodeado de mar + tierra → costa
 
     for h3_idx in river_set:
         try:
-            neighbors = h3.grid_disk(h3_idx, 1) - {h3_idx}
-            has_river_neighbor = any(n in river_set for n in neighbors)
-            has_sea_neighbor   = any(n in sea_set   for n in neighbors)
+            neighbors         = set(h3.grid_disk(h3_idx, 1)) - {h3_idx}
+            neighbor_terrains = [terrain_dict[n] for n in neighbors if n in terrain_dict]
 
-            if not has_river_neighbor:
-                if has_sea_neighbor:
-                    mouth_rivers.add(h3_idx)   # Desembocadura — proteger
-                else:
-                    isolated_rivers.add(h3_idx)  # Aislado real — pantano
+            has_river_neighbor = any(n in river_set for n in neighbors)
+            has_sea_neighbor   = any(t == 1 for t in neighbor_terrains)
+            has_land_neighbor  = any(t not in WATER_IDS for t in neighbor_terrains)
+            all_sea            = neighbor_terrains and all(t == 1 for t in neighbor_terrains)
+
+            if has_river_neighbor:
+                pass  # Parte de una cadena de río — no tocar
+            elif all_sea:
+                river_to_sea.add(h3_idx)          # Solo mar, sin río → mar
+            elif has_sea_neighbor and has_land_neighbor:
+                river_to_coast.add(h3_idx)        # Mar + tierra, sin río → costa
+            elif has_sea_neighbor:
+                mouth_rivers.add(h3_idx)          # Desembocadura aislada — proteger
+            else:
+                isolated_rivers.add(h3_idx)       # Aislado real — pantano
         except Exception as e:
             logger.warning(f"Error comprobando vecinos de {h3_idx}: {e}")
             continue
 
-    logger.info(f"Rios aislados detectados (sin vecino rio ni mar): {len(isolated_rivers)}")
-    logger.info(f"Desembocaduras protegidas (rio junto al mar): {len(mouth_rivers)}")
-    logger.info(f"Rios validos que permanecen: {len(river_set) - len(isolated_rivers)}")
+    logger.info(f"Rios aislados (sin vecino rio ni mar) → Pantano: {len(isolated_rivers)}")
+    logger.info(f"Desembocaduras protegidas (rio junto al mar):     {len(mouth_rivers)}")
+    logger.info(f"Rios rodeados solo de mar → Mar:                  {len(river_to_sea)}")
+    logger.info(f"Rios entre mar y tierra → Costa:                  {len(river_to_coast)}")
     for idx in sorted(isolated_rivers):
         logger.info(f"  RIO_AISLADO -> PANTANO: {idx}")
 
-    # Reclasificar celdas aisladas: ID 4 (Rio) -> ID 5 (Pantanos)
+    # Reclasificar
     updated_terrain_data = []
     for h3_idx, terrain_id, coord_x, coord_y in terrain_data:
-        if h3_idx in isolated_rivers:
-            updated_terrain_data.append((h3_idx, 5, coord_x, coord_y))  # Pantanos
+        if h3_idx in river_to_sea:
+            updated_terrain_data.append((h3_idx, 1, coord_x, coord_y))   # Mar
+        elif h3_idx in river_to_coast:
+            updated_terrain_data.append((h3_idx, 2, coord_x, coord_y))   # Costa
+        elif h3_idx in isolated_rivers:
+            updated_terrain_data.append((h3_idx, 5, coord_x, coord_y))   # Pantanos
         else:
             updated_terrain_data.append((h3_idx, terrain_id, coord_x, coord_y))
 
     elapsed = time.time() - start_time
-    logger.info(f"Reclasificacion completada en {elapsed:.2f}s: {len(isolated_rivers)} rios -> pantanos")
+    logger.info(f"Reclasificacion completada en {elapsed:.2f}s")
     logger.info("=" * 80)
 
     return updated_terrain_data
