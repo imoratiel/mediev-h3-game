@@ -2710,6 +2710,9 @@ const syncWithServer = async () => {
 
         console.log(`[Sync] ✓ Updated to Turn ${serverTurn}, Day ${dayOfYear.value}/365`);
 
+        // Notify turn change
+        showToast(`⏳ Es ya ${formattedDate.value}`, 'info');
+
         // Check if it's a harvest day
         if (dayOfYear.value === 75 || dayOfYear.value === 180) {
           const harvestSeason = dayOfYear.value === 75 ? 'PRIMAVERA' : 'VERANO';

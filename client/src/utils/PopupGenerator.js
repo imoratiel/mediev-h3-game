@@ -344,7 +344,7 @@ export function generateArmyPopup(armyData, config) {
       const minStamina = army.min_stamina !== undefined ? army.min_stamina : (army.rest_level || 100);
       const staminaPercentage = Math.max(0, Math.min(100, minStamina));
       const staminaColor = staminaPercentage < 30 ? '#ff6b6b' : (staminaPercentage < 60 ? '#ffd93d' : '#4caf50');
-      const staminaLabel = staminaPercentage < 30 ? 'Agotado' : (staminaPercentage < 60 ? 'Cansado' : 'Descansado');
+      const staminaLabel = (staminaPercentage <= 0 || army.has_force_rest) ? 'Exhausto' : (staminaPercentage < 30 ? 'Agotado' : (staminaPercentage < 60 ? 'Cansado' : 'Descansado'));
       const hasForceRest = army.has_force_rest || false;
       const isRecovering = army.recovering && Number(army.recovering) > 0;
       const isMoving = army.destination && army.destination !== null;

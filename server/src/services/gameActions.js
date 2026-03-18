@@ -408,7 +408,7 @@ function getRandomInt(min, max) {
 async function processConquestLoot(client, armyId, h3_index) {
     // 1. Lock resource row
     const tdResult = await client.query(
-        `SELECT food_stored, wood_stored, stone_stored, iron_stored, gold_stored
+        `SELECT food_stored, gold_stored
          FROM territory_details
          WHERE h3_index = $1
          FOR UPDATE`,
@@ -426,13 +426,10 @@ async function processConquestLoot(client, armyId, h3_index) {
     const lootPct = getRandomInt(10, 30) / 100;   // 10 – 30 %
     const armyPct = getRandomInt(40, 60) / 100;   // 40 – 60 % of loot
 
-    const resources = ['food_stored', 'wood_stored', 'stone_stored', 'iron_stored', 'gold_stored'];
+    const resources = ['food_stored', 'gold_stored'];
     const provisionKeys = {
-        food_stored:  'food_provisions',
-        wood_stored:  'wood_provisions',
-        stone_stored: 'stone_provisions',
-        iron_stored:  'iron_provisions',
-        gold_stored:  'gold_provisions',
+        food_stored: 'food_provisions',
+        gold_stored: 'gold_provisions',
     };
 
     const loot      = {};   // total removed from fief  (per resource)

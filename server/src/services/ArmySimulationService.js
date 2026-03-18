@@ -230,7 +230,7 @@ class ArmySimulationService {
         await client.query(
           `UPDATE troops
            SET stamina = $1,
-               force_rest = CASE WHEN force_rest = TRUE AND $2 >= $3 THEN FALSE ELSE force_rest END
+               force_rest = CASE WHEN force_rest = TRUE AND $2::numeric >= $3::numeric THEN FALSE ELSE force_rest END
            WHERE troop_id = $4`,
           [newStamina, newStamina, RELEASE_THRESHOLD, troop.troop_id]
         );
