@@ -791,6 +791,7 @@
               @openRecruitment="openRecruitmentForFief"
               @openConstruction="openBuildModal"
               @openUpgrade="(data) => openUpgradeModal(data.h3_index, data.upgrade)"
+              @upgradeFarm="handleUpgradeFarmFromTable"
               @buyWorker="handleBuyWorkerFromTable"
               @change-page="handleFiefsPageChange"
               @change-limit="handleFiefsLimitChange"
@@ -1385,6 +1386,8 @@ const filteredAndSortedFiefs = computed(() => {
       is_capital: fief.is_capital || false,
       fief_building: fief.fief_building || null,
       can_recruit: fief.can_recruit || false,
+      farm_level: Number(fief.farm_level || 0),
+      food_output: Number(fief.food_output || 0),
     };
   });
 
@@ -5390,6 +5393,25 @@ const buyWorkerFromPopup = async (h3_index, worker_type_id) => {
   } catch (err) {
     const msg = err?.response?.data?.message || 'Error al contratar trabajador';
     showToast(`❌ ${msg}`, 'error');
+  }
+};
+
+/**
+ * Upgrade farm level from KingdomPanel fiefs table.
+ */
+const handleUpgradeFarmFromTable = async ({ h3_index, cost }) => {
+  try {
+    const data = await mapApi.upgradeFarm(h3_index);
+    if (data.success) {
+      showToast(`🌾 ${data.message || 'Granja mejorada'}`, 'success');
+      playerGold.value = Math.max(0, playerGold.value - cost);
+      const fief = myFiefs.value.find(f => f.h3_index === h3_index);
+      if (fief) fief.farm_level = (fief.farm_level || 0) + 1;
+    } else {
+      showToast(`❌ ${data.message || 'Error al mejorar granja'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`❌ ${err?.response?.data?.message || 'Error al mejorar granja'}`, 'error');
   }
 };
 

@@ -4,20 +4,18 @@
       <table class="kingdom-table">
         <thead>
           <tr>
-            <th class="col-feudo">Feudo</th>
+            <th class="col-feudo">Centuria</th>
             <th class="col-terreno">Terreno</th>
+            <th class="col-number">💰</th>
             <th class="col-number">👥</th>
             <th class="col-number">😊</th>
             <th class="col-number">🌾</th>
-            <!-- DISABLED: <th class="col-number">🌲</th> -->
-            <!-- DISABLED: <th class="col-number">⛰️</th> -->
-            <!-- DISABLED: <th class="col-number">⛏️</th> -->
-            <th class="col-number">💰</th>
-            <th class="col-division">Señorío</th>
-            <th class="col-edificio">🏛️</th>
             <th class="col-number">Auton.</th>
+            <th class="col-farm">Nivel Granja</th>
+            <th class="col-division">Pagus</th>
             <th class="col-number">Dist.</th>
             <th class="col-number">⚔️</th>
+            <th class="col-edificio">🏛️</th>
             <th class="col-actions">Acciones</th>
           </tr>
         </thead>
@@ -28,30 +26,49 @@
               <span v-if="fief.grace_turns > 0" class="occupation-badge" :title="`Bajo ocupación militar — ${fief.grace_turns} turno${fief.grace_turns !== 1 ? 's' : ''} restante${fief.grace_turns !== 1 ? 's' : ''}`">⚔️ ({{ fief.grace_turns }})</span>
             </td>
             <td class="terrain-cell">{{ fief.terrain }}</td>
-            <td class="text-right pop-cell">
-              {{ formatNumber(fief.population) }}
-            </td>
-            <td class="text-right" :class="{ 'happiness-low': fief.happiness < 30 }">
-                <span
-                  :title="fief.happiness_delta !== 0 ? `${fief.happiness_delta > 0 ? '+' : ''}${fief.happiness_delta} en el último mes` : 'Sin cambios este mes'"
-                  class="happiness-value"
-                >{{ fief.happiness }}%<span
-                    v-if="fief.happiness_delta !== 0"
-                    class="happiness-delta"
-                    :class="fief.happiness_delta > 0 ? 'delta-positive' : 'delta-negative'"
-                  > ({{ fief.happiness_delta > 0 ? '+' : '' }}{{ fief.happiness_delta }})</span></span>
-              </td>
-            <td class="text-right">{{ formatNumber(fief.food) }}</td>
-            <!-- DISABLED: <td class="text-right">{{ formatNumber(fief.wood) }}</td> -->
-            <!-- DISABLED: <td class="text-right">{{ formatNumber(fief.stone) }}</td> -->
-            <!-- DISABLED: <td class="text-right">{{ formatNumber(fief.iron) }}</td> -->
             <td class="text-gold text-right">{{ formatGold(fief.gold) }}</td>
+            <td class="text-right pop-cell">{{ formatNumber(fief.population) }}</td>
+            <td class="text-right" :class="{ 'happiness-low': fief.happiness < 30 }">
+              <span
+                :title="fief.happiness_delta !== 0 ? `${fief.happiness_delta > 0 ? '+' : ''}${fief.happiness_delta} en el último mes` : 'Sin cambios este mes'"
+                class="happiness-value"
+              >{{ fief.happiness }}%<span
+                  v-if="fief.happiness_delta !== 0"
+                  class="happiness-delta"
+                  :class="fief.happiness_delta > 0 ? 'delta-positive' : 'delta-negative'"
+                > ({{ fief.happiness_delta > 0 ? '+' : '' }}{{ fief.happiness_delta }})</span></span>
+            </td>
+            <td class="text-right">{{ formatNumber(fief.food) }}</td>
+            <td :class="['text-right', {
+              'text-danger': fief.autonomy < 30,
+              'text-success': fief.autonomy > 365
+            }]">
+              {{ fief.autonomy === Infinity ? '∞' : fief.autonomy }}
+            </td>
+            <td class="farm-cell">
+              <span class="farm-lvl" :class="{ 'farm-max': fief.farm_level >= 5 }">
+                {{ fief.farm_level }}/5
+              </span>
+              <button
+                v-if="fief.farm_level < 5 && fief.food_output > 0"
+                class="btn-micro btn-farm-micro"
+                :disabled="upgradingFarm === fief.h3_index || props.playerGold < farmCost(fief.farm_level)"
+                :title="`Mejorar granja: ${farmCost(fief.farm_level).toLocaleString()} 💰`"
+                @click="doUpgradeFarm(fief)"
+              >
+                <span v-if="upgradingFarm === fief.h3_index">⏳</span>
+                <span v-else>Mejorar</span>
+              </button>
+              <span v-else-if="fief.farm_level >= 5" class="farm-max-text">Máx</span>
+            </td>
             <td class="division-cell">
               <span v-if="fief.division_name" class="division-badge" :title="fief.division_name">
                 ⚜️ {{ fief.division_name }}
               </span>
               <span v-else class="dimmed-dash">—</span>
             </td>
+            <td class="text-right">{{ fief.distance }}</td>
+            <td class="text-right troops-cell">{{ fief.total_troops || 0 }}</td>
             <td class="text-center building-cell">
               <template v-if="fief.fief_building">
                 <span
@@ -69,14 +86,6 @@
                 <span class="dimmed-dash">—</span>
               </template>
             </td>
-            <td :class="['text-right', {
-              'text-danger': fief.autonomy < 30,
-              'text-success': fief.autonomy > 365
-            }]">
-              {{ fief.autonomy === Infinity ? '∞' : fief.autonomy }}
-            </td>
-            <td class="text-right">{{ fief.distance }}</td>
-            <td class="text-right troops-cell">{{ fief.total_troops || 0 }}</td>
             <td class="table-actions">
               <button class="btn-micro" @click="$emit('focusOnFief', fief.h3_index)" title="Ver en el mapa">🗺️</button>
               <!-- DISABLED: exploration button hidden
@@ -217,7 +226,7 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 
 const props = defineProps({
   fiefs:             { type: Array,  default: () => [] },
@@ -232,8 +241,22 @@ const props = defineProps({
 const emit = defineEmits([
   'focusOnFief', 'exploreFief', 'openRecruitment', 'openConstruction', 'openUpgrade',
   'change-page', 'change-limit',
-  'buyWorker',
+  'buyWorker', 'upgradeFarm',
 ]);
+
+const upgradingFarm = ref(null);
+
+const farmCost = (level) => 3000 * Math.pow(2, level);
+
+const doUpgradeFarm = async (fief) => {
+  if (upgradingFarm.value) return;
+  upgradingFarm.value = fief.h3_index;
+  try {
+    emit('upgradeFarm', { h3_index: fief.h3_index, cost: farmCost(fief.farm_level) });
+  } finally {
+    upgradingFarm.value = null;
+  }
+};
 
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.limit)));
 const rangeStart = computed(() => props.total === 0 ? 0 : (props.page - 1) * props.limit + 1);
@@ -303,6 +326,7 @@ const formatGold = (val) => {
 
 /* Column widths */
 .col-feudo { width: 160px; }
+.col-farm  { width: 120px; }
 .col-terreno { width: 110px; }
 .col-number { width: 70px; }
 .col-division { width: 130px; }
@@ -466,6 +490,12 @@ const formatGold = (val) => {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.farm-cell    { white-space: nowrap; display: flex; align-items: center; gap: 6px; padding: 4px 6px; }
+.farm-lvl     { font-weight: 600; color: #c5a059; min-width: 28px; }
+.farm-lvl.farm-max { color: #4caf50; }
+.farm-max-text { font-size: 0.75rem; color: #4caf50; }
+.btn-farm-micro { font-size: 0.7rem; padding: 2px 6px; white-space: nowrap; }
 
 .btn-explore-micro {
   background: rgba(26, 22, 18, 0.6);
