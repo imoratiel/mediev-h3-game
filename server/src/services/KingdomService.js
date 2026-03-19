@@ -500,6 +500,18 @@ class KingdomService {
                 return res.status(400).json({ success: false, message: 'Este territorio ya es tuyo' });
             }
 
+            // 3a. Verificar adyacencia: al menos un vecino debe ser del atacante o estar libre
+            const neighbors = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+            const adjResult = await client.query(`
+                SELECT COUNT(*)::int AS count FROM h3_map
+                WHERE h3_index = ANY($1::text[])
+                  AND (player_id = $2 OR player_id IS NULL)
+            `, [neighbors, player_id]);
+            if (adjResult.rows[0].count === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Solo puedes conquistar territorios adyacentes a los tuyos o a tierra libre.' });
+            }
+
             // 3. Verificar que no hay ejércitos enemigos (deben ser derrotados primero)
             const enemyArmiesResult = await client.query(
                 'SELECT COUNT(*)::int AS count FROM armies WHERE h3_index = $1 AND player_id != $2',
@@ -693,6 +705,18 @@ class KingdomService {
             if (hex.player_id === player_id) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Este territorio ya es tuyo' });
+            }
+
+            // 2a. Verificar adyacencia: al menos un vecino debe ser del atacante o estar libre
+            const neighborsF = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+            const adjResultF = await client.query(`
+                SELECT COUNT(*)::int AS count FROM h3_map
+                WHERE h3_index = ANY($1::text[])
+                  AND (player_id = $2 OR player_id IS NULL)
+            `, [neighborsF, player_id]);
+            if (adjResultF.rows[0].count === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Solo puedes conquistar territorios adyacentes a los tuyos o a tierra libre.' });
             }
 
             // 3. Verificar que no hay ejércitos enemigos (deben ser derrotados primero)
