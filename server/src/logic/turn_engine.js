@@ -1,7 +1,7 @@
 const { logEconomyEvent } = require('./economy');
 const { auditEvent, TOPICS } = require('../infrastructure/kafkaFacade');
 const { determineDiscoveredResource } = require('./discovery');
-const { processTaxCollection } = require('./tax_collector');
+const { processTaxCollection, processRelationTributes } = require('./tax_collector');
 const { processTithe } = require('./tithe_system');
 const { processBuildingDecay } = require('./building_decay');
 const { processGraceTurns } = require('./conquest_system');
@@ -1239,7 +1239,11 @@ async function processGameTurn(pool, config) {
 
         // Tax collection (day 10 of each game month only)
         // processTaxCollection has its own guards: day-of-month check + DB idempotency key
-        await processTaxCollection(client, newTurn, gameDate);
+        const incomeByPlayer = await processTaxCollection(client, newTurn, gameDate);
+
+        // Relation tributes: collected right after tax, same day 10 guard
+        // Percentage tributes (devotio, clientela, rehenes, tributo) + fixed mercenario payments
+        await processRelationTributes(client, newTurn, gameDate, incomeByPlayer);
 
         // Tithe system (day 10 of each game month, same as tax collection)
         // processTithe has its own guards: day-of-month check + DB idempotency key

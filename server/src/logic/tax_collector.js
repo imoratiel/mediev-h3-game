@@ -15,7 +15,13 @@ const { auditEvent, TOPICS } = require('../infrastructure/kafkaFacade');
  * @param {number} turn     - Turno actual (para logs y notificaciones)
  * @param {Date}   gameDate - Fecha actual del calendario de juego
  */
+/**
+ * @returns {Promise<Map<number,number>>} Mapa playerId → oro recaudado este mes.
+ *   Se usa en processRelationTributes para calcular tributos sobre los ingresos reales.
+ */
 async function processTaxCollection(client, turn, gameDate) {
+    /** @type {Map<number,number>} */
+    const incomeByPlayer = new Map();
     // ── Safety check 1: solo el día 10 del mes del calendario de juego ──────
     const gd = new Date(gameDate);
     const dayOfMonth = gd.getDate();
@@ -122,6 +128,7 @@ async function processTaxCollection(client, turn, gameDate) {
                     tax_rate:  taxRate,
                     turn,
                 }, TOPICS.TAX);
+                incomeByPlayer.set(player.player_id, playerGoldCollected);
                 totalGoldCollected += playerGoldCollected;
                 totalPlayers++;
 
@@ -145,6 +152,7 @@ async function processTaxCollection(client, turn, gameDate) {
         );
 
         Logger.engine(`[TURN ${turn}] Tax collection completed: ${totalPlayers} players, ${totalGoldCollected} total gold collected. Recorded month ${gameYearMonth}.`);
+        return incomeByPlayer;
 
     } catch (error) {
         Logger.error(error, {
@@ -156,4 +164,156 @@ async function processTaxCollection(client, turn, gameDate) {
     }
 }
 
-module.exports = { processTaxCollection };
+/**
+ * Procesa los tributos de relaciones políticas el día 10 de cada mes.
+ * Se llama justo después de processTaxCollection, recibiendo el mapa de ingresos.
+ *
+ * Cubre:
+ *  - Tributos porcentuales (devotio 5%, clientela 10%, rehenes 2%, tributo 5-10%)
+ *  - Pagos fijos mensuales de mercenariado
+ *  - Expiración de relaciones con expires_at_turn <= currentTurn
+ *
+ * @param {object}          client        - pg client dentro de transacción
+ * @param {number}          turn          - turno actual
+ * @param {Date}            gameDate      - fecha actual del juego
+ * @param {Map<number,number>} incomeByPlayer - oro recaudado por jugador este mes
+ */
+async function processRelationTributes(client, turn, gameDate, incomeByPlayer) {
+    // ── Guard: solo el día 10 del mes (mismo que tax collection) ──────────
+    const gd = new Date(gameDate);
+    if (gd.getDate() !== 10) return;
+
+    // ── Guard: idempotencia ────────────────────────────────────────────────
+    const gYM = `${gd.getFullYear()}-${String(gd.getMonth() + 1).padStart(2, '0')}`;
+    const lastRun = await client.query(
+        `SELECT value FROM game_config WHERE "group" = 'system' AND key = 'last_tribute_month'`
+    );
+    if (lastRun.rows[0]?.value === gYM) {
+        Logger.engine(`[TURN ${turn}] Relation tributes skipped (already collected for ${gYM})`);
+        return;
+    }
+
+    Logger.engine(`[TURN ${turn}] Processing relation tributes — game month ${gYM}`);
+
+    const RelationModel = require('../models/RelationModel.js');
+
+    // ── 1. Tributos porcentuales ───────────────────────────────────────────
+    const tributeRelations = await RelationModel.getActiveTributeRelations(client);
+    for (const rel of tributeRelations) {
+        try {
+            const income = incomeByPlayer.get(rel.from_player_id) ?? 0;
+            if (income <= 0) continue;
+
+            const amount = Math.floor(income * parseFloat(rel.effective_rate));
+            if (amount <= 0) continue;
+
+            // Verificar que el pagador tiene suficiente oro
+            const { rows: pg } = await client.query(
+                'SELECT gold FROM players WHERE player_id = $1', [rel.from_player_id]
+            );
+            const payerGold = pg[0]?.gold ?? 0;
+            const actualAmount = Math.min(amount, payerGold);
+            if (actualAmount <= 0) continue;
+
+            await client.query(
+                'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
+                [actualAmount, rel.from_player_id]
+            );
+            await client.query(
+                'UPDATE players SET gold = gold + $1 WHERE player_id = $2',
+                [actualAmount, rel.to_player_id]
+            );
+
+            await RelationModel.logEvent(client, {
+                relation_id:     rel.relation_id,
+                event_type:      'tribute_paid',
+                actor_player_id: rel.from_player_id,
+                amount:          actualAmount,
+                turn_number:     turn,
+                details:         { rate: rel.effective_rate, income },
+            });
+
+            Logger.engine(`[TURN ${turn}] Tribute: player ${rel.from_player_id} → ${rel.to_player_id}: ${actualAmount} gold (${rel.code})`);
+        } catch (e) {
+            Logger.error(e, { context: 'processRelationTributes', phase: 'percentage', relation_id: rel.relation_id });
+        }
+    }
+
+    // ── 2. Pagos fijos de mercenariado ────────────────────────────────────
+    const mercenaryContracts = await RelationModel.getActiveMercenaryContracts(client);
+    for (const rel of mercenaryContracts) {
+        try {
+            const pay = parseInt(rel.terms_fixed_pay);
+            const { rows: pg } = await client.query(
+                'SELECT gold FROM players WHERE player_id = $1', [rel.from_player_id]
+            );
+            const payerGold = pg[0]?.gold ?? 0;
+
+            if (payerGold < pay) {
+                // Impago: romper el contrato
+                await RelationModel.end(client, rel.relation_id, 'non_payment');
+                await RelationModel.logEvent(client, {
+                    relation_id:     rel.relation_id,
+                    event_type:      'non_payment',
+                    actor_player_id: rel.from_player_id,
+                    turn_number:     turn,
+                    details:         { pay, gold_available: payerGold },
+                });
+                await NotificationService.createSystemNotification(
+                    rel.to_player_id,
+                    'Impago de Mercenarios',
+                    `⚠️ El contratante no ha podido pagar ${pay} de oro. El contrato de mercenariado ha sido disuelto.`,
+                    turn
+                );
+                Logger.engine(`[TURN ${turn}] Mercenario non-payment: relation ${rel.relation_id} dissolved`);
+            } else {
+                await client.query(
+                    'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
+                    [pay, rel.from_player_id]
+                );
+                await client.query(
+                    'UPDATE players SET gold = gold + $1 WHERE player_id = $2',
+                    [pay, rel.to_player_id]
+                );
+                await RelationModel.logEvent(client, {
+                    relation_id:     rel.relation_id,
+                    event_type:      'tribute_paid',
+                    actor_player_id: rel.from_player_id,
+                    amount:          pay,
+                    turn_number:     turn,
+                });
+                Logger.engine(`[TURN ${turn}] Mercenario payment: player ${rel.from_player_id} → ${rel.to_player_id}: ${pay} gold`);
+            }
+        } catch (e) {
+            Logger.error(e, { context: 'processRelationTributes', phase: 'mercenario', relation_id: rel.relation_id });
+        }
+    }
+
+    // ── 3. Expiración de relaciones ────────────────────────────────────────
+    const expired = await RelationModel.getExpired(client, turn);
+    for (const rel of expired) {
+        try {
+            await RelationModel.end(client, rel.relation_id, 'expired');
+            await RelationModel.logEvent(client, {
+                relation_id: rel.relation_id,
+                event_type:  'expired',
+                turn_number: turn,
+            });
+            Logger.engine(`[TURN ${turn}] Relation ${rel.relation_id} (${rel.code}) expired`);
+        } catch (e) {
+            Logger.error(e, { context: 'processRelationTributes', phase: 'expiry', relation_id: rel.relation_id });
+        }
+    }
+
+    // ── Mark mes procesado ─────────────────────────────────────────────────
+    await client.query(
+        `INSERT INTO game_config ("group", "key", "value")
+         VALUES ('system', 'last_tribute_month', $1)
+         ON CONFLICT ("group", "key") DO UPDATE SET value = EXCLUDED.value`,
+        [gYM]
+    );
+
+    Logger.engine(`[TURN ${turn}] Relation tributes completed.`);
+}
+
+module.exports = { processTaxCollection, processRelationTributes };

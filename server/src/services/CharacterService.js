@@ -69,11 +69,18 @@ class CharacterService {
 
     /**
      * Gestión atómica de la muerte de un personaje.
+     *
+     * @param {object}  character     - Fila de la tabla characters
+     * @param {boolean} diedInCombat  - TRUE si murió en combate (dispara cascade devotio)
      */
-    async _handleDeath(character) {
+    async _handleDeath(character, diedInCombat = false) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+
+            // Turno actual (necesario para eventos de relaciones)
+            const { rows: ws } = await client.query('SELECT current_turn FROM world_state WHERE id = 1');
+            const currentTurn = ws[0]?.current_turn ?? 0;
 
             // Desasociar del ejército
             if (character.army_id) {
@@ -83,6 +90,12 @@ class CharacterService {
             // Sucesión si era el personaje principal
             if (character.is_main_character) {
                 await DynastyService.handleSuccession(client, character.player_id, character.id);
+
+                // Cascade de devotio: solo si murió en combate
+                if (diedInCombat) {
+                    const RelationService = require('./RelationService.js');
+                    await RelationService.onMainCharacterDeath(client, character.player_id, currentTurn);
+                }
             }
 
             // Eliminar el personaje (muerte permanente)
@@ -90,15 +103,28 @@ class CharacterService {
 
             await client.query('COMMIT');
             Logger.action(
-                `Personaje "${character.name}" (id=${character.id}) ha fallecido a los ${character.age} años.`,
+                `Personaje "${character.name}" (id=${character.id}) ha fallecido a los ${character.age} años${diedInCombat ? ' en combate' : ''}.`,
                 character.player_id
             );
         } catch (err) {
             await client.query('ROLLBACK');
-            Logger.error(err, { context: 'CharacterService._handleDeath', characterId: character.id });
+            Logger.error(err, { context: 'CharacterService._handleDeath', characterId: character.id, diedInCombat });
         } finally {
             client.release();
         }
+    }
+
+    /**
+     * Mata a un personaje en combate (llamar desde la resolución de combate).
+     * Dispara cascade de devotio si era el main_character del jugador.
+     *
+     * @param {number} characterId
+     */
+    async killInCombat(characterId) {
+        const { rows } = await pool.query('SELECT * FROM characters WHERE id = $1', [characterId]);
+        const character = rows[0];
+        if (!character) return;
+        await this._handleDeath(character, true);
     }
 
     // ══════════════════════════════════════════════════════════════

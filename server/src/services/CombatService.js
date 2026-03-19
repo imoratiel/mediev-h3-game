@@ -343,9 +343,9 @@ class CombatService {
         const troopsA = aHasTroops ? armyA.troops : this._buildGuardTroops(commanderA);
         const troopsB = bHasTroops ? armyB.troops : this._buildGuardTroops(commanderB);
 
-        // 6. Calcular Poder de Combate
-        const pcA = await this._calculateCombatPower(client, troopsA, troopsB, terrain, aIsDefender);
-        const pcB = await this._calculateCombatPower(client, troopsB, troopsA, terrain, bIsDefender);
+        // 6. Calcular Poder de Combate (con bonus de devotio si aplica)
+        const pcA = await this._calculateCombatPower(client, troopsA, troopsB, terrain, aIsDefender, armyA.player_id);
+        const pcB = await this._calculateCombatPower(client, troopsB, troopsA, terrain, bIsDefender, armyB.player_id);
 
         Logger.engine(
             `[TURN ${turn}] BATTLE at ${h3Index}: ` +
@@ -497,7 +497,7 @@ class CombatService {
      * Calcula el Poder de Combate total de un ejército.
      * Si isDefender = true, el resultado se multiplica por 1.10 (bono defensivo).
      */
-    async _calculateCombatPower(client, troops, enemyTroops, terrain, isDefender = false) {
+    async _calculateCombatPower(client, troops, enemyTroops, terrain, isDefender = false, playerId = null) {
         const terrainName   = terrain?.terrain_name ?? null;
         const totalEnemyQty = enemyTroops.reduce((s, t) => s + t.quantity, 0) || 1;
         let totalPC = 0;
@@ -531,6 +531,22 @@ class CombatService {
         }
 
         if (isDefender) totalPC *= 1.10;
+
+        // Bonus de Devotio: +5% ataque siempre, +5% defensa adicional cuando defiende
+        if (playerId) {
+            const { rows } = await client.query(`
+                SELECT 1 FROM player_relations pr
+                JOIN relation_types rt ON rt.id = pr.type_id
+                WHERE pr.status = 'active' AND rt.code = 'devotio'
+                  AND pr.from_player_id = $1
+                LIMIT 1
+            `, [playerId]);
+            if (rows.length > 0) {
+                totalPC *= 1.05; // +5% ataque (siempre)
+                if (isDefender) totalPC *= 1.05; // +5% defensa adicional
+            }
+        }
+
         return totalPC;
     }
 

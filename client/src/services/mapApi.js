@@ -797,3 +797,42 @@ export async function stopCharacter(characterId) {
   const response = await axios.delete(`${API_URL}/api/characters/${characterId}/move`);
   return response.data;
 }
+
+// ============================================
+// RELACIONES POLÍTICAS
+// ============================================
+
+export async function getRelationTypes() {
+  const response = await axios.get(`${API_URL}/api/relations/types`);
+  return response.data;
+}
+
+export async function getMyRelations() {
+  const response = await axios.get(`${API_URL}/api/relations/my`);
+  return response.data;
+}
+
+export async function getPendingRelations() {
+  const response = await axios.get(`${API_URL}/api/relations/pending`);
+  return response.data;
+}
+
+export async function getPlayerRelations(playerId) {
+  const response = await axios.get(`${API_URL}/api/relations/${playerId}`);
+  return response.data;
+}
+
+export async function proposeRelation(payload) {
+  const response = await axios.post(`${API_URL}/api/relations/propose`, payload);
+  return response.data;
+}
+
+export async function acceptRelation(relationId) {
+  const response = await axios.post(`${API_URL}/api/relations/${relationId}/accept`);
+  return response.data;
+}
+
+export async function breakRelation(relationId, reason = '') {
+  const response = await axios.post(`${API_URL}/api/relations/${relationId}/break`, { reason });
+  return response.data;
+}

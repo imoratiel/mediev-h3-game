@@ -73,6 +73,16 @@
         </button>
         <button
           class="nav-button"
+          :class="{ active: activeOverlay === 'diplomacy' }"
+          @click="openOverlay('diplomacy')"
+          title="Diplomacia"
+        >
+          <span class="nav-icon">⚖️</span>
+          <span class="nav-label">Diplomacia</span>
+          <span v-if="pendingRelationsCount > 0" class="nav-badge">{{ pendingRelationsCount }}</span>
+        </button>
+        <button
+          class="nav-button"
           :class="{ active: activeOverlay === 'economy' }"
           @click="openOverlay('economy')"
           title="Economía"
@@ -957,6 +967,22 @@
       </div>
     </div>
 
+    <!-- Full-Screen Diplomacy Overlay -->
+    <div v-if="activeOverlay === 'diplomacy'" class="overlay-fullscreen">
+      <div class="overlay-container">
+        <div class="overlay-header">
+          <h1 class="overlay-title">⚖️ Diplomacia</h1>
+          <button class="overlay-close" @click="closeOverlay" title="Cerrar">✕</button>
+        </div>
+        <div class="overlay-content">
+          <DiplomacyPanel
+            :myPlayerId="currentUser?.player_id"
+            @refresh="fetchPendingRelations"
+          />
+        </div>
+      </div>
+    </div>
+
     <!-- Full-Screen Economy Overlay -->
     <EconomyPanel
       v-if="activeOverlay === 'economy'"
@@ -1032,6 +1058,7 @@ import WelcomePanel from './WelcomePanel.vue';
 import FueroPanel from './FueroPanel.vue';
 import DivisionsTab from './DivisionsTab.vue';
 import CharacterPanel from './CharacterPanel.vue';
+import DiplomacyPanel from './DiplomacyPanel.vue';
 
 const mapContainer = ref(null);
 const loading = ref(false);
@@ -1095,6 +1122,7 @@ const selectedMessage = ref(null); // Currently selected message for detail view
 const threadMessages = ref([]); // Messages in the current thread
 const unreadCount = computed(() => myMessages.value.filter(m => !m.is_read && m.receiver_id === playerId.value).length);
 const unreadNotifCount = computed(() => notifications.value.filter(n => !n.is_read).length);
+const pendingRelationsCount = ref(0);
 const messageFilter = ref('received'); // 'received', 'sent', 'all'
 
 // Filtered messages based on current tab
@@ -5057,8 +5085,18 @@ const pollNotifications = async () => {
   }
 };
 
+const fetchPendingRelations = async () => {
+  try {
+    const data = await mapApi.getPendingRelations();
+    pendingRelationsCount.value = data.pending?.length ?? 0;
+  } catch {
+    // fallo silencioso
+  }
+};
+
 const startNotifPolling = () => {
-  pollNotifications(); // carga inicial inmediata
+  pollNotifications();      // carga inicial inmediata
+  fetchPendingRelations();  // badge inicial
   notifPollIntervalId = setInterval(pollNotifications, NOTIF_POLL_INTERVAL);
 };
 

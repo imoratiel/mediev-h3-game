@@ -9,6 +9,7 @@ const KingdomModel  = require('../models/KingdomModel.js');
 const MapService    = require('../services/MapService.js');
 const { bfsExpandTerritory } = require('../logic/playerInit.js');
 const { getUniqueDivisionName } = require('../logic/NamingService.js');
+const { generateDivisionName }  = require('../logic/CulturalNameGenerator.js');
 
 class AdminService {
     async ResetWorld(req, res) {
@@ -193,8 +194,16 @@ class AdminService {
             }
 
             // 9. Crear la división política
-            const baseName     = senorioRank?.territory_name ?? 'Señorío';
-            const divisionName = await getUniqueDivisionName(client, baseName, player_id);
+            const terrainRow = await client.query(`
+                SELECT t.name AS terrain_name, COUNT(*) AS cnt
+                FROM h3_map m
+                JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
+                WHERE m.h3_index = ANY($1::text[])
+                GROUP BY t.name ORDER BY cnt DESC LIMIT 1
+            `, [allHexes]);
+            const dominantTerrain = terrainRow.rows[0]?.terrain_name ?? null;
+            const baseName        = generateDivisionName(cultureId, startHex, dominantTerrain);
+            const divisionName    = await getUniqueDivisionName(client, baseName, player_id);
 
             const division = await DivisionModel.CreateDivision(client, {
                 player_id,

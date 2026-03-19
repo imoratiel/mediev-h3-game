@@ -120,6 +120,19 @@ module.exports = function () {
     router.get('/divisions/boundaries', authenticateToken, (req, res) => MapService.GetAllBoundaries(req, res));
 
     // ============================================
+    // RELACIONES POLÍTICAS
+    // ============================================
+    const RelationService = require('../src/services/RelationService.js');
+
+    router.get('/relations/types',           (req, res) => RelationService.getTypes(req, res));
+    router.get('/relations/my',              authenticateToken, (req, res) => RelationService.getMy(req, res));
+    router.get('/relations/pending',         authenticateToken, (req, res) => RelationService.getPending(req, res));
+    router.get('/relations/:playerId',       (req, res) => RelationService.getByPlayer(req, res));
+    router.post('/relations/propose',        authenticateToken, (req, res) => RelationService.propose(req, res));
+    router.post('/relations/:id/accept',     authenticateToken, (req, res) => RelationService.accept(req, res));
+    router.post('/relations/:id/break',      authenticateToken, (req, res) => RelationService.breakRelation(req, res));
+
+    // ============================================
     // ADMIN AND MESSAGES
     // ============================================
     router.post('/admin/reset', authenticateToken, requireAdmin, AdminService.ResetWorld);

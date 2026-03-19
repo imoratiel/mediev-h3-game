@@ -13,8 +13,9 @@ const { Logger } = require('../utils/logger');
 const DivisionModel = require('../models/DivisionModel.js');
 const KingdomModel  = require('../models/KingdomModel.js');
 const MapService = require('./MapService.js');
-const { findContiguousFiefs, suggestDivisionName } = require('../logic/contiguitySearch.js');
+const { findContiguousFiefs } = require('../logic/contiguitySearch.js');
 const { getUniqueDivisionName } = require('../logic/NamingService.js');
+const { generateDivisionName }  = require('../logic/CulturalNameGenerator.js');
 
 class DivisionService {
 
@@ -240,19 +241,22 @@ class DivisionService {
                 });
             }
 
-            // 5. Determinar nombre: usar el del body si existe, si no generar automaticamente
+            // 5. Determinar nombre: usar el del body si existe, si no generar por cultura
             let baseName;
             if (requestedName && requestedName.trim().length > 0) {
                 baseName = requestedName.trim().slice(0, 100);
             } else {
                 const terrainRows = await client.query(`
-                    SELECT td.h3_index, t.name AS terrain_name
-                    FROM territory_details td
-                    JOIN h3_map m ON td.h3_index = m.h3_index
+                    SELECT t.name AS terrain_name, COUNT(*) AS cnt
+                    FROM h3_map m
                     JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
-                    WHERE td.h3_index = ANY($1::text[])
+                    WHERE m.h3_index = ANY($1::text[])
+                    GROUP BY t.name
+                    ORDER BY cnt DESC
+                    LIMIT 1
                 `, [fiefs]);
-                baseName = suggestDivisionName(terrainRows.rows, senorioRank.territory_name);
+                const dominantTerrain = terrainRows.rows[0]?.terrain_name ?? null;
+                baseName = generateDivisionName(playerCulture, capital_h3, dominantTerrain);
             }
 
             // Garantizar unicidad (resuelve conflictos automaticamente)
