@@ -28,7 +28,7 @@ async function resetGame() {
             LOCK TABLE armies, troops, workers, active_constructions, bridges,
                        fief_buildings, territory_details, h3_map,
                        messages, notifications, players, world_state,
-                       political_divisions
+                       political_divisions, characters
             IN ACCESS EXCLUSIVE MODE
         `);
 
@@ -82,7 +82,8 @@ async function resetGame() {
         await client.query('DELETE FROM messages');
         await client.query('DELETE FROM notifications');
 
-        // 9. Remove AI bots entirely
+        // 9. Remove all characters, then AI bots
+        await client.query('DELETE FROM characters');
         await client.query('DELETE FROM players WHERE is_ai = TRUE');
 
         // 10. Reset human players (keep accounts, reset game state)

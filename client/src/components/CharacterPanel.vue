@@ -19,205 +19,105 @@
       <button class="char-btn char-btn-primary" @click="openAdopt">👶 Adoptar un niño</button>
     </div>
 
-    <!-- Content -->
-    <div v-else class="char-content">
+    <!-- ── ÁRBOL GENEALÓGICO ─────────────────────────── -->
+    <div v-else class="char-tree">
 
-      <!-- ── MAIN CHARACTER ─────────────────────────────── -->
-      <section v-if="mainCharacter" class="char-section char-main">
-        <div class="char-avatar-row">
-          <div class="char-avatar-icon">👑</div>
-          <div class="char-avatar-info">
-            <h2 class="char-name">{{ mainCharacter.full_title || mainCharacter.name }}</h2>
-            <div class="char-meta">
-              <span class="char-age">{{ mainCharacter.age }} años</span>
-              <span class="char-level">Nv. {{ displayLevel(mainCharacter.level) }}</span>
-              <span class="char-buff">+{{ mainCharacter.combat_buff_pct }}% combate</span>
-              <span v-if="mainCharacter.army_id" class="char-deployed">⚔️ Desplegado</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- XP bar -->
-        <div class="char-bar-row">
-          <span class="char-bar-label">Exp.</span>
-          <div class="char-bar-track">
-            <div
-              class="char-bar-fill char-xp-fill"
-              :style="{ width: xpPct(mainCharacter) + '%' }"
-            ></div>
-          </div>
-          <span class="char-bar-value">{{ mainCharacter.xp ?? 0 }}/{{ xpThreshold(mainCharacter.level) }}</span>
-        </div>
-
-        <!-- Health bar -->
-        <div class="char-bar-row">
-          <span class="char-bar-label">Salud</span>
-          <div class="char-bar-track">
-            <div
-              class="char-bar-fill char-health-fill"
-              :style="{ width: mainCharacter.health + '%', background: healthColor(mainCharacter.health) }"
-            ></div>
-          </div>
-          <span class="char-bar-value">{{ mainCharacter.health }}/100</span>
-        </div>
-
-        <!-- Guard bar -->
-        <div class="char-bar-row">
-          <span class="char-bar-label">Guardia</span>
-          <div class="char-bar-track">
-            <div
-              class="char-bar-fill char-guard-fill"
-              :style="{ width: guardPct(mainCharacter.personal_guard) + '%', background: guardColor(mainCharacter.personal_guard) }"
-            ></div>
-          </div>
-          <span class="char-bar-value">{{ mainCharacter.personal_guard }}/25</span>
-        </div>
-
-        <!-- Abilities -->
-        <div v-if="mainCharacter.abilities && mainCharacter.abilities.length" class="char-abilities">
-          <div
-            v-for="ab in mainCharacter.abilities"
-            :key="ab.ability_key"
-            class="char-ability-row"
-          >
-            <span class="char-ability-name">{{ abilityLabel(ab.ability_key) }}</span>
-            <div class="char-ability-dots">
-              <span
-                v-for="i in 5"
-                :key="i"
-                class="char-dot"
-                :class="{ filled: i <= ab.level }"
-              ></span>
-            </div>
-            <span class="char-ability-level">{{ ab.level }}</span>
-          </div>
-        </div>
-
-        <!-- Actions for main character -->
-        <div class="char-actions">
-          <button
-            v-if="mainCharacter.army_id"
-            class="char-btn char-btn-secondary"
-            :disabled="assigningArmy"
-            @click="removeCommander(mainCharacter)"
-          >
-            Retirar del ejército
-          </button>
-          <button
-            v-else
-            class="char-btn char-btn-secondary"
-            :disabled="assigningArmy || !armies.length"
-            @click="openAssignArmy(mainCharacter)"
-          >
-            Asignar a ejército
-          </button>
-        </div>
-      </section>
-
-      <!-- ── SECONDARY CHARACTERS (adults) ─────────────── -->
-      <section v-if="adultSecondary.length" class="char-section char-secondary-section">
-        <h3 class="char-section-title">Linaje — Adultos</h3>
-
+      <!-- GENERACIÓN 0: Líder -->
+      <div class="tree-gen tree-gen0" v-if="mainCharacter">
         <div
-          v-for="char in adultSecondary"
-          :key="char.id"
-          class="char-secondary-card"
-          :class="{ 'char-heir-card': char.is_heir }"
+          class="tree-node node-leader"
+          :class="{ 'node-deployed': mainCharacter.army_id }"
+          @click="selectChar(mainCharacter)"
+          :data-selected="selectedId === mainCharacter.id"
         >
-          <div class="char-secondary-header">
-            <div class="char-secondary-avatar">
-              <span v-if="char.is_heir" title="Heredero">🔱</span>
-              <span v-else>🧑</span>
-            </div>
-            <div class="char-secondary-info">
-              <span class="char-secondary-name">
-                {{ char.full_title || char.name }}
-                <span v-if="char.is_heir" class="heir-badge">Heredero</span>
-              </span>
-              <span class="char-secondary-meta">
-                {{ char.age }} años · Nv.{{ displayLevel(char.level) }} · +{{ char.combat_buff_pct }}% combate
-              </span>
+          <div class="node-crown">👑</div>
+          <div class="node-name">{{ firstName(mainCharacter.name) }}</div>
+          <div class="node-surname">{{ surname(mainCharacter.name) }}</div>
+          <div class="node-badges">
+            <span class="badge badge-age">{{ mainCharacter.age }}a</span>
+            <span class="badge badge-level">Nv.{{ displayLevel(mainCharacter.level) }}</span>
+            <span v-if="mainCharacter.army_id" class="badge badge-war">⚔</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Conector vertical hacia gen1 -->
+      <div v-if="mainCharacter && gen1.length" class="tree-vline"></div>
+
+      <!-- GENERACIÓN 1: hijos directos del líder (heredero + otros adultos + niños) -->
+      <div v-if="gen1.length" class="tree-gen tree-gen1">
+        <div class="tree-hline"></div>
+        <div
+          v-for="char in gen1"
+          :key="char.id"
+          class="tree-branch"
+        >
+          <div class="branch-vline"></div>
+          <div
+            class="tree-node"
+            :class="nodeClass(char)"
+            :data-selected="selectedId === char.id"
+            @click="selectChar(char)"
+          >
+            <div class="node-icon">{{ nodeIcon(char) }}</div>
+            <div class="node-name">{{ firstName(char.name) }}</div>
+            <div class="node-surname">{{ surname(char.name) }}</div>
+            <div class="node-badges">
+              <span class="badge badge-age">{{ char.age }}a</span>
+              <span v-if="char.age >= 16" class="badge badge-level">Nv.{{ displayLevel(char.level) }}</span>
+              <span v-if="char.is_heir" class="badge badge-heir">Hered.</span>
+              <span v-if="char.army_id" class="badge badge-war">⚔</span>
             </div>
           </div>
+        </div>
+      </div>
 
-          <!-- XP mini bar -->
-          <div class="char-mini-bars">
-            <div class="char-mini-bar-row">
-              <span class="char-mini-label">Exp.</span>
-              <div class="char-bar-track char-bar-track-sm">
-                <div class="char-bar-fill char-xp-fill" :style="{ width: xpPct(char)+'%' }"></div>
-              </div>
-            </div>
-            <div class="char-mini-bar-row">
-              <span class="char-mini-label">Salud</span>
-              <div class="char-bar-track char-bar-track-sm">
-                <div class="char-bar-fill" :style="{ width: char.health+'%', background: healthColor(char.health) }"></div>
-              </div>
-            </div>
-            <div class="char-mini-bar-row">
-              <span class="char-mini-label">Guardia</span>
-              <div class="char-bar-track char-bar-track-sm">
-                <div class="char-bar-fill" :style="{ width: guardPct(char.personal_guard)+'%', background: guardColor(char.personal_guard) }"></div>
-              </div>
-            </div>
+      <!-- PANEL DE ACCIONES del personaje seleccionado -->
+      <transition name="action-slide">
+        <div v-if="selected" class="char-actions-panel">
+          <div class="actions-header">
+            <span class="actions-name">{{ selected.name }}</span>
+            <span v-if="selected.combat_buff_pct > 0" class="actions-buff">+{{ selected.combat_buff_pct }}% combate</span>
           </div>
 
-          <!-- Secondary actions -->
-          <div class="char-secondary-actions">
+          <div v-if="selected.age >= 16" class="actions-row">
+            <!-- Ejército -->
             <button
-              v-if="!char.is_heir"
-              class="char-btn char-btn-xs char-btn-secondary"
-              @click="setHeir(char)"
-            >
-              Designar heredero
-            </button>
-            <button
-              v-if="char.army_id"
-              class="char-btn char-btn-xs char-btn-secondary"
+              v-if="selected.army_id"
+              class="char-btn char-btn-secondary char-btn-xs"
               :disabled="assigningArmy"
-              @click="removeCommander(char)"
+              @click="removeCommander(selected)"
             >
               Retirar del ejército
             </button>
             <button
               v-else
-              class="char-btn char-btn-xs char-btn-secondary"
+              class="char-btn char-btn-secondary char-btn-xs"
               :disabled="assigningArmy || !armies.length"
-              @click="openAssignArmy(char)"
+              @click="openAssignArmy(selected)"
             >
               Asignar a ejército
             </button>
+
+            <!-- Heredero -->
+            <button
+              v-if="!selected.is_main_character && !selected.is_heir"
+              class="char-btn char-btn-secondary char-btn-xs"
+              @click="setHeir(selected)"
+            >
+              Designar heredero
+            </button>
           </div>
         </div>
-      </section>
+      </transition>
 
-      <!-- ── CHILDREN (age < 16) ────────────────────────── -->
-      <section v-if="children.length" class="char-section char-children-section">
-        <h3 class="char-section-title">Linaje — Niños</h3>
-
-        <div
-          v-for="child in children"
-          :key="child.id"
-          class="char-child-card"
-        >
-          <span class="char-child-icon">🧒</span>
-          <div class="char-child-info">
-            <span class="char-child-name">{{ child.name }}</span>
-            <span class="char-child-meta">{{ child.age }} años · alcanza la mayoría a los 16</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- ── ADOPCIÓN ───────────────────────────────────── -->
-      <section v-if="canAdopt" class="char-section char-adopt-section">
-        <h3 class="char-section-title">Adopción</h3>
-        <p class="char-adopt-desc">
-          Tienes {{ aliveCount }} personaje{{ aliveCount !== 1 ? 's' : '' }}. Puedes adoptar un niño para fortalecer tu linaje.
-        </p>
-        <button class="char-btn char-btn-primary" @click="openAdopt">
-          👶 Adoptar un niño
+      <!-- ── ADOPCIÓN ────────────────────────────────── -->
+      <div v-if="canAdopt" class="adopt-row">
+        <button class="char-btn char-btn-primary char-btn-xs" @click="openAdopt">
+          👶 Adoptar
         </button>
-      </section>
+        <span class="adopt-hint">Linaje con {{ aliveCount }} personaje{{ aliveCount !== 1 ? 's' : '' }}</span>
+      </div>
 
     </div>
 
@@ -296,9 +196,10 @@ const props = defineProps({
 const emit = defineEmits(['refresh']);
 
 // ── State ───────────────────────────────────────────────
-const characters = ref([]);
-const loading    = ref(false);
-const error      = ref(null);
+const characters  = ref([]);
+const loading     = ref(false);
+const error       = ref(null);
+const selectedId  = ref(null);
 
 const showAssignModal = ref(false);
 const assignChar      = ref(null);
@@ -316,47 +217,59 @@ const mainCharacter = computed(() =>
   characters.value.find(c => c.is_main_character) ?? null
 );
 
-const adultSecondary = computed(() =>
-  characters.value.filter(c => !c.is_main_character && c.age >= 16)
-);
+/** Todos los no-líder: hijos directos + heredero + otros adultos + niños */
+const gen1 = computed(() => {
+  if (!mainCharacter.value) return characters.value.filter(c => !c.is_main_character);
+  const leaderId = mainCharacter.value.id;
+  // Heredero primero, luego adultos, luego niños; dentro de cada grupo por nivel DESC
+  return characters.value
+    .filter(c => !c.is_main_character)
+    .sort((a, b) => {
+      const rank = c => c.is_heir ? 0 : c.age >= 16 ? 1 : 2;
+      const rankDiff = rank(a) - rank(b);
+      if (rankDiff !== 0) return rankDiff;
+      return (b.level ?? 1) - (a.level ?? 1);
+    });
+});
 
-const children = computed(() =>
-  characters.value.filter(c => c.age < 16)
-);
-
-const aliveCount = computed(() => characters.value.length);
-
-// Puede adoptar si tiene menos de 3 personajes
-const canAdopt = computed(() => aliveCount.value > 0 && aliveCount.value < 3);
+const selected    = computed(() => characters.value.find(c => c.id === selectedId.value) ?? null);
+const aliveCount  = computed(() => characters.value.length);
+const canAdopt    = computed(() => aliveCount.value > 0 && aliveCount.value < 3);
 
 // ── Helpers ───────────────────────────────────────────────
-const ABILITY_LABELS = {
-  estrategia: 'Estrategia',
-  logistica:  'Logística',
-  diplomacia: 'Diplomacia',
+/** Primer nombre (todo antes del último espacio) */
+const firstName = name => {
+  if (!name) return '';
+  const parts = name.trim().split(' ');
+  return parts.length > 1 ? parts.slice(0, -1).join(' ') : name;
 };
 
-const abilityLabel = key => ABILITY_LABELS[key] ?? key;
-const guardPct     = g  => Math.round((g / 25) * 100);
+/** Apellido (linaje = última palabra) */
+const surname = name => {
+  if (!name) return '';
+  const parts = name.trim().split(' ');
+  return parts.length > 1 ? parts[parts.length - 1] : '';
+};
 
 /** Nivel mostrado: floor(level / 10), rango 0–10 */
 const displayLevel = level => Math.floor((level ?? 1) / 10);
 
-/** XP necesario para subir al siguiente nivel */
-const xpThreshold = level => (level ?? 1) * 10;
-
-/** Porcentaje de XP rellenado en la barra (0–100) */
-const xpPct = char => {
-  const xp  = char.xp ?? 0;
-  const max = xpThreshold(char.level ?? 1);
-  return Math.min(100, Math.round((xp / max) * 100));
+const nodeIcon = char => {
+  if (char.is_heir)    return '🔱';
+  if (char.age < 16)   return '🧒';
+  return '🧑';
 };
 
-const healthColor = h =>
-  h < 30 ? '#ff6b6b' : h < 60 ? '#ffd93d' : '#6bcb77';
+const nodeClass = char => {
+  if (char.is_heir)  return 'node-heir';
+  if (char.age < 16) return 'node-child';
+  return 'node-adult';
+};
 
-const guardColor = g =>
-  g < 8 ? '#ff6b6b' : g < 17 ? '#ffd93d' : '#c5a059';
+// ── Select ────────────────────────────────────────────────
+const selectChar = char => {
+  selectedId.value = selectedId.value === char.id ? null : char.id;
+};
 
 // ── Load ─────────────────────────────────────────────────
 const load = async () => {
@@ -365,6 +278,10 @@ const load = async () => {
   try {
     const data = await getMyCharacters();
     characters.value = data.characters ?? [];
+    // Deselect if character no longer exists
+    if (selectedId.value && !characters.value.find(c => c.id === selectedId.value)) {
+      selectedId.value = null;
+    }
   } catch (e) {
     error.value = e?.response?.data?.message ?? 'Error al cargar personajes';
   } finally {
@@ -379,9 +296,7 @@ const setHeir = async (char) => {
   try {
     await setCharacterHeir(char.id);
     await load();
-  } catch (e) {
-    // noop
-  }
+  } catch (e) { /* noop */ }
 };
 
 // ── Assign army ──────────────────────────────────────────
@@ -415,11 +330,8 @@ const removeCommander = async (char) => {
     await removeArmyCommander(char.army_id);
     await load();
     emit('refresh');
-  } catch (e) {
-    // noop
-  } finally {
-    assigningArmy.value = false;
-  }
+  } catch (e) { /* noop */ }
+  finally { assigningArmy.value = false; }
 };
 
 // ── Adopt ─────────────────────────────────────────────────
@@ -446,12 +358,15 @@ const confirmAdopt = async () => {
 </script>
 
 <style scoped>
-/* ── Layout ─────────────────────────────────────────── */
+/* ── Panel base ──────────────────────────────────────── */
 .char-panel {
-  padding: 0.5rem;
+  padding: 0.75rem 0.5rem;
   color: #e8d5a3;
   height: 100%;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .char-loading, .char-error, .char-empty {
@@ -465,193 +380,274 @@ const confirmAdopt = async () => {
 }
 
 .char-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #4a3520;
+  width: 28px;
+  height: 28px;
+  border: 2px solid #4a3520;
   border-top-color: #c5a059;
   border-radius: 50%;
   animation: char-spin 0.8s linear infinite;
 }
 @keyframes char-spin { to { transform: rotate(360deg); } }
 
-/* ── Sections ────────────────────────────────────────── */
-.char-section {
-  background: rgba(0,0,0,0.25);
-  border: 1px solid rgba(197,160,89,0.2);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.char-section-title {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #c5a059;
-  margin: 0 0 0.75rem;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid rgba(197,160,89,0.2);
-}
-
-/* ── Avatar row ──────────────────────────────────────── */
-.char-avatar-row {
+/* ── Tree layout ─────────────────────────────────────── */
+.char-tree {
+  width: 100%;
   display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
 }
 
-.char-avatar-icon {
-  font-size: 2rem;
-  line-height: 1;
+/* Generation rows */
+.tree-gen {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+/* Vertical line from gen0 down */
+.tree-vline {
+  width: 2px;
+  height: 16px;
+  background: rgba(197,160,89,0.35);
   flex-shrink: 0;
 }
 
-.char-avatar-info { flex: 1; min-width: 0; }
+/* Horizontal connector spanning gen1 */
+.tree-gen1 {
+  position: relative;
+  padding-top: 0;
+}
 
-.char-name {
-  font-size: 1rem;
+.tree-hline {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 2px;
+  background: rgba(197,160,89,0.35);
+  /* width set dynamically via JS would be ideal but CSS approximation works */
+  width: 80%;
+  max-width: 240px;
+}
+
+/* Each branch in gen1 */
+.tree-branch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.branch-vline {
+  width: 2px;
+  height: 14px;
+  background: rgba(197,160,89,0.35);
+}
+
+/* ── Node cards ──────────────────────────────────────── */
+.tree-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 8px 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(197,160,89,0.2);
+  background: rgba(0,0,0,0.28);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  width: 74px;
+  min-width: 74px;
+  user-select: none;
+}
+
+.tree-node:hover {
+  border-color: rgba(197,160,89,0.5);
+  background: rgba(197,160,89,0.07);
+  transform: translateY(-1px);
+}
+
+.tree-node[data-selected="true"] {
+  border-color: #c5a059;
+  background: rgba(197,160,89,0.12);
+  box-shadow: 0 0 8px rgba(197,160,89,0.2);
+}
+
+/* Leader node — slightly larger */
+.node-leader {
+  width: 88px;
+  min-width: 88px;
+  border-color: rgba(197,160,89,0.4);
+  background: rgba(197,160,89,0.06);
+}
+
+.node-heir {
+  border-color: rgba(197,160,89,0.35);
+}
+
+.node-child {
+  border-color: rgba(100,140,200,0.25);
+  background: rgba(80,120,180,0.06);
+}
+
+.node-deployed {
+  border-color: rgba(255,140,100,0.4) !important;
+  background: rgba(255,100,60,0.06) !important;
+}
+
+/* Icons */
+.node-crown {
+  font-size: 1.05rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.node-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+/* Name lines */
+.node-name {
+  font-size: 0.7rem;
   font-weight: 700;
   color: #e8d5a3;
-  margin: 0 0 0.3rem;
-  line-height: 1.3;
+  text-align: center;
+  line-height: 1.2;
+  word-break: break-word;
+  max-width: 100%;
 }
 
-.char-meta {
+.node-surname {
+  font-size: 0.6rem;
+  color: #8a7050;
+  text-align: center;
+  line-height: 1.2;
+  margin-bottom: 3px;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+/* Badges row */
+.node-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 1px;
 }
 
-.char-age, .char-level, .char-buff, .char-deployed {
-  font-size: 0.72rem;
-  padding: 0.1rem 0.4rem;
+.badge {
+  font-size: 0.56rem;
+  padding: 1px 4px;
   border-radius: 3px;
-  background: rgba(197,160,89,0.12);
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.badge-age {
+  background: rgba(197,160,89,0.15);
+  color: #a89070;
+}
+
+.badge-level {
+  background: rgba(120,100,200,0.2);
+  color: #b0a0e0;
+}
+
+.badge-heir {
+  background: rgba(197,160,89,0.25);
   color: #c5a059;
 }
 
-.char-deployed {
-  background: rgba(255,107,107,0.15);
+.badge-war {
+  background: rgba(255,100,80,0.2);
   color: #ff9e9e;
 }
 
-/* ── Bars ────────────────────────────────────────────── */
-.char-bar-row {
+/* ── Actions panel ───────────────────────────────────── */
+.char-actions-panel {
+  margin-top: 12px;
+  width: 100%;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(197,160,89,0.2);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.actions-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
-.char-bar-label {
-  font-size: 0.7rem;
-  color: #a89070;
-  width: 50px;
-  flex-shrink: 0;
-}
-
-.char-bar-track {
+.actions-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #e8d5a3;
   flex: 1;
-  height: 7px;
-  background: rgba(255,255,255,0.08);
-  border-radius: 4px;
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.char-bar-track-sm { height: 5px; }
-
-.char-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.char-xp-fill    { background: #7b68ee; }
-.char-health-fill { background: #6bcb77; }
-.char-guard-fill  { background: #c5a059; }
-
-.char-bar-value {
-  font-size: 0.7rem;
-  color: #a89070;
-  width: 38px;
-  text-align: right;
+.actions-buff {
+  font-size: 0.65rem;
+  color: #b0a0e0;
+  background: rgba(120,100,200,0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
   flex-shrink: 0;
 }
 
-/* ── Abilities ───────────────────────────────────────── */
-.char-abilities {
-  margin-top: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.char-abilities-sm { margin-top: 0.4rem; }
-
-.char-ability-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.char-ability-name {
-  font-size: 0.72rem;
-  color: #c5a059;
-  width: 70px;
-  flex-shrink: 0;
-}
-
-.char-ability-dots { display: flex; gap: 3px; }
-
-.char-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  border: 1px solid rgba(197,160,89,0.4);
-  background: transparent;
-  transition: background 0.15s;
-}
-
-.char-dot.filled {
-  background: #c5a059;
-  border-color: #c5a059;
-}
-
-.char-ability-level {
-  font-size: 0.68rem;
-  color: #a89070;
-  margin-left: 2px;
-}
-
-/* ── Actions ─────────────────────────────────────────── */
-.char-actions {
+.actions-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  gap: 5px;
+}
+
+/* ── Adopt row ───────────────────────────────────────── */
+.adopt-row {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.adopt-hint {
+  font-size: 0.68rem;
+  color: #7a6040;
+}
+
+/* ── Transition ──────────────────────────────────────── */
+.action-slide-enter-active,
+.action-slide-leave-active {
+  transition: opacity 0.15s, transform 0.15s;
+}
+.action-slide-enter-from,
+.action-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 /* ── Buttons ─────────────────────────────────────────── */
 .char-btn {
-  padding: 0.35rem 0.75rem;
+  padding: 0.3rem 0.65rem;
   border-radius: 4px;
   border: none;
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 600;
   transition: opacity 0.15s, transform 0.1s;
 }
 
-.char-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.char-btn:not(:disabled):hover {
-  opacity: 0.85;
-  transform: translateY(-1px);
-}
+.char-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.char-btn:not(:disabled):hover { opacity: 0.85; transform: translateY(-1px); }
 
 .char-btn-primary {
   background: linear-gradient(135deg, #c5a059, #9a7a3a);
@@ -664,126 +660,7 @@ const confirmAdopt = async () => {
   color: #c5a059;
 }
 
-.char-btn-xs {
-  padding: 0.2rem 0.5rem;
-  font-size: 0.7rem;
-}
-
-/* ── Secondary cards ─────────────────────────────────── */
-.char-secondary-card {
-  background: rgba(0,0,0,0.2);
-  border: 1px solid rgba(197,160,89,0.15);
-  border-radius: 6px;
-  padding: 0.6rem 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.char-heir-card {
-  border-color: rgba(197,160,89,0.45);
-  background: rgba(197,160,89,0.06);
-}
-
-.char-secondary-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
-}
-
-.char-secondary-avatar { font-size: 1.1rem; flex-shrink: 0; }
-
-.char-secondary-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.char-secondary-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #e8d5a3;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.heir-badge {
-  font-size: 0.65rem;
-  padding: 0.05rem 0.3rem;
-  border-radius: 3px;
-  background: rgba(197,160,89,0.25);
-  color: #c5a059;
-  font-weight: 700;
-}
-
-.char-secondary-meta {
-  font-size: 0.68rem;
-  color: #a89070;
-}
-
-.char-mini-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin-bottom: 0.35rem;
-}
-
-.char-mini-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.char-mini-label {
-  font-size: 0.65rem;
-  color: #7a6040;
-  width: 45px;
-  flex-shrink: 0;
-}
-
-.char-secondary-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.4rem;
-}
-
-/* ── Children ────────────────────────────────────────── */
-.char-child-card {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.4rem 0.5rem;
-  background: rgba(0,0,0,0.15);
-  border: 1px solid rgba(197,160,89,0.1);
-  border-radius: 5px;
-  margin-bottom: 0.4rem;
-}
-
-.char-child-icon { font-size: 1.2rem; flex-shrink: 0; }
-
-.char-child-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.char-child-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #e8d5a3;
-}
-
-.char-child-meta {
-  font-size: 0.68rem;
-  color: #7a6040;
-}
-
-/* ── Adopt section ───────────────────────────────────── */
-.char-adopt-desc {
-  font-size: 0.78rem;
-  color: #a89070;
-  margin: 0 0 0.75rem;
-}
+.char-btn-xs { padding: 0.18rem 0.45rem; font-size: 0.68rem; }
 
 /* ── Modals ──────────────────────────────────────────── */
 .char-modal-overlay {
@@ -800,61 +677,48 @@ const confirmAdopt = async () => {
   background: #1e1208;
   border: 1px solid rgba(197,160,89,0.35);
   border-radius: 10px;
-  padding: 1.5rem;
-  width: 340px;
+  padding: 1.4rem;
+  width: 320px;
   max-width: 90vw;
 }
 
 .char-modal-title {
-  font-size: 1rem;
+  font-size: 0.95rem;
   color: #e8d5a3;
-  margin: 0 0 0.3rem;
+  margin: 0 0 0.25rem;
 }
 
 .char-modal-sub {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: #a89070;
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.7rem;
 }
 
 .char-modal-input, .char-modal-select {
   width: 100%;
-  padding: 0.5rem 0.6rem;
+  padding: 0.45rem 0.55rem;
   background: rgba(0,0,0,0.3);
   border: 1px solid rgba(197,160,89,0.3);
   border-radius: 5px;
   color: #e8d5a3;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   outline: none;
   box-sizing: border-box;
   margin-bottom: 0.5rem;
 }
 
-.char-modal-input:focus, .char-modal-select:focus {
-  border-color: rgba(197,160,89,0.6);
-}
-
-.char-modal-select option {
-  background: #1e1208;
-  color: #e8d5a3;
-}
+.char-modal-input:focus, .char-modal-select:focus { border-color: rgba(197,160,89,0.6); }
+.char-modal-select option { background: #1e1208; color: #e8d5a3; }
 
 .char-modal-msg {
-  font-size: 0.78rem;
-  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
   border-radius: 4px;
   margin-bottom: 0.5rem;
 }
 
-.char-modal-msg.success {
-  background: rgba(107,203,119,0.15);
-  color: #6bcb77;
-}
-
-.char-modal-msg.error {
-  background: rgba(255,107,107,0.15);
-  color: #ff6b6b;
-}
+.char-modal-msg.success { background: rgba(107,203,119,0.15); color: #6bcb77; }
+.char-modal-msg.error   { background: rgba(255,107,107,0.15); color: #ff6b6b; }
 
 .char-modal-actions {
   display: flex;
