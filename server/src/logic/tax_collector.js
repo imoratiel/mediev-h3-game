@@ -57,15 +57,15 @@ async function processTaxCollection(client, turn, gameDate) {
             const taxRate = Math.min(100, Math.max(0, parseFloat(player.tax_percentage)));
             try {
                 // Fetch all territories for this player with gold stock and division tax rate.
-                // Fiefs in a señorío use pd.tax_rate; independent fiefs use the player's global rate.
+                // Fiefs in a pagus use pd.tax_rate; fiefs without a pagus are tax-exempt (rate 0).
                 const territoriesResult = await client.query(`
                     SELECT td.h3_index, td.gold_stored,
-                           COALESCE(pd.tax_rate, $2) AS effective_tax_rate
+                           COALESCE(pd.tax_rate, 0) AS effective_tax_rate
                     FROM territory_details td
                     JOIN h3_map m ON td.h3_index = m.h3_index
                     LEFT JOIN political_divisions pd ON td.division_id = pd.id
                     WHERE m.player_id = $1
-                `, [player.player_id, taxRate]);
+                `, [player.player_id]);
 
                 if (territoriesResult.rows.length === 0) continue;
 
@@ -99,11 +99,11 @@ async function processTaxCollection(client, turn, gameDate) {
                 );
 
                 // Notification for this player
+                const taxableFiefs = territoriesResult.rows.filter(r => parseFloat(r.effective_tax_rate) > 0).length;
                 const messageBody = [
                     `💰 **Recaudación Fiscal — Turno ${turn}**`,
                     ``,
-                    `Tasa global del jugador: **${taxRate}%** (los señoríos pueden tener tasa propia)`,
-                    `Feudos tributarios: ${territoriesResult.rows.length}`,
+                    `Centurias tributarias (en un Pagus): ${taxableFiefs} de ${territoriesResult.rows.length}`,
                     ``,
                     `Oro recaudado e ingresado al tesoro real: **+${playerGoldCollected} 💰**`,
                 ].join('\n');

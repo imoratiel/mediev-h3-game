@@ -34,31 +34,6 @@
             </template>
           </div>
 
-          <!-- Tax Settings -->
-          <div class="eco-card">
-            <h4 class="eco-card-title">💰 {{ taxLabelFor(playerCultureId) }}</h4>
-            <p class="eco-hint">
-              Cada turno, el <strong>{{ localTaxRate }}%</strong> del oro almacenado
-              en cada feudo pasa al tesoro real.
-            </p>
-            <div class="eco-slider-row">
-              <span class="eco-slider-label">1%</span>
-              <input
-                type="range" min="1" max="10" step="1"
-                v-model.number="localTaxRate"
-                class="eco-slider"
-                :style="{ '--pct': sliderPct }"
-                :disabled="saving"
-              />
-              <span class="eco-slider-label">10%</span>
-            </div>
-            <div class="eco-slider-value">Tasa actual: <strong>{{ localTaxRate }}%</strong></div>
-            <div v-if="!loadingSummary && !summaryError" class="eco-estimate">
-              Tributo esperado:
-              <strong class="gold">+{{ fmt(estimatedTax) }} 💰</strong>
-            </div>
-          </div>
-
           <!-- Tithe Settings -->
           <div class="eco-card">
             <h4 class="eco-card-title">⛪ {{ titheLabel }}</h4>
@@ -197,9 +172,7 @@ const summary = ref({
   total_iron: 0, total_gold: 0, total_population: 0,
 });
 
-const serverTaxRate     = ref(10);
 const serverTitheActive = ref(false);
-const localTaxRate      = ref(10);
 const localTitheActive  = ref(false);
 
 const saving    = ref(false);
@@ -218,14 +191,7 @@ const divTaxSaving = reactive({});
 const divTaxMsg    = reactive({});
 
 // ── Computed ──────────────────────────────────────────────
-const estimatedTax = computed(() =>
-  Math.floor(summary.value.total_gold * localTaxRate.value / 100)
-);
-const sliderPct = computed(() =>
-  `${((localTaxRate.value - 1) / 9 * 100).toFixed(1)}%`
-);
 const isDirty = computed(() =>
-  localTaxRate.value !== serverTaxRate.value ||
   localTitheActive.value !== serverTitheActive.value
 );
 // ── Helpers ───────────────────────────────────────────────
@@ -240,9 +206,7 @@ async function fetchSummary() {
     if (data.success) {
       summary.value           = data.summary;
       playerGold.value        = data.player_gold ?? 0;
-      serverTaxRate.value     = data.settings.tax_rate;
       serverTitheActive.value = data.settings.tithe_active;
-      localTaxRate.value      = data.settings.tax_rate;
       localTitheActive.value  = data.settings.tithe_active;
     } else {
       summaryError.value = data.message || 'Error al cargar datos';
@@ -294,14 +258,11 @@ async function saveSettings() {
   saveError.value = '';
   try {
     const payload = {};
-    if (localTaxRate.value !== serverTaxRate.value)
-      payload.tax_rate = localTaxRate.value;
     if (localTitheActive.value !== serverTitheActive.value)
       payload.tithe_active = localTitheActive.value;
 
     const data = await updateEconomySettings(payload);
     if (data.success) {
-      serverTaxRate.value     = localTaxRate.value;
       serverTitheActive.value = localTitheActive.value;
       saveOk.value = true;
       setTimeout(() => { saveOk.value = false; }, 2500);
@@ -315,7 +276,7 @@ async function saveSettings() {
   }
 }
 
-watch([localTaxRate, localTitheActive], () => { saveOk.value = false; });
+watch(localTitheActive, () => { saveOk.value = false; });
 
 onMounted(() => {
   fetchSummary();
