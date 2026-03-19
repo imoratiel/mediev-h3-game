@@ -60,7 +60,7 @@ class CharacterModel {
     /**
      * Crea un nuevo personaje. Acepta un client de transacción o usa el pool global.
      */
-    async create(client, { player_id, name, age = 20, health = 100, level = 1,
+    async create(client, { player_id, name, age = 20, health = 100, level = 10,
                             personal_guard = 25, is_heir = false,
                             is_main_character = false, parent_character_id = null,
                             h3_index = null, birth_turn = 0, xp = 0,

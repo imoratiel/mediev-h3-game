@@ -31,7 +31,7 @@ class CharacterService {
      */
     async resolveFullTitle(characterId) {
         const r = await pool.query(`
-            SELECT c.name, c.id,
+            SELECT c.name, c.is_main_character,
                    CASE WHEN p.gender = 'F' THEN nr.title_female ELSE nr.title_male END AS title
             FROM characters c
             JOIN players p ON c.player_id = p.player_id
@@ -39,8 +39,9 @@ class CharacterService {
             WHERE c.id = $1
         `, [characterId]);
         if (!r.rows[0]) return null;
-        const { title, name } = r.rows[0];
-        return `${title} ${name}`;
+        const { title, name, is_main_character } = r.rows[0];
+        // Solo el líder (is_main_character) lleva el título nobiliario
+        return is_main_character && title ? `${title} ${name}` : name;
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -219,7 +220,7 @@ class CharacterService {
                 name:                name.trim(),
                 age:                 0,
                 health:              100,
-                level:               1,
+                level:               10,
                 personal_guard:      0,
                 is_heir:             false,
                 is_main_character:   false,
@@ -291,7 +292,7 @@ class CharacterService {
                 name:                childName,
                 age:                 childAge,
                 health:              100,
-                level:               1,
+                level:               10,
                 personal_guard:      0,
                 is_heir:             false,
                 is_main_character:   false,

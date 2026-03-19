@@ -211,7 +211,7 @@ async function _tryBirth(client, player, characters, currentTurn) {
         name:                childName,
         age:                 childAge,
         health:              100,
-        level:               1,
+        level:               10,
         personal_guard:      0,
         is_main_character:   false,
         is_heir:             false,

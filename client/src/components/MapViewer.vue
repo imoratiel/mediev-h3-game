@@ -2507,13 +2507,14 @@ const fetchAndRenderCharacters = async () => {
           ? `<button id="char-leave-${char.id}" class="army-action-icon" title="Abandonar ejército">🚪</button>`
           : `<button id="char-join-${char.id}" class="army-action-icon" title="Unirse al ejército del feudo">🔗</button>`;
 
+        const popupIcon = isMain ? '👑' : char.is_heir ? '🔱' : char.age < 16 ? '🧒' : '🛡️';
         const popupHtml = `
           <div class="char-popup">
             <div class="char-popup-header">
-              <span class="char-popup-icon">${isMain ? '👑' : '🧑'}</span>
+              <span class="char-popup-icon">${popupIcon}</span>
               <div>
                 <div class="char-popup-name">${label} ${movingBadge}</div>
-                <div class="char-popup-meta">Nv.${char.level} · +${char.combat_buff_pct}% combate · Guardia ${char.personal_guard}/25</div>
+                <div class="char-popup-meta">Nv.${Math.floor((char.level??1)/10)} · +${char.combat_buff_pct}% combate · Guardia ${char.personal_guard}/25</div>
               </div>
             </div>
             <div class="char-popup-actions">
