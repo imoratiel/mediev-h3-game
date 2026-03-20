@@ -410,6 +410,11 @@ export async function markAllNotificationsUnread() {
   return response.data;
 }
 
+export async function markNotificationsTypeRead(type) {
+  const response = await axios.put(`${API_URL}/api/notifications/read-type`, { type });
+  return response.data;
+}
+
 /**
  * Recruit troops
  * @param {Object} payload - { h3_index, unit_type_id, quantity, army_name?, army_id? }

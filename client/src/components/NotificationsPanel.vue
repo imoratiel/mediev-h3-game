@@ -22,7 +22,7 @@
       </button>
     </nav>
 
-    <!-- Acción global -->
+    <!-- Resumen (solo contador, sin botón) -->
     <div class="notif-topbar" v-if="!loading">
       <span class="notif-summary">
         <template v-if="unreadCount > 0">
@@ -30,11 +30,6 @@
         </template>
         <template v-else>✅ Todo al día</template>
       </span>
-      <button
-        class="mark-all-btn"
-        :disabled="unreadCount === 0 || markingAll"
-        @click="handleMarkAll"
-      >{{ markingAll ? '⏳' : '✓ Marcar todas' }}</button>
     </div>
 
     <!-- Contenido de la pestaña activa -->
@@ -52,7 +47,6 @@
           class="notif-card"
           :class="{ 'notif-unread': !notif.is_read }"
           :style="{ '--cat-color': activeCategory.color }"
-          @click="handleRead(notif)"
         >
           <div class="notif-meta">
             <span class="notif-turn">{{ turnToGameDate(notif.turn_number) }}</span>
@@ -67,8 +61,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { markAllNotificationsRead } from '../services/mapApi.js';
+import { ref, computed, watch, onMounted } from 'vue';
 
 const props = defineProps({
   notifications: { type: Array, default: () => [] },
@@ -90,10 +83,6 @@ const validKeys = new Set(CATEGORIES.map(c => c.key));
 
 const MONTHS = ['Ian','Feb','Mar','Apr','Mai','Iun','Qui','Sex','Sep','Oct','Nov','Dec'];
 
-// BC-safe date arithmetic using a +3000-year shift to keep JS Date in a safe range.
-// Converts historical {day,month,year,era} ↔ astronomical year (year 0 = 1 BC).
-// PostgreSQL returns EXTRACT(YEAR) = -year_bc for BC dates (e.g. -210 for 210 BC).
-// So historical_bc_year = -astro (no +1 offset).
 const toAstro = ({ year, era }) => era === 'BC' ? -year : year;
 const fromAstro = (astro, month, day) => astro < 0
   ? { day, month, year: -astro, era: 'BC' }
@@ -121,10 +110,9 @@ const turnToGameDate = (n) => {
   return `${result.day} ${MONTHS[result.month - 1]}, anno ${toRoman(auc)} AUC (${result.year} ${suffix})`;
 };
 
-const emit = defineEmits(['read', 'readAll']);
+const emit = defineEmits(['readTab']);
 
 const activeTab = ref('Militar');
-const markingAll = ref(false);
 
 const unreadCount = computed(() => props.notifications.filter(n => !n.is_read).length);
 
@@ -137,7 +125,6 @@ const grouped = computed(() =>
   }, {})
 );
 
-// Contador de no leídas por pestaña
 const unreadByTab = computed(() =>
   Object.fromEntries(
     CATEGORIES.map(c => [c.key, (grouped.value[c.key] ?? []).filter(n => !n.is_read).length])
@@ -147,22 +134,24 @@ const unreadByTab = computed(() =>
 const activeCategory = computed(() => CATEGORIES.find(c => c.key === activeTab.value));
 const activeItems    = computed(() => grouped.value[activeTab.value] ?? []);
 
-const handleRead = (notif) => emit('read', notif);
-
-const handleMarkAll = async () => {
-  if (unreadCount.value === 0 || markingAll.value) return;
-  markingAll.value = true;
-  try {
-    await markAllNotificationsRead();
-    // Actualizar estado local directamente para reactividad inmediata
-    props.notifications.forEach(n => { n.is_read = true; });
-    emit('readAll');
-  } catch (err) {
-    console.error('Error al marcar notificaciones:', err);
-  } finally {
-    markingAll.value = false;
-  }
+// ── Auto-marcar como leídas al ver un tab ─────────────────────────────────────
+const markActiveTab = (tabKey) => {
+  const hasUnread = (grouped.value[tabKey] ?? []).some(n => !n.is_read);
+  if (!hasUnread) return;
+  // Actualizar estado local inmediatamente
+  (grouped.value[tabKey] ?? []).forEach(n => { n.is_read = true; });
+  emit('readTab', tabKey);
 };
+
+// Al cambiar de tab
+watch(activeTab, (tabKey) => {
+  markActiveTab(tabKey);
+});
+
+// Al montar el panel, marcar el tab inicial
+onMounted(() => {
+  markActiveTab(activeTab.value);
+});
 </script>
 
 <style scoped>
@@ -236,11 +225,10 @@ const handleMarkAll = async () => {
   transition: background 0.18s, color 0.18s;
 }
 
-/* ── Barra de acción ─────────────────────────── */
+/* ── Barra de resumen ────────────────────────── */
 .notif-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   flex-shrink: 0;
   padding: 7px 14px;
   border-bottom: 1px solid rgba(197, 160, 89, 0.1);
@@ -268,25 +256,6 @@ const handleMarkAll = async () => {
   font-weight: 700;
 }
 
-.mark-all-btn {
-  padding: 3px 10px;
-  border-radius: 5px;
-  border: 1px solid rgba(197, 160, 89, 0.25);
-  background: transparent;
-  color: #7a6a55;
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-  white-space: nowrap;
-}
-.mark-all-btn:hover:not(:disabled) {
-  background: rgba(197, 160, 89, 0.12);
-  border-color: rgba(197, 160, 89, 0.5);
-  color: #ffd700;
-}
-.mark-all-btn:disabled { opacity: 0.25; cursor: not-allowed; }
-
 /* ── Lista y tarjetas ────────────────────────── */
 .notif-empty {
   text-align: center;
@@ -310,7 +279,6 @@ const handleMarkAll = async () => {
   border-left: 2px solid transparent;
   border-radius: 5px;
   padding: 9px 13px;
-  cursor: pointer;
   transition: background 0.18s, border-color 0.18s;
   flex-shrink: 0;
 }

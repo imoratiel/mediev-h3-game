@@ -41,6 +41,19 @@ class NotificationService {
         }
     }
 
+    async markTypeAsRead(req, res) {
+        try {
+            const player_id = req.user.player_id;
+            const { type } = req.body;
+            if (!type) return res.status(400).json({ success: false, message: 'Tipo requerido' });
+            const count = await NotificationModel.markByType(player_id, type);
+            res.json({ success: true, updated: count });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/notifications/read-type', method: 'PUT', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al marcar notificaciones' });
+        }
+    }
+
     async markAllAsUnread(req, res) {
         try {
             const player_id = req.user.player_id;

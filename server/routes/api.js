@@ -213,6 +213,7 @@ module.exports = function () {
     router.get('/notifications', authenticateToken, (req, res) => NotificationService.getNotifications(req, res));
     // read-all MUST be registered before /:id/read to avoid Express matching 'read-all' as an id param
     router.put('/notifications/read-all', authenticateToken, (req, res) => NotificationService.markAllAsRead(req, res));
+    router.put('/notifications/read-type', authenticateToken, (req, res) => NotificationService.markTypeAsRead(req, res));
     router.put('/notifications/unread-all', authenticateToken, (req, res) => NotificationService.markAllAsUnread(req, res));
     router.put('/notifications/:id/read', authenticateToken, (req, res) => NotificationService.markAsRead(req, res));
 

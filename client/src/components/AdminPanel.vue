@@ -51,7 +51,7 @@
                 <input
                   v-model.number="turnDurationInput"
                   type="number"
-                  min="5"
+                  min="2"
                   max="3600"
                   class="timing-input"
                   :disabled="savingDuration"
@@ -766,8 +766,8 @@ const fetchStatus = async () => {
 
 const handleSaveDuration = async () => {
   const secs = parseInt(turnDurationInput.value, 10);
-  if (!secs || secs < 5 || secs > 3600) {
-    showMsg('El valor debe estar entre 5 y 3600 segundos', 'msg-err');
+  if (!secs || secs < 2 || secs > 3600) {
+    showMsg('El valor debe estar entre 2 y 3600 segundos', 'msg-err');
     return;
   }
   savingDuration.value = true;

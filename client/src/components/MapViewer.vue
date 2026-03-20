@@ -479,7 +479,7 @@
             :currentTurn="currentTurn"
             :gameDate="gameDate"
             @read="handleNotificationRead"
-            @readAll="handleNotificationsReadAll"
+            @readTab="handleNotificationsReadTab"
           />
         </div>
 
@@ -3772,13 +3772,8 @@ const closePanel = () => {
   console.log('✓ Panel cerrado');
 };
 
-/**
- * Called whenever the notifications panel is closed.
- * Marks all notifications as unread so the badge reappears next time.
- */
 const onNotificationsPanelClose = () => {
-  mapApi.markAllNotificationsUnread().catch(() => {});
-  notifications.value.forEach(n => { n.is_read = false; });
+  // No action needed — notifications are marked read per-tab when viewed
 };
 
 /**
@@ -5131,9 +5126,13 @@ const handleNotificationRead = async (notif) => {
   }
 };
 
-const handleNotificationsReadAll = () => {
-  // The API call was already made inside NotificationsPanel; just sync local state
-  notifications.value.forEach(n => { n.is_read = true; });
+const handleNotificationsReadTab = async (type) => {
+  // Local state already updated optimistically in NotificationsPanel
+  try {
+    await mapApi.markNotificationsTypeRead(type);
+  } catch (err) {
+    console.error('Error al marcar tab como leído:', err);
+  }
 };
 
 /**

@@ -40,6 +40,21 @@ class NotificationModel {
         );
         return result.rowCount;
     }
+
+    async markByType(player_id, type) {
+        const result = await pool.query(
+            'UPDATE notifications SET is_read = true WHERE player_id = $1 AND type = $2 AND is_read = false RETURNING id',
+            [player_id, type]
+        );
+        return result.rowCount;
+    }
+
+    async deleteOlderThan(days) {
+        const result = await pool.query(
+            `DELETE FROM notifications WHERE created_at < NOW() - INTERVAL '${parseInt(days, 10)} days'`
+        );
+        return result.rowCount;
+    }
 }
 
 module.exports = new NotificationModel();

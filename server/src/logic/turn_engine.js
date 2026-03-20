@@ -1277,6 +1277,29 @@ async function processGameTurn(pool, config) {
 
         await client.query('COMMIT');
 
+        // Daily cleanup: delete notifications older than 7 days (max once per calendar day)
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const lastCleanup = await pool.query(
+                `SELECT value FROM game_config WHERE "group" = 'system' AND key = 'last_notification_cleanup'`
+            );
+            if (!lastCleanup.rows[0] || lastCleanup.rows[0].value !== today) {
+                const deleted = await pool.query(
+                    `DELETE FROM notifications WHERE created_at < NOW() - INTERVAL '7 days'`
+                );
+                await pool.query(
+                    `INSERT INTO game_config ("group", key, value) VALUES ('system', 'last_notification_cleanup', $1)
+                     ON CONFLICT ("group", key) DO UPDATE SET value = $1`,
+                    [today]
+                );
+                if (deleted.rowCount > 0) {
+                    Logger.engine(`[CLEANUP] ${deleted.rowCount} notificaciones antiguas eliminadas`);
+                }
+            }
+        } catch (err) {
+            Logger.error(err, { context: 'turn_engine.notificationCleanup' });
+        }
+
         // AI agent decision cycles (every 5 turns, outside the main transaction to avoid lock conflicts)
         if (newTurn % 5 === 0) {
             const AIManagerService = require('../services/AIManagerService');
