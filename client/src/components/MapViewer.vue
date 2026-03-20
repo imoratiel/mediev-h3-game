@@ -892,7 +892,7 @@
               'build-card-prereq': building.required_building_id
             }"
           >
-            <div class="build-card-icon">{{ getBuildingIcon(building.name) }}</div>
+            <div class="build-card-icon">{{ getBuildingIcon(building.name, building.type_name) }}</div>
             <div class="build-card-info">
               <h3 class="build-card-name">{{ building.name }}</h3>
               <p v-if="building.type_name" class="build-card-type">{{ building.type_name }}</p>
@@ -2156,7 +2156,7 @@ const renderFiefIcons = (buildings) => {
     try {
       const [lat, lng] = cellToLatLng(bld.h3_index);
       const isWip = bld.is_under_construction;
-      const icon = isWip ? '🏗️' : getBuildingIcon(bld.building_name);
+      const icon = isWip ? '🏗️' : getBuildingIcon(bld.building_name, bld.type_name);
       const border = isWip ? '#c5a059' : '#9e9e9e';
       const bg = isWip ? 'rgba(30,20,10,0.82)' : 'rgba(20,30,20,0.82)';
 
@@ -4661,18 +4661,18 @@ const colonizeFromPopup = async (h3_index) => {
 /**
  * Get building icon emoji by building name
  */
-const getBuildingIcon = (name = '') => {
+const getBuildingIcon = (name = '', typeName = '') => {
   const n = name.toLowerCase();
+  const t = (typeName || '').toLowerCase();
   if (n.includes('granja') || n.includes('farm')) return '🌾';
-  if (n.includes('cuartel') || n.includes('barrack')) return '⚔️';
-  if (n.includes('iglesia') || n.includes('church') || n.includes('catedral')) return '⛪';
-  if (n.includes('mercado') || n.includes('market') || n.includes('foro') || n.includes('factor') || n.includes('lonja') || n.includes('feria')) return '⚖️';
-  if (n.includes('fortaleza') || n.includes('fortress') || n.includes('castillo')) return '🏯';
   if (n.includes('astillero') || n.includes('shipyard')) return '⛵';
   if (n.includes('mina') || n.includes('mine')) return '⛏️';
   if (n.includes('aserradero') || n.includes('lumber')) return '🌲';
-  if (n.includes('torre') || n.includes('tower')) return '🗼';
-  return '🏛️';
+  if (n.includes('mercado') || n.includes('market') || n.includes('foro') || n.includes('factor') || n.includes('lonja') || n.includes('feria')) return '⚖️';
+  if (t === 'military') return '🏰';
+  if (t === 'religious') return '🏛️';
+  if (t === 'economic') return '⚖️';
+  return '🗼';
 };
 
 /**

@@ -1328,7 +1328,7 @@ function startTimeEngine(pool, config) {
                 timeoutId = setTimeout(run, 10000);
             } else if (result.success) {
                 // Normal turn processing
-                const interval = (config.gameplay?.turn_duration_seconds || 60) * 1000;
+                const interval = Math.max(2, config.gameplay?.turn_duration_seconds || 60) * 1000;
                 timeoutId = setTimeout(run, interval);
             } else {
                 // Unknown error, retry in 30 seconds

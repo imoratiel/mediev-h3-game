@@ -56,15 +56,15 @@ const POS = {
 // ─── Icon helpers ──────────────────────────────────────────────────────────
 
 const BUILDING_ICON_MAP = [
-  [['granja', 'farm'],                           '🌾'],
-  [['cuartel', 'barrack', 'militar', 'military'], '⚔️'],
-  [['iglesia', 'church', 'catedral', 'templo'],  '⛪'],
-  [['mercado', 'market'],                        '🏪'],
-  [['fortaleza', 'fortress', 'castillo'],        '🏯'],
-  [['astillero', 'shipyard'],                    '⛵'],
-  [['mina', 'mine'],                             '⛏️'],
-  [['aserradero', 'lumber', 'madera'],           '🌲'],
-  [['torre', 'tower'],                           '🗼'],
+  [['granja', 'farm'],                                              '🌾'],
+  [['cuartel', 'barrack', 'escuela', 'militar', 'military'],        '🏰'],
+  [['iglesia', 'church', 'catedral', 'templo', 'santuario'],        '⛪'],
+  [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'],       '⚖️'],
+  [['fortaleza', 'fortress', 'castillo'],                           '🏰'],
+  [['astillero', 'shipyard'],                                       '⛵'],
+  [['mina', 'mine'],                                                '⛏️'],
+  [['aserradero', 'lumber', 'madera'],                              '🌲'],
+  [['torre', 'tower'],                                              '🏯'],
 ];
 
 /**
@@ -72,12 +72,16 @@ const BUILDING_ICON_MAP = [
  * @param {string} name - building name or type name
  * @returns {string} emoji
  */
-export function getBuildingIconEmoji(name = '') {
+export function getBuildingIconEmoji(name = '', typeName = '') {
   const n = name.toLowerCase();
   for (const [keywords, icon] of BUILDING_ICON_MAP) {
     if (keywords.some(k => n.includes(k))) return icon;
   }
-  return '🏛️';
+  const t = (typeName || '').toLowerCase();
+  if (t === 'military')  return '🏰';
+  if (t === 'religious') return '🏛️';
+  if (t === 'economic')  return '⚖️';
+  return '🏯';
 }
 
 /**
@@ -192,8 +196,9 @@ export function createStackerHTML({ building = null, units = null } = {}) {
 
   // ── Building (TOP) ────────────────────────────────────────────────────────
   if (hasBuilding) {
-    const bldName = building.name || building.building_name || '';
-    const icon    = building.is_under_construction ? '🏗️' : getBuildingIconEmoji(bldName);
+    const bldName  = building.name || building.building_name || '';
+    const bldType  = building.type_name || '';
+    const icon     = building.is_under_construction ? '🏗️' : getBuildingIconEmoji(bldName, bldType);
     const opacity = building.is_under_construction ? '0.65' : '1';
     const bBorder = building.is_under_construction ? '#c5a059' : '#9e9e9e';
     const bBg     = building.is_under_construction ? 'rgba(30,20,10,0.82)' : 'rgba(20,30,20,0.82)';

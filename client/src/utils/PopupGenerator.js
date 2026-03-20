@@ -4,6 +4,25 @@
  */
 
 
+function getBuildingIcon(name = '', typeName = '') {
+  const n = name.toLowerCase();
+  const t = (typeName || '').toLowerCase();
+  if (n.includes('granja') || n.includes('farm'))                                                  return '🌾';
+  if (n.includes('cuartel') || n.includes('barrack'))                                             return '🏯';
+  if (n.includes('iglesia') || n.includes('church') || n.includes('catedral'))                    return '⛪';
+  if (n.includes('mercado') || n.includes('market') || n.includes('foro') ||
+      n.includes('factor') || n.includes('lonja') || n.includes('feria'))                         return '⚖️';
+  if (n.includes('fortaleza') || n.includes('fortress') || n.includes('castillo'))                return '🏯';
+  if (n.includes('astillero') || n.includes('shipyard'))                                          return '⛵';
+  if (n.includes('mina') || n.includes('mine'))                                                   return '⛏️';
+  if (n.includes('aserradero') || n.includes('lumber'))                                           return '🌲';
+  if (n.includes('torre') || n.includes('tower'))                                                 return '🗼';
+  if (t === 'military')  return '🏯';
+  if (t === 'religious') return '⛪';
+  if (t === 'economic')  return '⚖️';
+  return '🏛️';
+}
+
 /**
  * Genera el contenido HTML del popup de detalles de celda
  * @param {Object} cell - Datos de la celda desde la API
@@ -100,7 +119,7 @@ export function generateCellPopupContent(cell, config) {
         const cons = cell.fief_building.conservation ?? 100;
         const consColor = cons >= 70 ? '#4caf50' : cons >= 40 ? '#ff9800' : '#f44336';
         popupContent += `<div class="popup-building-status popup-building-done">
-          🏛️ Edificio: <strong>${cell.fief_building.name}</strong>
+          ${getBuildingIcon(cell.fief_building.name, cell.fief_building.type_name)} Edificio: <strong>${cell.fief_building.name}</strong>
           <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
             <span style="font-size:11px;color:#aaa;">Conservación</span>
             <div style="flex:1;height:6px;background:#333;border-radius:3px;overflow:hidden;">
