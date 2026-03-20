@@ -83,7 +83,7 @@ async function processCharacterLifecycle(client, currentTurn, currentMonth, curr
 
     // Solo jugadores humanos no exiliados
     const playersResult = await client.query(`
-        SELECT p.player_id, p.culture_id,
+        SELECT p.player_id, p.culture_id, p.capital_h3,
                COALESCE(p.display_name, p.username) AS linaje
         FROM players p
         WHERE p.is_ai = FALSE AND (p.is_exiled = FALSE OR p.is_exiled IS NULL)
@@ -116,16 +116,24 @@ async function _processPlayerCharacters(client, player, currentTurn, currentMont
             );
         }
 
-        // 3. Muerte natural (solo adultos ≥ 50)
+        // 3. Nacimiento forzado al llegar a 40 sin hijos vivos
+        if (newAge === 40 && char.is_main_character) {
+            const hasChildren = allAlive.some(c => c.parent_character_id === char.id);
+            if (!hasChildren) {
+                await _tryBirth(client, player, allAlive, currentTurn, true);
+            }
+        }
+
+        // 4. Muerte natural (solo adultos ≥ 50)
         const rate = getNaturalDeathRate(newAge);
         if (rate > 0 && Math.random() < rate) {
             await _handleNaturalDeath(client, player_id, char, currentTurn);
         }
     }
 
-    // 4. Posible nacimiento (si está bajo el límite y hay personajes procesados hoy)
+    // 5. Posible nacimiento (si está bajo el límite y hay personajes procesados hoy)
     if (characters.length > 0) {
-        await _tryBirth(client, player, allAlive, currentTurn);
+        await _tryBirth(client, player, allAlive, currentTurn, false);
     }
 }
 
@@ -204,23 +212,38 @@ async function _handleNaturalDeath(client, player_id, char, currentTurn) {
     }
 }
 
-async function _tryBirth(client, player, characters, currentTurn) {
-    const { player_id, culture_id, linaje } = player;
+async function _tryBirth(client, player, characters, currentTurn, forced = false) {
+    const { player_id, culture_id, linaje, capital_h3 } = player;
 
-    const aliveCount = characters.length; // ya son solo los vivos
-    const limit = await getCharacterLimit(client, player_id);
+    const aliveCount = characters.length;
 
-    if (aliveCount >= limit) return;
-
-    // Debe haber al menos un adulto con al menos un hijo posible (padre conocido)
-    const adults = characters.filter(c => c.age + 1 >= 18); // adultos tras envejecer
+    // Debe haber al menos un adulto
+    const adults = characters.filter(c => c.age >= 18);
     if (adults.length === 0) return;
 
-    // 40% de probabilidad de nacimiento
-    if (Math.random() >= 0.40) return;
-
-    // El padre es el líder o el adulto de mayor nivel
+    // El padre es el líder o el primer adulto
     const father = adults.find(c => c.is_main_character) ?? adults[0];
+
+    // Personajes entre 25-40 pueden tener un hijo aunque se haya alcanzado el límite global
+    const fatherInFertileAge = father.age >= 25 && father.age <= 40;
+    if (!fatherInFertileAge) {
+        const limit = await getCharacterLimit(client, player_id);
+        if (aliveCount >= limit) return;
+    }
+
+    // Límite: máximo 2 hijos menores de edad por padre
+    const minorChildren = characters.filter(c => c.age < 16 && c.parent_character_id === father.id);
+    if (minorChildren.length >= 2) return;
+
+    // Regla del abuelo: si el padre tiene nietos vivos (a través de hijos vivos) → no más hijos
+    const fatherAliveChildren = characters.filter(c => c.parent_character_id === father.id);
+    const isGrandfather = fatherAliveChildren.some(child =>
+        characters.some(c => c.parent_character_id === child.id)
+    );
+    if (isGrandfather) return;
+
+    // Probabilidad de nacimiento (el forzado la omite)
+    if (!forced && Math.random() >= 0.40) return;
 
     const childGender = Math.random() < 0.5 ? 'M' : 'F';
     const childAge    = 0;
@@ -236,7 +259,7 @@ async function _tryBirth(client, player, characters, currentTurn) {
         is_main_character:   false,
         is_heir:             false,
         parent_character_id: father.id,
-        h3_index:            null,
+        h3_index:            capital_h3 ?? null,
         birth_turn:          currentTurn,
         xp:                  0,
     });

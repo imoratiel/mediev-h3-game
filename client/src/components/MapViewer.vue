@@ -868,7 +868,7 @@
           <button class="overlay-close" @click="closeOverlay" title="Cerrar">✕</button>
         </div>
         <div class="overlay-content">
-          <CharacterPanel :armies="armies" @refresh="fetchArmyData" />
+          <CharacterPanel :armies="armies" @refresh="fetchArmyData" @focus-hex="focusOnCharacterHex" />
         </div>
       </div>
     </div>
@@ -2474,6 +2474,7 @@ const fetchAndRenderCharacters = async () => {
     _char_cache = characters;
     for (const char of characters) {
       if (!char.h3_index) continue;  // sin posición → sin marcador
+      if (char.age < 16) continue;   // menores no visibles en el mapa
       if (char.army_id)  continue;   // viaja con el ejército → sin marcador propio
       try {
         const [lat, lng] = cellToLatLng(char.h3_index);
@@ -2508,7 +2509,7 @@ const fetchAndRenderCharacters = async () => {
           ? `<button id="char-leave-${char.id}" class="army-action-icon" title="Abandonar ejército">🚪</button>`
           : `<button id="char-join-${char.id}" class="army-action-icon" title="Unirse al ejército del feudo">🔗</button>`;
 
-        const popupIcon = isMain ? '👑' : char.is_heir ? '🔱' : char.age < 16 ? '🧒' : '🛡️';
+        const popupIcon = isMain ? '👑' : char.is_heir ? '🤴' : char.age < 16 ? '🧒' : '⭐';
         const popupHtml = `
           <div class="char-popup">
             <div class="char-popup-header">
@@ -2861,6 +2862,16 @@ const loadMyDivisions = async () => {
  * Focus map on a specific fief
  * @param {string} h3_index - The H3 index to focus on
  */
+const focusOnCharacterHex = (h3_index) => {
+  try {
+    const [lat, lng] = cellToLatLng(h3_index);
+    closeOverlay();
+    map.flyTo([lat, lng], 11, { duration: 1.0 });
+  } catch (err) {
+    console.error('[Characters] Error focusing on character:', err);
+  }
+};
+
 const focusOnFief = (h3_index) => {
   try {
     const [lat, lng] = cellToLatLng(h3_index);

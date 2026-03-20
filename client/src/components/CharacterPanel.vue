@@ -66,14 +66,7 @@
               <span v-if="char.is_heir" class="badge badge-heir">Heredero</span>
               <span v-if="char.army_id" class="badge badge-war">⚔</span>
             </div>
-            <!-- Botón nombrar heredero directo en la tarjeta -->
-            <button
-              v-if="char.age >= 16 && !char.is_heir && !char.is_main_character"
-              class="char-btn char-btn-secondary char-btn-xs node-heir-btn"
-              @click.stop="setHeir(char)"
-            >
-              Nombrar heredero
-            </button>
+
           </div>
         </div>
       </div>
@@ -84,6 +77,13 @@
           <div class="actions-header">
             <span class="actions-name">{{ selected.name }}</span>
             <span v-if="selected.combat_buff_pct > 0" class="actions-buff">+{{ selected.combat_buff_pct }}% combate</span>
+          </div>
+
+          <!-- Ver en mapa (solo adultos con posición) -->
+          <div v-if="selected.h3_index && selected.age >= 16" class="actions-row">
+            <button class="char-btn char-btn-secondary char-btn-xs" @click="emit('focus-hex', selected.h3_index)">
+              🗺️ Ver en mapa
+            </button>
           </div>
 
           <div v-if="selected.age >= 16" class="actions-row">
@@ -199,7 +199,7 @@ const props = defineProps({
   armies: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['refresh']);
+const emit = defineEmits(['refresh', 'focus-hex']);
 
 // ── State ───────────────────────────────────────────────
 const characters  = ref([]);
@@ -226,7 +226,6 @@ const mainCharacter = computed(() =>
 /** Todos los no-líder: hijos directos + heredero + otros adultos + niños */
 const gen1 = computed(() => {
   if (!mainCharacter.value) return characters.value.filter(c => !c.is_main_character);
-  const leaderId = mainCharacter.value.id;
   // Heredero primero, luego adultos, luego niños; dentro de cada grupo por nivel DESC
   return characters.value
     .filter(c => !c.is_main_character)
@@ -242,28 +241,15 @@ const selected    = computed(() => characters.value.find(c => c.id === selectedI
 const aliveCount  = computed(() => characters.value.length);
 const canAdopt    = computed(() => aliveCount.value > 0 && aliveCount.value < 3);
 
-// ── Helpers ───────────────────────────────────────────────
-/** Primer nombre (todo antes del último espacio) */
-const firstName = name => {
-  if (!name) return '';
-  const parts = name.trim().split(' ');
-  return parts.length > 1 ? parts.slice(0, -1).join(' ') : name;
-};
-
-/** Apellido (linaje = última palabra) */
-const surname = name => {
-  if (!name) return '';
-  const parts = name.trim().split(' ');
-  return parts.length > 1 ? parts[parts.length - 1] : '';
-};
 
 /** Nivel mostrado: floor(level / 10), rango 0–10 */
 const displayLevel = level => Math.floor((level ?? 1) / 10);
 
 const nodeIcon = char => {
-  if (char.is_heir)    return '🔱';
-  if (char.age < 16)   return '🧒';
-  return '🧑';
+  if (char.is_main_character) return '👑';
+  if (char.is_heir)           return '🤴';
+  if (char.age < 16)          return '🧒';
+  return '⭐';
 };
 
 const nodeClass = char => {
@@ -424,17 +410,17 @@ const confirmAdopt = async () => {
 .tree-gen1 {
   position: relative;
   padding-top: 0;
+  padding-left: 55px;
+  padding-right: 55px;
 }
 
 .tree-hline {
   position: absolute;
   top: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 55px;
+  right: 55px;
   height: 2px;
   background: rgba(197,160,89,0.35);
-  width: 80%;
-  max-width: 320px;
 }
 
 /* Each branch in gen1 */
@@ -526,12 +512,6 @@ const confirmAdopt = async () => {
   margin-bottom: 4px;
 }
 
-/* Botón nombrar heredero dentro de la tarjeta */
-.node-heir-btn {
-  margin-top: 5px;
-  width: 100%;
-  white-space: nowrap;
-}
 
 /* Badges row */
 .node-badges {
