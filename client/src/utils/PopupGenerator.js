@@ -263,23 +263,28 @@ export function generateArmyPopup(armyData, config) {
     hasExplorersAtHex = false, // el jugador tiene Exploradores en el mismo hex
     scoutingArmyId = null,     // army_id del ejército propio con exploradores
     attackingArmyId = null,    // army_id del ejército propio en el mismo hex (para atacar)
-    characterAtHex = null      // personaje propio sin ejército en este hex (para asignar)
+    characterAtHex = null,     // personaje propio sin ejército en este hex (para asignar)
+    totalItems = null,         // total combinado de ejércitos + personajes en el hex
+    globalIndex = null         // índice global en la lista combinada
   } = config;
 
   _ensureFadeAnimation();
   const total = armyData.armies?.length ?? 0;
+  // Si hay items combinados (ejércitos + personajes), usar esos para la nav bar
+  const navTotal = totalItems ?? total;
+  const navIndex = globalIndex ?? currentIndex;
 
   let popupContent = '<div class="army-inspector">';
 
-  // ── Barra de navegación (solo si hay varios ejércitos) ──────────────────
-  if (total > 1) {
+  // ── Barra de navegación (solo si hay varios items) ──────────────────────
+  if (navTotal > 1) {
     const btnStyle = 'background:#1e1e38;border:1px solid #3a3a5c;color:#e2e8f0;border-radius:4px;padding:3px 11px;font-size:1rem;line-height:1;cursor:pointer;transition:background 0.15s;';
     const btnDisStyle = btnStyle + 'opacity:0.3;cursor:not-allowed;';
-    const prevDis = currentIndex === 0;
-    const nextDis = currentIndex === total - 1;
+    const prevDis = navIndex === 0;
+    const nextDis = navIndex === navTotal - 1;
     popupContent += `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(0,0,0,0.45);border-bottom:1px solid #2d2d4a;margin-bottom:4px;">`;
     popupContent += `<button onclick="event.stopPropagation();window.armyPopupNavigate(-1)" ${prevDis ? 'disabled' : ''} style="${prevDis ? btnDisStyle : btnStyle}">◀</button>`;
-    popupContent += `<span style="font-family:sans-serif;font-size:0.72rem;color:#6b7280;letter-spacing:1.5px;text-transform:uppercase;">Ejército ${currentIndex + 1} de ${total}</span>`;
+    popupContent += `<span style="font-family:sans-serif;font-size:0.72rem;color:#6b7280;letter-spacing:1.5px;text-transform:uppercase;">Ejército ${navIndex + 1} de ${navTotal}</span>`;
     popupContent += `<button onclick="event.stopPropagation();window.armyPopupNavigate(1)" ${nextDis ? 'disabled' : ''} style="${nextDis ? btnDisStyle : btnStyle}">▶</button>`;
     popupContent += `</div>`;
   }

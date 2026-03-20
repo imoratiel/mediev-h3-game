@@ -204,8 +204,13 @@
         </div>
 
         <!-- Descripción del tipo seleccionado -->
-        <div v-if="selectedType" class="type-desc">
-          {{ typeTooltip(selectedType) }}
+        <div v-if="selectedType && treatyInfo(selectedType.code)" class="rel-info">
+          <p class="rel-info-desc">{{ treatyInfo(selectedType.code).desc }}</p>
+          <div class="rel-info-rows">
+            <span class="rel-info-item"><span class="rel-info-label">⏱ Duración:</span> {{ treatyInfo(selectedType.code).duration }}</span>
+            <span class="rel-info-item"><span class="rel-info-label">✂️ Ruptura:</span> {{ treatyInfo(selectedType.code).breaking }}</span>
+            <span class="rel-info-item"><span class="rel-info-label">📋 Implica:</span> {{ treatyInfo(selectedType.code).implies }}</span>
+          </div>
         </div>
 
         <p v-if="proposeError" class="form-error">{{ proposeError }}</p>
@@ -488,7 +493,7 @@ const TREATY_INFO = {
   tributo: {
     desc:     'El tributario paga un porcentaje de sus ingresos (5–10%) al exactor durante el periodo pactado. Señal de sometimiento político.',
     duration: 'Definida (12–120 meses). Expira automáticamente.',
-    breaking: 'Ninguna parte puede romperlo antes del plazo. El impago se considera traición y justifica represalias.',
+    breaking: 'Cualquiera puede romperlo, pero hacerlo otorga a la otra parte un casus belli legítimo.',
     implies:  'El exactor puede declarar guerra si hay impago. El tributario queda políticamente subordinado durante la vigencia.',
   },
   guerra: {

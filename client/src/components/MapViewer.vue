@@ -1150,6 +1150,7 @@ let lastSyncTime = null;
 
 // Army popup pagination state
 let _pp_armies = [];
+let _pp_items  = [];   // combined: [{ type:'army'|'character', data }]
 let _pp_index = 0;
 let _pp_ref = null;
 let _pp_h3 = '';
@@ -4476,17 +4477,31 @@ const attachEnemyListeners = (army) => {
 // Global bridge: called by ◀/▶ buttons inside the Leaflet popup HTML
 window.armyPopupNavigate = (delta) => {
   const newIndex = _pp_index + delta;
-  if (newIndex < 0 || newIndex >= _pp_armies.length || !_pp_ref) return;
+  if (newIndex < 0 || newIndex >= _pp_items.length || !_pp_ref) return;
   _pp_index = newIndex;
+
+  const item = _pp_items[_pp_index];
+
+  if (item.type === 'character') {
+    const newContent = _generateCharacterItemHTML(item.data, _pp_items.length, _pp_index);
+    _pp_ref.setContent(newContent);
+    return;
+  }
+
+  // Army item
   const { hasExplorersAtHex, scoutingArmyId, attackingArmyId } = _getScoutingInfo(_pp_armies);
   const characterAtHex = _char_cache.find(c => c.h3_index === _pp_h3 && !c.army_id) ?? null;
+  // armyIndex = position within armies sub-array
+  const armyIndex = _pp_items.slice(0, _pp_index).filter(i => i.type === 'army').length;
   const newContent = generateArmyPopup({ armies: _pp_armies }, {
     currentPlayerId: playerId.value,
     h3_index: _pp_h3,
     coord_x: _pp_coords.x,
     coord_y: _pp_coords.y,
     hexOwnerId: _pp_coords.ownerId,
-    currentIndex: _pp_index,
+    currentIndex: armyIndex,
+    totalItems: _pp_items.length,
+    globalIndex: _pp_index,
     hasExplorersAtHex,
     scoutingArmyId,
     attackingArmyId,
@@ -4494,10 +4509,60 @@ window.armyPopupNavigate = (delta) => {
   });
   _pp_ref.setContent(newContent);
   setTimeout(() => {
-    const army = _pp_armies[_pp_index];
+    const army = _pp_armies[armyIndex];
     if (army.player_id === playerId.value) attachArmyListeners(army, _pp_h3);
     else attachEnemyListeners(army);
   }, 50);
+};
+
+// Builds the character inspector HTML for the popup navigation
+const _generateCharacterItemHTML = (char, totalItems, globalIndex) => {
+  const btnStyle = 'background:#1e1e38;border:1px solid #3a3a5c;color:#e2e8f0;border-radius:4px;padding:3px 11px;font-size:1rem;line-height:1;cursor:pointer;';
+  const btnDisStyle = btnStyle + 'opacity:0.3;cursor:not-allowed;';
+  const prevDis = globalIndex === 0;
+  const nextDis = globalIndex === totalItems - 1;
+  const icon = char.is_main_character ? '👑' : (char.is_heir ? '🤴' : '⭐');
+  const role = char.is_main_character ? 'Líder' : (char.is_heir ? 'Heredero' : 'Personaje');
+  const healthPct = Math.round((char.health ?? 100));
+  const healthColor = healthPct > 66 ? '#4caf50' : healthPct > 33 ? '#ff9800' : '#f44336';
+
+  let html = '<div class="army-inspector">';
+
+  // Nav bar
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(0,0,0,0.45);border-bottom:1px solid #2d2d4a;margin-bottom:4px;">`;
+  html += `<button onclick="event.stopPropagation();window.armyPopupNavigate(-1)" ${prevDis ? 'disabled' : ''} style="${prevDis ? btnDisStyle : btnStyle}">◀</button>`;
+  html += `<span style="font-family:sans-serif;font-size:0.72rem;color:#6b7280;letter-spacing:1.5px;text-transform:uppercase;">${icon} ${role} · ${globalIndex + 1}/${totalItems}</span>`;
+  html += `<button onclick="event.stopPropagation();window.armyPopupNavigate(1)" ${nextDis ? 'disabled' : ''} style="${nextDis ? btnDisStyle : btnStyle}">▶</button>`;
+  html += `</div>`;
+
+  // Character card
+  html += `<div style="padding:12px 14px;">`;
+  html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">`;
+  html += `<span style="font-size:2rem;">${icon}</span>`;
+  html += `<div>`;
+  html += `<div style="font-size:1rem;font-weight:700;color:#e8d5a3;">${char.full_title || char.name}</div>`;
+  html += `<div style="font-size:0.75rem;color:#8a7a60;margin-top:2px;">${role} · ${char.age} años</div>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  // Health bar
+  html += `<div style="margin-bottom:8px;">`;
+  html += `<div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#8a7a60;margin-bottom:3px;"><span>❤️ Salud</span><span>${healthPct}%</span></div>`;
+  html += `<div style="background:rgba(0,0,0,0.4);border-radius:3px;height:6px;overflow:hidden;">`;
+  html += `<div style="width:${healthPct}%;height:100%;background:${healthColor};border-radius:3px;transition:width 0.3s;"></div>`;
+  html += `</div></div>`;
+
+  // Combat stats if available
+  if (char.attack_skill || char.defense_skill || char.leadership_skill) {
+    html += `<div style="display:flex;gap:8px;font-size:0.75rem;color:#a89060;margin-bottom:8px;">`;
+    if (char.attack_skill)    html += `<span>⚔️ Atq ${char.attack_skill}</span>`;
+    if (char.defense_skill)   html += `<span>🛡️ Def ${char.defense_skill}</span>`;
+    if (char.leadership_skill) html += `<span>📯 Lid ${char.leadership_skill}</span>`;
+    html += `</div>`;
+  }
+
+  html += `</div></div>`;
+  return html;
 };
 
 /**
@@ -4539,10 +4604,16 @@ const showArmyDetailsPopup = async (h3_index, latLng) => {
     // Compute scouting info for the enemy popup button
     const { hasExplorersAtHex, scoutingArmyId, attackingArmyId } = _getScoutingInfo(_pp_armies);
 
-    // Personaje propio sin ejército asignado en este hex (para botón 👑)
-    // Si el caché está vacío (primera apertura), poblarlo antes de buscar
+    // Characters at this hex (own, age >= 16, not riding with an army)
     if (_char_cache.length === 0) await fetchAndRenderCharacters();
-    const characterAtHex = _char_cache.find(c => c.h3_index === h3_index && !c.army_id) ?? null;
+    const charsAtHex = _char_cache.filter(c => c.h3_index === h3_index && !c.army_id && c.age >= 16);
+    const characterAtHex = charsAtHex[0] ?? null; // legacy — for assign-commander button
+
+    // Build combined items list: armies first, then characters
+    _pp_items = [
+      ..._pp_armies.map(a => ({ type: 'army', data: a })),
+      ...charsAtHex.map(c => ({ type: 'character', data: c })),
+    ];
 
     // Build popup HTML content using external generator
     const popupContent = generateArmyPopup(data, {
@@ -4552,6 +4623,7 @@ const showArmyDetailsPopup = async (h3_index, latLng) => {
       coord_y,
       hexOwnerId: _pp_coords.ownerId,
       currentIndex: 0,
+      totalItems: _pp_items.length,
       hasExplorersAtHex,
       scoutingArmyId,
       attackingArmyId,

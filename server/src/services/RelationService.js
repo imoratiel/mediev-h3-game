@@ -1,5 +1,72 @@
 'use strict';
 
+// ── Mensajes épicos de diplomacia ────────────────────────────────────────────
+const _DIP_MSG = {
+    propose: {
+        devotio:      ({ from }) => `El guerrero ${from} se arrodilla ante vuestra presencia y os ofrece el sagrado juramento de Devotio. Su espada, su vida y su honor serían vuestros. Medita bien la respuesta: un devoto es una responsabilidad ante los dioses.`,
+        clientela:    ({ from }) => `El clan ${from} llega humildemente a vuestras puertas solicitando protección. A cambio, cedería el 10% de sus ingresos como señal de vasallaje. Los dioses observan si honraréis este vínculo.`,
+        hospitium:    ({ from }) => `El clan ${from} os tiende la mano en señal de hospitalidad y amistad entre pueblos. El Hospitium no exige tributo ni obediencia — solo respeto mutuo y libre paso entre nuestros territorios.`,
+        rehenes:      ({ from }) => `El clan ${from} propone entregar rehenes en garantía de su lealtad. Aceptar supone asumir la custodia de sus hijos. Rechazar puede interpretarse como desconfianza abierta.`,
+        mercenariado: ({ from, months, pay }) => `El clan ${from} os ofrece sus lanzas a cambio de oro. El contrato propuesto dura ${months} meses a razón de ${Number(pay || 0).toLocaleString('es-ES')} de oro mensual. Las guerras se ganan con acero, pero también con plata.`,
+        alianza:      ({ from }) => `El clan ${from} propone sellar una alianza entre vuestros pueblos. Unidos, podríais hacer temblar a vuestros enemigos comunes. La propuesta merece deliberación.`,
+        tributo:      ({ from, rate, months }) => `El jefe del clan ${from} exige un tributo del ${rate}% de vuestros ingresos durante ${months} meses. Debéis meditar detenidamente vuestra respuesta, pues una negativa puede ser entendida como una declaración de guerra.`,
+        guerra:       ({ from }) => `El clan ${from} os declara la guerra formalmente. Las fronteras ya no son seguras. Preparad vuestras defensas y encomendaos a vuestros dioses.`,
+        _default:     ({ from, typeName }) => `El clan ${from} os propone un tratado de ${typeName}. Revisad la propuesta y responded con sabiduría.`,
+    },
+    propose_confirm: {
+        _default: ({ to, typeName }) => `Vuestra propuesta de ${typeName} ha sido enviada al clan ${to}. Aguardad su respuesta con paciencia... o con la espada lista.`,
+    },
+    accept: {
+        devotio:      ({ to }) => `El guerrero ${to} ha jurado Devotio ante vuestros dioses y vuestro estandarte. A partir de este momento, su vida es vuestra.`,
+        clientela:    ({ to }) => `El clan ${to} acepta vuestra protección y entra bajo vuestro patrocinio. El 10% de sus ingresos fluirá hacia vuestras arcas cada mes.`,
+        hospitium:    ({ to }) => `El clan ${to} acoge vuestra mano de amistad. El Hospitium entre vuestros pueblos queda sellado con honor.`,
+        rehenes:      ({ to }) => `El clan ${to} acepta entregar rehenes. Su lealtad queda ahora garantizada con sangre.`,
+        mercenariado: ({ to, months }) => `El clan ${to} acepta el contrato de mercenariado. Sus lanzas están a vuestro servicio durante ${months} meses.`,
+        alianza:      ({ to }) => `El clan ${to} acepta la alianza. Vuestras tropas combatirán codo a codo contra cualquier enemigo común. Que tiemblen vuestros rivales.`,
+        tributo:      ({ to, rate, months }) => `El clan ${to} acepta rendir tributo. Durante los próximos ${months} meses, el ${rate}% de sus ingresos fluirá hacia vuestras arcas.`,
+        guerra:       ({ to }) => `El clan ${to} acepta el estado de guerra. Que los dioses decidan el destino de ambos pueblos. Que hablen las armas.`,
+        _default:     ({ to, typeName }) => `El clan ${to} ha aceptado vuestra propuesta de ${typeName}.`,
+    },
+    accept_confirm: {
+        _default: ({ from, typeName }) => `Habéis sellado el tratado de ${typeName} con el clan ${from}. Que los dioses sean testigos de vuestro juramento.`,
+    },
+    reject: {
+        devotio:      ({ to }) => `El clan ${to} ha rechazado vuestro juramento de Devotio. Una herida al honor que no se olvida fácilmente.`,
+        clientela:    ({ to }) => `El clan ${to} rechaza ofreceros su protección. Debéis buscar otros medios para garantizar vuestra seguridad.`,
+        hospitium:    ({ to }) => `El clan ${to} ha declinado el Hospitium. Su posición queda clara.`,
+        rehenes:      ({ to }) => `El clan ${to} se niega a aceptar rehenes. Ignorad la afrenta o responded con fuerza; la elección es vuestra.`,
+        mercenariado: ({ to }) => `El clan ${to} ha rechazado el contrato. Sus lanzas seguirán al mejor postor.`,
+        alianza:      ({ to }) => `El clan ${to} rechaza vuestra propuesta de alianza. Vuestra posición estratégica queda debilitada.`,
+        tributo:      ({ to }) => `El clan ${to} se niega a pagar el tributo exigido. Esta afrenta pública no puede quedar sin respuesta.`,
+        guerra:       ({ to }) => `El clan ${to} ignora vuestra declaración de guerra. Decidid si presionaréis o esperáis un momento más propicio.`,
+        _default:     ({ to, typeName }) => `El clan ${to} ha rechazado vuestra propuesta de ${typeName}.`,
+    },
+    reject_confirm: {
+        _default: ({ from, typeName }) => `Habéis rechazado la propuesta de ${typeName} del clan ${from}. Vuestros mensajeros llevan ya vuestra respuesta.`,
+    },
+    break: {
+        devotio:      ({ breaker }) => `El clan ${breaker} ha profanado el sagrado juramento de Devotio. Los dioses no olvidarán este sacrilegio. Nuestros lazos han quedado rotos para siempre.`,
+        clientela:    ({ breaker }) => `El clan ${breaker} ha decidido poner fin al vínculo de clientela. Solo los dioses saben qué estará tramando.`,
+        hospitium:    ({ breaker }) => `El clan ${breaker} ha roto el Hospitium entre nuestros pueblos. La hospitalidad que nos ofrecimos queda mancillada.`,
+        rehenes:      ({ breaker }) => `El clan ${breaker} ha puesto fin al acuerdo de rehenes unilateralmente. Las consecuencias de esta decisión están por ver.`,
+        mercenariado: ({ breaker }) => `El clan ${breaker} ha rescindido el contrato de mercenariado. Sus lanzas ya no están a nuestro servicio.`,
+        alianza:      ({ breaker }) => `El clan ${breaker} ha roto la alianza. Nuestras espadas ya no apuntan en la misma dirección. Revisad vuestras defensas.`,
+        tributo:      ({ breaker }) => `El clan ${breaker} ha repudiado el tributo prometido. Esta traición justifica las más severas represalias.`,
+        guerra:       ({ breaker }) => `El clan ${breaker} ha puesto fin al estado de guerra. La paz, aunque frágil, regresa a nuestras fronteras.`,
+        _default:     ({ breaker, typeName }) => `El clan ${breaker} ha roto el tratado de ${typeName} unilateralmente.`,
+    },
+    break_confirm: {
+        _default: ({ other, typeName }) => `Habéis puesto fin al tratado de ${typeName} con el clan ${other}. Vuestra reputación ha sufrido por ello.`,
+    },
+};
+
+function _dipMsg(action, typeCode, params) {
+    const group = _DIP_MSG[action];
+    if (!group) return '';
+    const fn = group[typeCode] ?? group._default;
+    return fn ? fn(params) : '';
+}
+
 /**
  * RelationService.js
  * Handlers HTTP y lógica de negocio del sistema de relaciones políticas.
@@ -196,14 +263,21 @@ class RelationService {
                 actor_player_id: from_player_id,
             });
 
-            // Notificación al destinatario
-            const fromName = (await client.query('SELECT display_name FROM players WHERE player_id = $1', [from_player_id])).rows[0]?.display_name ?? from_player_id;
-            await NotificationService.createSystemNotification(
-                to_player_id,
-                'Nuevo Tratado',
-                `⚖️ **${fromName}** te propone un tratado: **${type.name}**.\n\nRevisa tus relaciones activas para aceptar o ignorar.`,
-                null
+            // Notificaciones a ambas partes
+            const { rows: nameRows } = await client.query(
+                'SELECT player_id, display_name FROM players WHERE player_id = ANY($1)',
+                [[from_player_id, to_player_id]]
             );
+            const nameMap  = Object.fromEntries(nameRows.map(r => [r.player_id, r.display_name]));
+            const fromName = nameMap[from_player_id] ?? String(from_player_id);
+            const toName   = nameMap[to_player_id]   ?? String(to_player_id);
+            const rateVal  = relation.terms_rate   ? Math.round(relation.terms_rate * 100) : null;
+            const msgParams = { from: fromName, to: toName, typeName: type.name, rate: rateVal, months: relation.terms_duration_months, pay: relation.terms_fixed_pay };
+
+            await Promise.all([
+                NotificationService.createSystemNotification(to_player_id,   'General', _dipMsg('propose',         type.code, msgParams), null),
+                NotificationService.createSystemNotification(from_player_id, 'General', _dipMsg('propose_confirm', type.code, msgParams), null),
+            ]);
 
             await client.query('COMMIT');
             Logger.action(`Player ${from_player_id} propone "${type.code}" a player ${to_player_id}`, { relation_id: relation.relation_id });
@@ -268,13 +342,13 @@ class RelationService {
                 actor_player_id: player_id,
             });
 
-            // Notificar al proponente
-            await NotificationService.createSystemNotification(
-                rel.from_player_id,
-                'Tratado Aceptado',
-                `✅ **${rel.to_display_name}** ha aceptado tu propuesta de **${rel.type_name}**.`,
-                null
-            );
+            // Notificaciones a ambas partes
+            const rateVal2   = rel.terms_rate ? Math.round(rel.terms_rate * 100) : null;
+            const msgParams2 = { from: rel.from_display_name, to: rel.to_display_name, typeName: rel.type_name, rate: rateVal2, months: rel.terms_duration_months };
+            await Promise.all([
+                NotificationService.createSystemNotification(rel.from_player_id, 'General', _dipMsg('accept',         rel.code, msgParams2), null),
+                NotificationService.createSystemNotification(player_id,          'General', _dipMsg('accept_confirm', rel.code, msgParams2), null),
+            ]);
 
             await client.query('COMMIT');
             Logger.action(`Player ${player_id} acepta relación ${relation_id} (${rel.code})`, { relation_id });
@@ -351,15 +425,19 @@ class RelationService {
                 [REPUTATION_BREAK_PENALTY, player_id]
             );
 
-            // Notificar a la otra parte
-            const otherPlayerId = isPayer ? rel.to_player_id : rel.from_player_id;
+            // Notificaciones a ambas partes — diferenciar rechazo (pending) de ruptura (active)
+            const otherPlayerId = isPayer ? rel.to_player_id   : rel.from_player_id;
+            const otherName     = isPayer ? rel.to_display_name : rel.from_display_name;
             const breakerName   = isPayer ? rel.from_display_name : rel.to_display_name;
-            await NotificationService.createSystemNotification(
-                otherPlayerId,
-                'Tratado Roto',
-                `⚠️ **${breakerName}** ha roto el tratado de **${rel.type_name}** unilateralmente.`,
-                null
-            );
+            const isRejection   = rel.status === 'pending';
+            const action        = isRejection ? 'reject' : 'break';
+            const confirmAction = isRejection ? 'reject_confirm' : 'break_confirm';
+            const msgParams3    = { from: rel.from_display_name, to: rel.to_display_name, breaker: breakerName, other: otherName, typeName: rel.type_name };
+
+            await Promise.all([
+                NotificationService.createSystemNotification(otherPlayerId, 'General', _dipMsg(action,        rel.code, msgParams3), null),
+                NotificationService.createSystemNotification(player_id,     'General', _dipMsg(confirmAction, rel.code, msgParams3), null),
+            ]);
 
             await client.query('COMMIT');
             Logger.action(`Player ${player_id} rompe relación ${relation_id} (${rel.code}) — ${endReason}`, { relation_id });
