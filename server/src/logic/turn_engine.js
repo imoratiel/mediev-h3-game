@@ -3,6 +3,7 @@ const { auditEvent, TOPICS } = require('../infrastructure/kafkaFacade');
 const { determineDiscoveredResource } = require('./discovery');
 const { processTaxCollection, processRelationTributes } = require('./tax_collector');
 const { processCharacterLifecycle } = require('./character_lifecycle');
+const { processNobleRanks } = require('./noble_rank_system');
 const { processTithe } = require('./tithe_system');
 const { processBuildingDecay } = require('./building_decay');
 const { processGraceTurns } = require('./conquest_system');
@@ -1253,7 +1254,26 @@ async function processGameTurn(pool, config) {
         await processBuildingDecay(client, newTurn, gameDate);
 
         // Character lifecycle: una vez por mes (idempotencia interna via game_config)
-        await processCharacterLifecycle(client, newTurn, newDate.month, newDate.year);
+        await client.query('SAVEPOINT character_lifecycle');
+        try {
+            await processCharacterLifecycle(client, newTurn, newDate.month, newDate.year);
+            await client.query('RELEASE SAVEPOINT character_lifecycle');
+        } catch (err) {
+            await client.query('ROLLBACK TO SAVEPOINT character_lifecycle');
+            Logger.error(err, { context: 'turn_engine.characterLifecycle', turn: newTurn });
+        }
+
+        // Noble rank evaluation (día 25 de cada mes)
+        if (dayOfMonth === 25) {
+            await client.query('SAVEPOINT noble_ranks');
+            try {
+                await processNobleRanks(client, newTurn, newDate.month, newDate.year);
+                await client.query('RELEASE SAVEPOINT noble_ranks');
+            } catch (err) {
+                await client.query('ROLLBACK TO SAVEPOINT noble_ranks');
+                Logger.error(err, { context: 'turn_engine.nobleRanks', turn: newTurn });
+            }
+        }
 
         await client.query('COMMIT');
 

@@ -31,6 +31,11 @@
 - Fix CORRECTO: `docker compose down -v && docker compose build --no-cache backend && docker compose up -d`
 - El flag `-v` borra solo volúmenes anónimos (node_modules). El volumen nombrado `pgdata` NO se borra.
 
+## Migraciones SQL Pendientes de Aplicar
+- Patrón recurrente: el código usa columnas nuevas pero la migración SQL existe pero NO fue ejecutada en la DB
+- `066_noble_rank_promotion.sql`: añade `players.last_rank_promotion VARCHAR(20)` — ver error 2026-03-20
+- Al detectar `column X does not exist`, siempre buscar primero en `/sql/` si hay una migración que añade esa columna
+
 ## Archivos Clave
 
 - Motor: `server/src/logic/turn_engine.js`
