@@ -16,7 +16,7 @@
     <!-- Empty -->
     <div v-else-if="!characters.length" class="char-empty">
       <p>No tienes personajes activos.</p>
-      <button class="char-btn char-btn-primary" @click="openAdopt">⭐ Adoptar</button>
+      <button class="char-btn char-btn-primary" @click="openAdopt">⚔️ Incorporar</button>
     </div>
 
     <!-- ── ÁRBOL GENEALÓGICO ─────────────────────────── -->
@@ -120,9 +120,8 @@
       <!-- ── ADOPCIÓN ────────────────────────────────── -->
       <div v-if="canAdopt" class="adopt-row">
         <button class="char-btn char-btn-primary char-btn-xs" @click="openAdopt">
-          ⭐ Adoptar
+          ⚔️ Adoptar Nuevo Miembro
         </button>
-        <span class="adopt-hint">{{ adultCount }}/3 adultos en el linaje</span>
       </div>
 
     </div>
@@ -159,17 +158,17 @@
     <!-- ── ADOPT MODAL ─────────────────────────────────── -->
     <div v-if="showAdoptModal" class="char-modal-overlay" @click.self="showAdoptModal = false">
       <div class="char-modal">
-        <h3 class="char-modal-title">⭐ Adoptar un Adulto</h3>
-        <p class="char-modal-sub">Se incorporará a tu linaje como un adulto de entre 16 y 35 años. El nombre se genera automáticamente.</p>
+        <h3 class="char-modal-title">⚔️ Incorporar a tu Familia</h3>
+        <p class="char-modal-sub">Hemos encontrado un guerrero de noble espíritu que podría incorporarse a nuestra familia. Nos exige <strong>100.000 monedas de oro</strong>. ¿Aceptas?</p>
         <div v-if="adoptMsg" class="char-modal-msg" :class="adoptMsg.type">{{ adoptMsg.text }}</div>
         <div class="char-modal-actions">
-          <button class="char-btn char-btn-secondary" @click="showAdoptModal = false">Cancelar</button>
+          <button class="char-btn char-btn-secondary" @click="showAdoptModal = false">Rechazar</button>
           <button
             class="char-btn char-btn-primary"
             :disabled="adopting"
             @click="confirmAdopt"
           >
-            {{ adopting ? 'Adoptando...' : 'Confirmar Adopción' }}
+            {{ adopting ? 'Sellando el pacto...' : 'Aceptar' }}
           </button>
         </div>
       </div>
