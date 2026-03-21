@@ -295,6 +295,33 @@ class AIManagerService {
                 xp:                  0,
             });
 
+            // ── Ejércitos de prueba (solo perfil dummy) ───────────────────────
+            if (profile === 'dummy' && bonusHexes.length >= 3) {
+                const unitResult = await client.query(
+                    `SELECT unit_type_id FROM unit_types
+                     WHERE culture_id = $1 AND unit_class = 'INFANTRY_1'
+                     ORDER BY unit_type_id LIMIT 1`,
+                    [aiCultureId]
+                );
+                const basicUnitId = unitResult.rows[0]?.unit_type_id;
+                if (basicUnitId) {
+                    const armyHexes = bonusHexes.slice(0, 3);
+                    for (const [i, qty] of [[0, 100], [1, 10], [2, 1]]) {
+                        const armyResult = await client.query(
+                            `INSERT INTO armies (player_id, name, h3_index, food_provisions, gold_provisions, wood_provisions)
+                             VALUES ($1, $2, $3, 0, 0, 0) RETURNING army_id`,
+                            [aiPlayerId, String(qty), armyHexes[i]]
+                        );
+                        await client.query(
+                            `INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale, stamina)
+                             VALUES ($1, $2, $3, 0, 100, 100)`,
+                            [armyResult.rows[0].army_id, basicUnitId, qty]
+                        );
+                    }
+                    Logger.action(`[ACTION][${aiName}]: Ejércitos dummy creados (100/10/1) en ${armyHexes.join(', ')}`);
+                }
+            }
+
             await client.query('COMMIT');
 
             // Calcular boundary GeoJSON (fuera de transacción)

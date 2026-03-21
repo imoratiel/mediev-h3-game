@@ -343,40 +343,32 @@ class CombatService {
         const troopsA = aHasTroops ? armyA.troops : this._buildGuardTroops(commanderA);
         const troopsB = bHasTroops ? armyB.troops : this._buildGuardTroops(commanderB);
 
-        // 6. Calcular Poder de Combate (con bonus de devotio + personaje si aplica)
-        const pcA = await this._calculateCombatPower(client, troopsA, troopsB, terrain, aIsDefender, armyA.player_id, armyAId);
-        const pcB = await this._calculateCombatPower(client, troopsB, troopsA, terrain, bIsDefender, armyB.player_id, armyBId);
+        // 6. Calcular tasas de bajas con el nuevo sistema daño-por-unidad
+        // tasaOnB = % de bajas que A inflige sobre B
+        // tasaOnA = % de bajas que B inflige sobre A
+        const tasaOnB = await this._calculateDamageRate(client, troopsA, troopsB, terrain, bIsDefender, armyA.player_id, armyAId);
+        const tasaOnA = await this._calculateDamageRate(client, troopsB, troopsA, terrain, aIsDefender, armyB.player_id, armyBId);
 
-        Logger.engine(
-            `[TURN ${turn}] BATTLE at ${h3Index}: ` +
-            `${armyA.name}(PC=${pcA.toFixed(1)})${aHasGuard ? '[guardia]' : ''} vs ` +
-            `${armyB.name}(PC=${pcB.toFixed(1)})${bHasGuard ? '[guardia]' : ''} ` +
-            `| Defensor: ${bIsDefender ? armyA.name : aIsDefender ? armyB.name : 'ninguno'}`
-        );
-
-        // 7. Resultado
-        const maxPC  = Math.max(pcA, pcB);
-        const minPC  = Math.max(1, Math.min(pcA, pcB));
-        const ratio  = maxPC / minPC;
-        const isDraw = ratio < 1.1;
+        // 7. Resultado: gana quien inflige más presión al enemigo
+        const DRAW_THRESHOLD = GAME_CONFIG.MILITARY.COMBAT_DRAW_THRESHOLD;
+        const isDraw = Math.abs(tasaOnB - tasaOnA) < DRAW_THRESHOLD;
 
         let winner = null, loser = null;
         if (!isDraw) {
-            winner = pcA >= pcB ? armyA : armyB;
-            loser  = pcA >= pcB ? armyB : armyA;
+            winner = tasaOnB > tasaOnA ? armyA : armyB;
+            loser  = winner === armyA  ? armyB : armyA;
         }
 
-        // 8. Tasas de bajas
-        let lossRateA, lossRateB;
-        if (isDraw) {
-            lossRateA = 0.05 + Math.random() * 0.05;
-            lossRateB = 0.05 + Math.random() * 0.05;
-        } else {
-            const winnerLoss = Math.random() * 0.10;
-            const loserLoss  = 0.05 + Math.random() * 0.15;
-            lossRateA = (winner === armyA) ? winnerLoss : loserLoss;
-            lossRateB = (winner === armyB) ? winnerLoss : loserLoss;
-        }
+        Logger.engine(
+            `[TURN ${turn}] BATTLE at ${h3Index}: ` +
+            `${armyA.name}(presión→B=${(tasaOnB*100).toFixed(1)}%)${aHasGuard ? '[guardia]' : ''} vs ` +
+            `${armyB.name}(presión→A=${(tasaOnA*100).toFixed(1)}%)${bHasGuard ? '[guardia]' : ''} ` +
+            `| ${isDraw ? 'EMPATE' : `Victoria ${winner.name}`}`
+        );
+
+        // 8. Tasas de bajas = las tasas calculadas (sin azar en el resultado)
+        const lossRateA = tasaOnA;  // bajas que sufre A (B se las inflige)
+        const lossRateB = tasaOnB;  // bajas que sufre B (A se las inflige)
 
         // 9. Aplicar bajas (tropas reales o guardia personal)
         let deadA, deadB;
@@ -398,10 +390,13 @@ class CombatService {
             await CharacterModel.updateGuard(client, commanderB.id, commanderB.personal_guard);
         } else { deadB = 0; }
 
-        // 10. Saqueo
+        // 10. Saqueo — fracción proporcional a la diferencia de presión
         let loot = null;
         if (!isDraw && winner && loser) {
-            const lootFraction = Math.min(0.75, Math.max(0.25, (ratio - 1) / 4));
+            const winnerTasa = winner === armyA ? tasaOnB : tasaOnA;
+            const loserTasa  = winner === armyA ? tasaOnA : tasaOnB;
+            const pressRatio = winnerTasa / Math.max(0.001, loserTasa);
+            const lootFraction = Math.min(0.75, Math.max(0.25, (pressRatio - 1) / 4));
             loot = await CombatModel.transferProvisions(client, loser.army_id, winner.army_id, lootFraction);
         }
 
@@ -483,12 +478,12 @@ class CombatService {
             h3Index, turn, isDraw,
             armyA: {
                 id: armyAId, name: armyA.name, playerId: armyA.player_id,
-                pc: pcA, dead: deadA, lossRate: lossRateA, xp: xpA,
+                pressure: tasaOnB, dead: deadA, lossRate: lossRateA, xp: xpA,
                 destroyed: armyADestroyed, retreat: retreatA,
             },
             armyB: {
                 id: armyBId, name: armyB.name, playerId: armyB.player_id,
-                pc: pcB, dead: deadB, lossRate: lossRateB, xp: xpB,
+                pressure: tasaOnA, dead: deadB, lossRate: lossRateB, xp: xpB,
                 destroyed: armyBDestroyed, retreat: retreatB,
             },
             winner: winner ? { id: winner.army_id, name: winner.name, playerId: winner.player_id } : null,
@@ -514,73 +509,109 @@ class CombatService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Calcula el Poder de Combate total de un ejército.
-     * Si isDefender = true, el resultado se multiplica por 1.10 (bono defensivo).
+     * Calcula la tasa de bajas que el ejército A inflige sobre el ejército B.
+     *
+     * Fórmula por unidad enemiga:
+     *   damage_per_B  = total_atk_A / qty_B
+     *   avg_def_B     = Σ(qty_b × def_b × morale × stamina) / qty_B  [×1.15 si B defiende]
+     *   mitigation    = avg_def_B / (avg_def_B + K)
+     *   tasa_B        = damage_per_B × (1 - mitigation) × SCALE / avg_hp_B
+     *
+     * @param {Object[]} troopsA       - Tropas atacantes (con attack, defense, morale, stamina, health_points)
+     * @param {Object[]} troopsB       - Tropas defensoras
+     * @param {Object}   terrain       - Terreno del hex
+     * @param {boolean}  bIsDefender   - Si B recibe bono defensivo (+15% def)
+     * @param {number}   attackerPlayerId - Para bonus devotio del atacante
+     * @param {number}   attackerArmyId  - Para bonus de personaje
+     * @returns {Promise<number>} Tasa de bajas sobre B en [0, 1]
      */
-    async _calculateCombatPower(client, troops, enemyTroops, terrain, isDefender = false, playerId = null, armyId = null) {
+    async _calculateDamageRate(client, troopsA, troopsB, terrain, bIsDefender = false, attackerPlayerId = null, attackerArmyId = null) {
+        const K             = GAME_CONFIG.MILITARY.COMBAT_K_NORM;
+        const SCALE         = GAME_CONFIG.MILITARY.COMBAT_DAMAGE_SCALE;
+        const DEF_BONUS     = GAME_CONFIG.MILITARY.COMBAT_DEFENDER_BONUS;
         const terrainName   = terrain?.terrain_name ?? null;
-        const totalEnemyQty = enemyTroops.reduce((s, t) => s + t.quantity, 0) || 1;
-        let totalPC = 0;
 
-        for (const troop of troops) {
-            const qty    = troop.quantity;
-            const attack = parseFloat(troop.attack);
+        const totalQtyA = troopsA.reduce((s, t) => s + t.quantity, 0);
+        const totalQtyB = troopsB.reduce((s, t) => s + t.quantity, 0);
+        if (totalQtyA === 0) return 0;
+        if (totalQtyB === 0) return 1.0;
 
-            const moraleFactor  = Math.max(0.1, parseFloat(troop.morale)  / 100);
-            const staminaFactor = troop.force_rest ? 0.1 : Math.max(0.1, parseFloat(troop.stamina) / 100);
+        // ── Paso 1: Ataque total de A ────────────────────────────────────────
+        let total_atk_A = 0;
+        for (const ta of troopsA) {
+            const morale  = Math.max(0.1, parseFloat(ta.morale)  / 100);
+            const stamina = Math.max(0.1, parseFloat(ta.stamina) / 100);
+            let   atk     = parseFloat(ta.attack);
 
-            let terrainFactor = 1.0;
+            // Modificador de terreno (ataque)
             if (terrainName) {
-                const mod = await CombatModel.getTerrainModifier(client, troop.unit_type_id, terrainName);
-                if (mod) terrainFactor = 1 + parseFloat(mod.attack_modificator);
+                const mod = await CombatModel.getTerrainModifier(client, ta.unit_type_id, terrainName);
+                if (mod) atk *= (1 + parseFloat(mod.attack_modificator));
             }
 
+            // Factor de counter ponderado por composición de B
             let counterFactor = 1.0;
-            if (enemyTroops.length > 0) {
+            if (troopsB.length > 0) {
                 let weighted = 0;
-                for (const enemy of enemyTroops) {
-                    const mult = await CombatModel.getCombatCounter(
-                        client, troop.unit_type_id, enemy.unit_type_id
-                    );
-                    weighted += (enemy.quantity / totalEnemyQty) * mult;
+                for (const tb of troopsB) {
+                    const mult = await CombatModel.getCombatCounter(client, ta.unit_type_id, tb.unit_type_id);
+                    weighted += (tb.quantity / totalQtyB) * mult;
                 }
                 counterFactor = weighted;
             }
 
-            totalPC += qty * attack * terrainFactor * counterFactor * moraleFactor * staminaFactor;
+            total_atk_A += ta.quantity * atk * counterFactor * morale * stamina;
         }
 
-        if (isDefender) totalPC *= 1.10;
-
-        // Bonus de Devotio: +5% ataque siempre, +5% defensa adicional cuando defiende
-        if (playerId) {
+        // Bonus devotio del atacante: +5% ataque
+        if (attackerPlayerId) {
             const { rows } = await client.query(`
                 SELECT 1 FROM player_relations pr
                 JOIN relation_types rt ON rt.id = pr.type_id
                 WHERE pr.status = 'active' AND rt.code = 'devotio'
-                  AND pr.from_player_id = $1
-                LIMIT 1
-            `, [playerId]);
-            if (rows.length > 0) {
-                totalPC *= 1.05; // +5% ataque (siempre)
-                if (isDefender) totalPC *= 1.05; // +5% defensa adicional
-            }
+                  AND pr.from_player_id = $1 LIMIT 1
+            `, [attackerPlayerId]);
+            if (rows.length > 0) total_atk_A *= 1.05;
         }
 
-        // Bonus de personaje: el de mayor nivel en el ejército aplica +2% por nivel mostrado
-        // Nivel mostrado = floor(level / 10), rango 0–10. Bonus máximo = +20%.
-        if (armyId) {
-            const bestChar = await CharacterModel.getBestInArmy(client, armyId);
+        // Bonus de personaje atacante: +2% por nivel mostrado (máx +20%)
+        if (attackerArmyId) {
+            const bestChar = await CharacterModel.getBestInArmy(client, attackerArmyId);
             if (bestChar) {
                 const displayLevel = Math.floor(bestChar.level / 10);
-                if (displayLevel > 0) {
-                    const charBonus = 1 + displayLevel * 0.02;
-                    totalPC *= charBonus;
-                }
+                if (displayLevel > 0) total_atk_A *= (1 + displayLevel * 0.02);
             }
         }
 
-        return totalPC;
+        // ── Paso 2: Defensa media y HP medio de B ───────────────────────────
+        let total_def_B = 0;
+        let total_hp_B  = 0;
+        for (const tb of troopsB) {
+            const morale  = Math.max(0.1, parseFloat(tb.morale)  / 100);
+            const stamina = Math.max(0.1, parseFloat(tb.stamina) / 100);
+            let   def     = parseFloat(tb.defense ?? 5);
+
+            // Modificador de terreno (defensa)
+            if (terrainName) {
+                const mod = await CombatModel.getTerrainModifier(client, tb.unit_type_id, terrainName);
+                if (mod) def *= (1 + parseFloat(mod.defense_modificator));
+            }
+
+            total_def_B += tb.quantity * def * morale * stamina;
+            total_hp_B  += tb.quantity * parseFloat(tb.health_points ?? 5);
+        }
+
+        let avg_def_B = total_def_B / totalQtyB;
+        if (bIsDefender) avg_def_B *= DEF_BONUS;  // +15% si B está en posición defensiva
+        const avg_hp_B = total_hp_B / totalQtyB;
+
+        // ── Paso 3: Daño por unidad enemiga y tasa de bajas ─────────────────
+        const damage_per_B  = total_atk_A / totalQtyB;
+        const mitigation    = avg_def_B / (avg_def_B + K);
+        const net_per_B     = damage_per_B * (1 - mitigation);
+        const tasa          = Math.min(1.0, (net_per_B * SCALE) / avg_hp_B);
+
+        return tasa;
     }
 
     /**
@@ -716,13 +747,14 @@ class CombatService {
      */
     _buildGuardTroops(commander) {
         return [{
-            unit_type_id: 7,   // Caballería Pesada
-            quantity:     commander.personal_guard,
-            attack:       22,
-            morale:       100,
-            stamina:      100,
-            force_rest:   false,
-            troop_id:     null,  // virtual — sin fila en DB
+            unit_type_id:  7,    // Guardia de élite (stats de Pretorianos)
+            quantity:      commander.personal_guard,
+            attack:        22,
+            defense:       9,
+            health_points: 10,
+            morale:        100,
+            stamina:       100,
+            troop_id:      null, // virtual — sin fila en DB
         }];
     }
 

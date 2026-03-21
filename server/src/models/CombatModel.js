@@ -31,7 +31,7 @@ class CombatModel {
             const troopsResult = await client.query(`
                 SELECT t.troop_id, t.unit_type_id, t.quantity,
                        t.experience, t.morale, t.stamina, t.force_rest,
-                       ut.name AS unit_name, ut.attack, ut.health_points
+                       ut.name AS unit_name, ut.attack, ut.defense, ut.health_points
                 FROM troops t
                 JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
                 WHERE t.army_id = $1 AND t.quantity > 0
