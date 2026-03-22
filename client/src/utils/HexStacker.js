@@ -61,7 +61,7 @@ const BUILDING_ICON_MAP = [
   [['iglesia', 'church', 'catedral', 'templo', 'santuario'],        '🏛️'],
   [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'],       '⚖️'],
   [['fortaleza', 'fortress', 'castillo'],                           '🏰'],
-  [['astillero', 'shipyard'],                                       '⛵'],
+  [['astillero', 'shipyard', 'portus', 'cothon', 'emporio', 'embarcadero'], '⛵'],
   [['mina', 'mine'],                                                '⛏️'],
   [['aserradero', 'lumber', 'madera'],                              '🌲'],
   [['torre', 'tower'],                                              '🏯'],
@@ -205,6 +205,10 @@ export function createStackerHTML({ building = null, units = null } = {}) {
     const foodTag = !building.is_under_construction && isFoodBonusBuilding(bldName)
       ? '<span style="position:absolute;top:-4px;right:-5px;font-size:7px;">🌾</span>'
       : '';
+    const turnsLeft = building.remaining_construction_turns ?? 0;
+    const turnsTag  = building.is_under_construction && turnsLeft > 0
+      ? `<span style="position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);background:#222;color:#fff;font-size:7px;font-weight:700;border-radius:2px;padding:0 2px;line-height:11px;white-space:nowrap;border:1px solid ${bBorder};">${turnsLeft}t</span>`
+      : '';
     const pos     = hasTroops ? POS.building : POS.buildingCenter;
 
     parts.push(`
@@ -227,7 +231,7 @@ export function createStackerHTML({ building = null, units = null } = {}) {
           box-shadow:0 1px 4px rgba(0,0,0,0.5);
           user-select:none;
           position:relative;
-        ">${icon}${foodTag}</div>
+        ">${icon}${foodTag}${turnsTag}</div>
       </div>`);
   }
 

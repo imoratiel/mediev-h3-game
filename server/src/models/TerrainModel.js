@@ -22,7 +22,8 @@ class TerrainModel {
                 fb.building_id,
                 bld.name AS building_name,
                 bt.name  AS type_name,
-                fb.is_under_construction
+                fb.is_under_construction,
+                fb.remaining_construction_turns
             FROM fief_buildings fb
             JOIN buildings bld ON fb.building_id = bld.id
             JOIN building_types bt ON bld.type_id = bt.building_type_id

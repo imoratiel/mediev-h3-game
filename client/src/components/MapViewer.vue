@@ -308,64 +308,123 @@
 
         <!-- Market Panel -->
         <div v-if="activePanel === 'market'" class="panel-section market-panel">
-          <div class="market-header">
-            <span class="market-subtitle">
-              {{ myWorkers.length }} trabajador{{ myWorkers.length === 1 ? '' : 'es' }} contratado{{ myWorkers.length === 1 ? '' : 's' }}
-            </span>
-            <button class="btn-refresh-workers" @click="fetchMyWorkers" :disabled="loadingWorkers" title="Actualizar">
-              {{ loadingWorkers ? '⏳' : '🔄' }}
-            </button>
+
+          <!-- ── Contratar Trabajador ───────────────────────────────────── -->
+          <div class="market-section">
+            <div class="market-section-title">⛏️ Contratar Trabajador</div>
+            <div class="market-hire-form">
+              <select v-model="marketHireTypeId" class="market-select">
+                <option disabled value="null">Tipo de trabajador…</option>
+                <option v-for="t in workerTypes" :key="t.id" :value="t.id">
+                  {{ t.name }} — {{ t.cost }} 💰
+                </option>
+              </select>
+              <select v-model="marketHireH3" class="market-select">
+                <option disabled value="null">Feudo de contratación…</option>
+                <option v-for="f in marketFiefs" :key="f.h3_index" :value="f.h3_index">
+                  {{ f.is_capital ? '👑 Capital' : '🏛️ ' + (f.settlement_name || f.h3_index) }}
+                </option>
+              </select>
+              <button
+                class="market-btn market-btn-hire"
+                :disabled="!marketHireTypeId || !marketHireH3"
+                @click="buyWorkerFromMarketPanel(marketHireH3, marketHireTypeId)"
+                title="Contratar trabajador en el feudo seleccionado"
+              >⛏️ Contratar</button>
+            </div>
+            <p v-if="marketFiefs.length === 0" class="market-hint">
+              Necesitas una Capital o un <strong>Mercado</strong> completado para contratar.
+            </p>
           </div>
 
-          <div v-if="loadingWorkers" class="workers-loading">Cargando trabajadores...</div>
-
-          <div v-else-if="myWorkers.length === 0" class="workers-empty">
-            <p>No tienes trabajadores contratados.</p>
-            <p class="workers-hint">Contrátalos desde tu Capital o en un feudo con <strong>Mercado</strong>.</p>
+          <!-- ── Mercado de Alimentos ───────────────────────────────────── -->
+          <div class="market-section">
+            <div class="market-section-title">🌾 Mercado de Alimentos</div>
+            <div class="market-food-price-row">
+              <span class="market-price-label">Precio unitario</span>
+              <span class="market-price-value">— 💰 / u</span>
+            </div>
+            <div class="market-food-form">
+              <input
+                v-model.number="marketFoodAmount"
+                type="number" min="1" step="50"
+                class="market-qty-input"
+                placeholder="Cantidad"
+              />
+              <span class="market-food-total">≈ — 💰</span>
+            </div>
+            <div class="market-food-actions">
+              <button class="market-btn market-btn-buy" disabled title="Próximamente">
+                🛒 Comprar
+              </button>
+              <button class="market-btn market-btn-sell" disabled title="Próximamente">
+                💰 Vender
+              </button>
+            </div>
           </div>
 
-          <div v-else class="workers-list">
-            <div
-              v-for="worker in myWorkers"
-              :key="worker.id"
-              class="worker-card"
-            >
-              <div class="worker-card-top">
-                <span class="worker-type-badge">⛏️ {{ worker.type_name }}</span>
-                <span class="worker-id">#{{ worker.id }}</span>
+          <!-- ── Mis Trabajadores ──────────────────────────────────────── -->
+          <div class="market-section">
+            <div class="market-section-header">
+              <div class="market-section-title">
+                👷 Mis Trabajadores
+                <span class="market-worker-count">{{ myWorkers.length }}</span>
               </div>
-              <div class="worker-card-info">
-                <span title="Ubicación actual">📍 {{ worker.h3_index }}</span>
-                <span v-if="worker.terrain_type" class="worker-terrain">🌍 {{ worker.terrain_type }}</span>
-                <span v-if="worker.destination_h3" class="worker-en-route" title="Destino">
-                  ➡️ {{ worker.destination_h3 }}
-                </span>
-              </div>
-              <div class="worker-card-stats">
-                <span title="Velocidad">💨 {{ worker.speed }}</span>
-                <span title="Coste">💰 {{ worker.cost }}</span>
-              </div>
-              <div class="worker-card-actions">
-                <button
-                  v-if="['Río','Agua'].includes(worker.terrain_type)"
-                  class="worker-btn worker-btn-build-active"
-                  :title="'Construir puente (consume trabajadores)'"
-                  @click="buildBridgeFromPanel(worker.h3_index)"
-                >🌉 Puente</button>
-                <button
-                  v-else
-                  class="worker-btn worker-btn-build-active"
-                  title="Construir edificio en este feudo"
-                  @click="buildModalOpenedFromWorker = true; activePanel = null; openBuildModal(worker.h3_index)"
-                >🏛️ Edificio</button>
-                <button
-                  class="worker-btn worker-btn-move"
-                  @click="startWorkerMoveFromPanel(worker.id, worker.h3_index)"
-                  title="Mover este trabajador"
-                >➡️ Mover</button>
+              <button class="btn-refresh-workers" @click="fetchMyWorkers" :disabled="loadingWorkers" title="Actualizar">
+                {{ loadingWorkers ? '⏳' : '🔄' }}
+              </button>
+            </div>
+
+            <div v-if="loadingWorkers" class="workers-loading">Cargando trabajadores...</div>
+
+            <div v-else-if="myWorkers.length === 0" class="workers-empty">
+              <p>No tienes trabajadores contratados.</p>
+            </div>
+
+            <div v-else class="workers-list">
+              <div
+                v-for="worker in myWorkers"
+                :key="worker.id"
+                class="worker-card"
+              >
+                <div class="worker-card-top">
+                  <span class="worker-type-badge">⛏️ {{ worker.type_name }}</span>
+                  <span class="worker-id">#{{ worker.id }}</span>
+                </div>
+                <div class="worker-card-info">
+                  <span title="Ubicación actual">📍 {{ worker.h3_index }}</span>
+                  <span v-if="worker.terrain_type" class="worker-terrain">🌍 {{ worker.terrain_type }}</span>
+                  <span v-if="worker.destination_h3" class="worker-en-route" title="Destino">
+                    ➡️ {{ worker.destination_h3 }}
+                  </span>
+                </div>
+                <div class="worker-card-stats">
+                  <span title="Velocidad">💨 {{ worker.speed }}</span>
+                  <span title="Coste">💰 {{ worker.cost }}</span>
+                </div>
+                <div class="worker-card-actions">
+                  <button
+                    v-if="['Río','Agua'].includes(worker.terrain_type)"
+                    class="worker-btn worker-btn-build-active"
+                    title="Construir puente (consume trabajadores)"
+                    @click="buildBridgeFromPanel(worker.h3_index)"
+                  >🌉 Puente</button>
+                  <button
+                    v-else
+                    class="worker-btn worker-btn-build-active"
+                    title="Construir edificio en este feudo"
+                    @click="buildModalOpenedFromWorker = true; activePanel = null; openBuildModal(worker.h3_index)"
+                  >🏛️ Edificio</button>
+                  <button
+                    class="worker-btn worker-btn-move"
+                    @click="startWorkerMoveFromPanel(worker.id, worker.h3_index)"
+                    title="Mover este trabajador"
+                  >➡️ Mover</button>
+                </div>
               </div>
             </div>
           </div>
+
         </div>
 
         <!-- Kingdom Panel (Fiefs) -->
@@ -1215,6 +1274,15 @@ const workerTypes = ref([]);    // Loaded once on mount from /api/workers/types
 const myWorkers = ref([]);       // Player's hired workers (shown in market panel)
 const loadingWorkers = ref(false);
 
+// Market panel state
+const marketHireTypeId = ref(null);
+const marketHireH3 = ref(null);
+const marketFoodAmount = ref(100);
+const marketFiefs = computed(() => myFiefs.value.filter(f =>
+    f.is_capital ||
+    (f.fief_building?.name === 'Mercado' && !f.fief_building?.is_under_construction)
+));
+
 // Building construction modal state
 const showBuildModal = ref(false);
 const buildModalH3 = ref(null);
@@ -2046,24 +2114,24 @@ const renderWorkerMarkers = (workers, currentPlayerId) => {
         pane: 'workerPane',
       });
 
-      // "Construir" is only active on Río or Agua terrain
       const BRIDGE_TERRAINS = ['Río', 'Agua'];
-      const canBuild = isOwn && BRIDGE_TERRAINS.includes(data.terrain_type);
+      const canBuildBridge  = isOwn && BRIDGE_TERRAINS.includes(data.terrain_type);
+      const canBuildEdificio = isOwn && !BRIDGE_TERRAINS.includes(data.terrain_type);
 
       const terrainLabel = data.terrain_type
         ? `<span style="color:#6b7280;font-size:11px;">🌍 ${data.terrain_type}</span><br>`
         : '';
 
       const buildBtn = isOwn
-        ? canBuild
+        ? canBuildBridge
           ? `<button id="worker-build-btn-${h3_index}"
                style="flex:1;padding:4px 6px;border:none;border-radius:4px;
                       background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;"
-               title="Construir puente (consume trabajadores)">🏗️ Construir</button>`
-          : `<button disabled
-               style="flex:1;padding:4px 6px;border:1px solid #6b7280;border-radius:4px;
-                      background:#374151;color:#9ca3af;font-size:12px;cursor:not-allowed;"
-               title="Solo disponible en Río o Agua">🏗️ Construir</button>`
+               title="Construir puente (consume trabajadores)">🌉 Puente</button>`
+          : `<button id="worker-build-btn-${h3_index}"
+               style="flex:1;padding:4px 6px;border:none;border-radius:4px;
+                      background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;"
+               title="Construir edificio en este feudo">🏛️ Edificio</button>`
         : '';
 
       const ownActions = isOwn ? `
@@ -2102,14 +2170,17 @@ const renderWorkerMarkers = (workers, currentPlayerId) => {
                 window.startWorkerMovement(h3_index, workerId);
               });
             }
-            if (canBuild) {
-              const buildBtnEl = document.getElementById(`worker-build-btn-${h3_index}`);
-              if (buildBtnEl) {
-                buildBtnEl.addEventListener('click', () => {
-                  marker.closePopup();
+            const buildBtnEl = document.getElementById(`worker-build-btn-${h3_index}`);
+            if (buildBtnEl) {
+              buildBtnEl.addEventListener('click', () => {
+                marker.closePopup();
+                if (canBuildBridge) {
                   buildBridgeFromPopup(h3_index);
-                });
-              }
+                } else {
+                  buildModalOpenedFromWorker.value = true;
+                  openBuildModal(h3_index);
+                }
+              });
             }
           }, 50);
         });
@@ -5516,6 +5587,25 @@ const repairBuildingFromPopup = async (h3_index) => {
   }
 };
 
+const buyWorkerFromMarketPanel = async (h3_index, worker_type_id) => {
+  try {
+    const workerType = workerTypes.value.find(t => t.id === worker_type_id);
+    const result = await mapApi.buyWorker({ h3_index, worker_type_id });
+    if (result.success) {
+      showToast(`⛏️ ${result.message}`, 'success');
+      playerGold.value = Math.max(0, playerGold.value - (workerType?.cost ?? 0));
+      marketHireTypeId.value = null;
+      marketHireH3.value = null;
+      await fetchMyWorkers();
+    } else {
+      showToast(`❌ ${result.message}`, 'error');
+    }
+  } catch (err) {
+    const msg = err?.response?.data?.message || 'Error al contratar trabajador';
+    showToast(`❌ ${msg}`, 'error');
+  }
+};
+
 const buyWorkerFromPopup = async (h3_index, worker_type_id) => {
   try {
     const result = await mapApi.buyWorker({ h3_index, worker_type_id });
@@ -6595,24 +6685,145 @@ onBeforeUnmount(() => {
   padding: 40px 20px;
 }
 
-/* ── Market Panel (Workers) ── */
+/* ── Market Panel ── */
 .market-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 0;
+  padding: 0;
+  overflow-y: auto;
 }
 
-.market-header {
+.market-section {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.market-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #c5a059;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.market-worker-count {
+  background: rgba(197,160,89,0.2);
+  color: #c5a059;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.market-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
 }
 
-.market-subtitle {
+.market-hire-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.market-select {
+  width: 100%;
+  padding: 5px 8px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(197,160,89,0.35);
+  border-radius: 4px;
+  color: #e8d5b5;
   font-size: 12px;
+  cursor: pointer;
+}
+.market-select:focus { outline: none; border-color: #c5a059; }
+
+.market-hint {
+  font-size: 10px;
   color: var(--color-text-dim);
+  margin: 0;
+}
+
+.market-food-price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.market-price-label {
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+.market-price-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.market-food-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.market-qty-input {
+  flex: 1;
+  padding: 5px 8px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(197,160,89,0.35);
+  border-radius: 4px;
+  color: #e8d5b5;
+  font-size: 12px;
+  min-width: 0;
+}
+.market-qty-input:focus { outline: none; border-color: #c5a059; }
+
+.market-food-total {
+  font-size: 11px;
+  color: #fbbf24;
+  white-space: nowrap;
+}
+
+.market-food-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.market-btn {
+  flex: 1;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.market-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.market-btn:not(:disabled):hover { opacity: 0.85; }
+
+.market-btn-hire {
+  background: #b45309;
+  color: #fef3c7;
+}
+.market-btn-hire:disabled { background: #374151; color: #6b7280; }
+
+.market-btn-buy {
+  background: #16a34a;
+  color: #f0fdf4;
+}
+
+.market-btn-sell {
+  background: #b45309;
+  color: #fef3c7;
 }
 
 .btn-refresh-workers {
