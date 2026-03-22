@@ -2312,17 +2312,26 @@ const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) =>
  */
 const fetchAndDrawRoutes = async () => {
   try {
-    const data = await mapApi.getMyRoutes();
-    if (!data.success) return;
+    const [routeData] = await Promise.all([mapApi.getMyRoutes()]);
+    if (!routeData.success) return;
 
     RouteVisualizer.clear();
-    for (const route of data.routes) {
+
+    // Rutas de ejércitos
+    for (const route of routeData.routes) {
       if (route.path && route.path.length > 0) {
         RouteVisualizer.drawPath(route.army_id, route.path, route.h3_index);
       }
     }
+
+    // Rutas de constructores (azul) — redibujar tras el clear
+    for (const w of myWorkers.value) {
+      if (w.destination_h3) {
+        RouteVisualizer.drawWorkerPath(w.id, w.h3_index, w.destination_h3);
+      }
+    }
   } catch (err) {
-    // Las rutas son supplementarias — silenciar errores de red
+    // Las rutas son suplementarias — silenciar errores de red
     console.warn('[MapViewer] fetchAndDrawRoutes:', err.message);
   }
 };

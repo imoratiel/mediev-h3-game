@@ -115,6 +115,7 @@ class TerrainService {
                     type_name:        cell.fief_building_type_name,
                     is_under_construction: cell.fief_building_constructing,
                     turns_left:       cell.fief_building_constructing ? cell.fief_building_turns_left : null,
+                    conservation:     cell.fief_building_conservation ?? 100,
                     upgrade: (!cell.fief_building_constructing && cell.upgrade_building_id) ? {
                         id:        cell.upgrade_building_id,
                         name:      cell.upgrade_building_name,
