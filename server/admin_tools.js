@@ -6,7 +6,7 @@
 const pool = require('./db');
 const { processGameTurn, isEngineActive } = require('./src/logic/turn_engine');
 const { CONFIG, loadGameConfig } = require('./src/config');
-const { Logger } = require('./src/utils/logger');
+const { Logger, rotateLogs } = require('./src/utils/logger');
 
 const commands = {
     async status() {
@@ -150,6 +150,12 @@ const commands = {
         }
     },
 
+    async rotateLogs() {
+        console.log('\n🗂️  Rotando logs manualmente...\n');
+        rotateLogs();
+        console.log('✅ Rotación completada.\n');
+    },
+
     async help() {
         console.log('\n🎮 HERRAMIENTAS ADMINISTRATIVAS DEL MOTOR DEL JUEGO\n');
         console.log('Uso: node server/admin_tools.js <comando>\n');
@@ -161,6 +167,7 @@ const commands = {
         console.log('  forceHarvest          - Fuerza el procesamiento de cosecha (solo para pruebas)');
         console.log('  forceExploration      - Fuerza el procesamiento de exploraciones (solo para pruebas)');
         console.log('  forceMonthlyProduction - Fuerza la producción mensual (solo para pruebas)');
+        console.log('  rotateLogs            - Fuerza la rotación de logs ahora mismo');
         console.log('  help                  - Muestra esta ayuda\n');
         console.log('Ejemplos:');
         console.log('  node server/admin_tools.js status');
@@ -168,7 +175,8 @@ const commands = {
         console.log('  node server/admin_tools.js forceTurn');
         console.log('  node server/admin_tools.js forceHarvest');
         console.log('  node server/admin_tools.js forceExploration');
-        console.log('  node server/admin_tools.js forceMonthlyProduction\n');
+        console.log('  node server/admin_tools.js forceMonthlyProduction');
+        console.log('  node server/admin_tools.js rotateLogs\n');
     }
 };
 
