@@ -641,14 +641,20 @@ class CombatService {
     }
 
     /**
-     * Distribuye experiencia entre supervivientes: cada unidad recibe la misma XP base.
-     * EXP_base = (bajas enemigas × 1) + (bajas propias × 2)
-     * EXP_final = EXP_base × COMBAT_XP_MULTIPLIER. Cap 100 por tropa.
-     * @returns {number} XP base otorgada a cada unidad (tras multiplicador)
+     * Distribuye experiencia entre supervivientes como pool compartido.
+     * EXP_pool = (bajas enemigas × 1) + (bajas propias × 2)
+     * XP_por_unidad = (EXP_pool × MULTIPLIER) / total_supervivientes
+     * Ejércitos grandes diluyen la XP; supervivientes de masacres ganan mucho.
+     * Cap 100 por tropa.
+     * @returns {number} XP otorgada a cada unidad individual
      */
     async _distributeExperience(client, survivors, totalExp) {
         if (totalExp <= 0 || survivors.length === 0) return 0;
-        const xpPerUnit = Math.round(totalExp * GAME_CONFIG.MILITARY.COMBAT_XP_MULTIPLIER);
+        const totalSurvivors = survivors.reduce((s, t) => s + t.quantity, 0);
+        if (totalSurvivors === 0) return 0;
+        const xpPerUnit = Math.max(1, Math.round(
+            (totalExp * GAME_CONFIG.MILITARY.COMBAT_XP_MULTIPLIER) / totalSurvivors
+        ));
         for (const troop of survivors) {
             const newExp = Math.min(100, Math.round(parseFloat(troop.experience) + xpPerUnit));
             await CombatModel.updateTroopExperience(client, troop.troop_id, newExp);

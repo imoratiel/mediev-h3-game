@@ -410,8 +410,7 @@ class CharacterModel {
     async addXp(client, characterId, xpAmount) {
         const r = await (client || pool).query(
             `UPDATE characters
-             SET xp    = xp + $2,
-                 level = LEAST(100, level + FLOOR((xp + $2) / (level * 10))::int),
+             SET level = LEAST(100, level + FLOOR((xp + $2) / (level * 10))::int),
                  xp    = (xp + $2) % (level * 10)
              WHERE id = $1
              RETURNING id, name, level, xp`,
