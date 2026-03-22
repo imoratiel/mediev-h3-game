@@ -355,6 +355,26 @@ async function processMilitaryConsumption(client, turn, config) {
 }
 
 /**
+ * Elimina notificaciones con más de 15 días reales de antigüedad (~495 turnos a ~33 t/día).
+ * Se ejecuta una vez por mes de juego (dayOfMonth === 1).
+ */
+async function purgeOldNotifications(client, currentTurn) {
+    const TURNS_THRESHOLD = 495;
+    try {
+        const result = await client.query(
+            `DELETE FROM notifications WHERE turn_number < $1`,
+            [currentTurn - TURNS_THRESHOLD]
+        );
+        const deleted = result.rowCount ?? 0;
+        if (deleted > 0) {
+            Logger.engine(`[TURN ${currentTurn}] Notifications purged: ${deleted} entries older than ${TURNS_THRESHOLD} turns removed`);
+        }
+    } catch (error) {
+        Logger.error(error, { context: 'turn_engine.purgeOldNotifications', turn: currentTurn });
+    }
+}
+
+/**
  * Process monthly production (wood, stone, iron, fishing)
  * @param {Object} client - PostgreSQL client (within transaction)
  * @param {number} turn - Current turn number
@@ -1230,6 +1250,7 @@ async function processGameTurn(pool, config) {
             // Happiness calculated after all consumption (civil + military already ran this turn)
             await processHappiness(client, newTurn);
             await processMonthlyProduction(client, newTurn, config);
+            await purgeOldNotifications(client, newTurn);
         }
 
         // Harvest logic (days 75 and 180 - Spring and Fall harvests)
