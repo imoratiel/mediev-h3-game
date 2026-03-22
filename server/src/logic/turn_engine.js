@@ -911,12 +911,13 @@ async function processArmyRecovery(client, turn, config, movedArmyIds = new Set(
     try {
         Logger.engine(`[TURN ${turn}] Processing passive stamina recovery...`);
 
-        // Get all armies
+        // Get all armies (including battle recovery state for early-move penalty)
         const armiesResult = await client.query(`
             SELECT
                 a.army_id,
                 a.name,
                 a.player_id,
+                a.battle_recovery_turns_left,
                 p.username
             FROM armies a
             JOIN players p ON a.player_id = p.player_id
@@ -933,6 +934,42 @@ async function processArmyRecovery(client, turn, config, movedArmyIds = new Set(
                 if (movedArmyIds.has(army.army_id)) {
                     skippedCount++;
                     Logger.army(army.army_id, 'STAMINA_SKIP', `Sin recuperación — el ejército se movió este turno`);
+
+                    // Penalización por moverse antes de recuperarse de batalla
+                    const turnsLeft = parseInt(army.battle_recovery_turns_left) || 0;
+                    if (turnsLeft > 0) {
+                        const M = GAME_CONFIG.MILITARY;
+                        // -COMBAT_EARLY_MOVE_MORALE_PENALTY% de moral a todas las tropas
+                        await client.query(
+                            `UPDATE troops
+                             SET morale = GREATEST(1, morale - $1)
+                             WHERE army_id = $2`,
+                            [M.COMBAT_EARLY_MOVE_MORALE_PENALTY, army.army_id]
+                        );
+                        // -COMBAT_EARLY_MOVE_TROOP_PENALTY% de tropas (abandona heridos)
+                        const troops = await client.query(
+                            'SELECT troop_id, quantity FROM troops WHERE army_id = $1',
+                            [army.army_id]
+                        );
+                        for (const t of troops.rows) {
+                            const lost = Math.ceil(t.quantity * (M.COMBAT_EARLY_MOVE_TROOP_PENALTY / 100));
+                            const remaining = t.quantity - lost;
+                            if (remaining <= 0) {
+                                await client.query('DELETE FROM troops WHERE troop_id = $1', [t.troop_id]);
+                            } else {
+                                await client.query(
+                                    'UPDATE troops SET quantity = $1 WHERE troop_id = $2',
+                                    [remaining, t.troop_id]
+                                );
+                            }
+                        }
+                        // Cancelar recuperación rápida
+                        await client.query(
+                            `UPDATE armies SET battle_recovery_turns_left = 0, battle_recovery_rate = 0 WHERE army_id = $1`,
+                            [army.army_id]
+                        );
+                        Logger.engine(`[TURN ${turn}] Army ${army.army_id} (${army.name}): penalización por abandono de heridos — -${M.COMBAT_EARLY_MOVE_MORALE_PENALTY}% moral, -${M.COMBAT_EARLY_MOVE_TROOP_PENALTY}% tropas`);
+                    }
                 } else {
                     // Process passive stamina recovery for this army
                     const result = await ArmySimulationService.processPassiveRecovery(army.army_id);

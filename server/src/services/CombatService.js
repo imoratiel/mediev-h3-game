@@ -107,9 +107,6 @@ class CombatService {
                 attacker.army_id   // ← identifica al atacante para calcular el bono
             );
 
-            // 6. Registrar cooldown de ataque (dentro de la misma transacción)
-            await applyCooldown(client, armyId, 'attack');
-
             await client.query('COMMIT');
 
             Logger.action(
@@ -214,9 +211,6 @@ class CombatService {
                 attacker.h3_index, turn,
                 attackerArmyId
             );
-
-            // 7. Registrar cooldown de ataque (dentro de la misma transacción)
-            await applyCooldown(client, attackerArmyId, 'attack');
 
             await client.query('COMMIT');
 
@@ -452,14 +446,16 @@ class CombatService {
             else if (loser === armyB && !armyBDestroyed) retreatB = await this._retreatArmy(client, armyBId, h3Index);
         }
 
-        // 14. Agotamiento del ganador
+        // 14. Cansancio post-batalla — ambos ejércitos supervivientes
+        const totalA = troopsA.reduce((s, t) => s + t.quantity, 0);
+        const totalB = troopsB.reduce((s, t) => s + t.quantity, 0);
+        const battleType = this._getBattleType(totalA, totalB);
+
+        if (!armyADestroyed && aHasTroops) await this._applyBattleStamina(client, armyAId, battleType);
+        if (!armyBDestroyed && bHasTroops) await this._applyBattleStamina(client, armyBId, battleType);
+
+        // El ganador detiene su marcha
         if (!isDraw && winner) {
-            if (bHasTroops || aHasTroops) { // solo si hubo tropas reales en el ganador
-                await client.query(
-                    `UPDATE troops SET stamina = GREATEST(0, stamina - 20), force_rest = TRUE WHERE army_id = $1`,
-                    [winner.army_id]
-                );
-            }
             await client.query('UPDATE armies SET destination = NULL WHERE army_id = $1', [winner.army_id]);
             await client.query('DELETE FROM army_routes WHERE army_id = $1', [winner.army_id]);
         }
@@ -745,6 +741,62 @@ class CombatService {
 
         Logger.engine(`[COMBAT] Army ${armyId} retreated from ${fromH3} to ${retreatHex} (capital: ${capitalH3})`);
         return { retreated: true, destroyed: false, newHex: retreatHex };
+    }
+
+    /**
+     * Clasifica la batalla según la relación de fuerzas (nº de soldados).
+     * GREAT    → ratio ≤ 1.5   (Gran Batalla, fuerzas similares)
+     * MASSACRE → ratio ≥ 50    (Matanza, sin pérdida de stamina)
+     * SKIRMISH → resto          (Batalla intermedia)
+     */
+    _getBattleType(totalA, totalB) {
+        if (totalA === 0 || totalB === 0) return 'MASSACRE';
+        const ratio = Math.max(totalA, totalB) / Math.min(totalA, totalB);
+        const M = GAME_CONFIG.MILITARY;
+        if (ratio >= M.COMBAT_MASSACRE_RATIO)      return 'MASSACRE';
+        if (ratio <= M.COMBAT_GREAT_BATTLE_RATIO)  return 'GREAT';
+        return 'SKIRMISH';
+    }
+
+    /**
+     * Aplica el cansancio post-batalla a un ejército superviviente.
+     * GREAT:    stamina → LEAST(stamina, floor=20); tasa de recuperación rápida durante 4 turnos
+     * SKIRMISH: stamina -= 20; recuperado en 1 turno
+     * MASSACRE: sin cambio
+     */
+    async _applyBattleStamina(client, armyId, battleType) {
+        const M = GAME_CONFIG.MILITARY;
+        if (battleType === 'MASSACRE') return;
+
+        if (battleType === 'GREAT') {
+            const { rows } = await client.query(
+                'SELECT AVG(stamina)::float AS avg FROM troops WHERE army_id = $1',
+                [armyId]
+            );
+            const avgStamina = rows[0]?.avg ?? 100;
+            const floor      = M.COMBAT_GREAT_STAMINA_FLOOR;
+            const recoveryRate = avgStamina > floor
+                ? parseFloat(((avgStamina - floor) / M.COMBAT_GREAT_RECOVERY_TURNS).toFixed(2))
+                : 0;
+
+            await client.query(
+                `UPDATE troops SET stamina = LEAST(stamina, $1), force_rest = FALSE WHERE army_id = $2`,
+                [floor, armyId]
+            );
+            await client.query(
+                `UPDATE armies SET battle_recovery_rate = $1, battle_recovery_turns_left = $2 WHERE army_id = $3`,
+                [recoveryRate, M.COMBAT_GREAT_RECOVERY_TURNS, armyId]
+            );
+        } else { // SKIRMISH
+            await client.query(
+                `UPDATE troops SET stamina = GREATEST(0, stamina - $1), force_rest = FALSE WHERE army_id = $2`,
+                [M.COMBAT_SKIRMISH_STAMINA_LOSS, armyId]
+            );
+            await client.query(
+                `UPDATE armies SET battle_recovery_rate = $1, battle_recovery_turns_left = 1 WHERE army_id = $2`,
+                [M.COMBAT_SKIRMISH_STAMINA_LOSS, armyId]
+            );
+        }
     }
 
     /**

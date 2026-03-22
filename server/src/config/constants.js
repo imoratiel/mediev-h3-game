@@ -31,6 +31,14 @@ FIEF_DETECTION_RANGE: 2,        // Hexágonos visibles desde cada feudo propio (
         COMBAT_DAMAGE_SCALE:  0.10,     // Factor global de bajas (0.10 → 4–8% en combate igualado)
         COMBAT_DRAW_THRESHOLD: 0.02,    // Diferencia mínima de presión para no ser empate (2%)
         COMBAT_DEFENDER_BONUS: 1.15,    // Multiplicador de defensa para el ejército defensor (+15%)
+        // 😴 Cansancio post-batalla
+        COMBAT_GREAT_BATTLE_RATIO:        1.5,  // ratio ≤ 1.5  → Gran Batalla (80% stamina perdida)
+        COMBAT_MASSACRE_RATIO:           50,    // ratio ≥ 50   → Matanza (sin pérdida de stamina)
+        COMBAT_GREAT_STAMINA_FLOOR:      20,    // stamina mínima tras Gran Batalla
+        COMBAT_GREAT_RECOVERY_TURNS:      4,    // turnos para recuperación completa (Gran Batalla)
+        COMBAT_SKIRMISH_STAMINA_LOSS:    20,    // pérdida stamina en batalla intermedia (1 turno)
+        COMBAT_EARLY_MOVE_MORALE_PENALTY: 10,   // % moral perdida/turno por moverse en recuperación
+        COMBAT_EARLY_MOVE_TROOP_PENALTY:   5,   // % tropas eliminadas/turno por moverse en recuperación
         // 🎖️ Experiencia de Combate
         COMBAT_XP_MULTIPLIER: 15,       // Multiplicador aplicado a la XP ganada por unidades tras combate
         // 🔭 Espionaje

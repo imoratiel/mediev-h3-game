@@ -5853,6 +5853,8 @@ const processWorkerMovement = async (workerId, fromH3, targetH3) => {
 
     if (response.success) {
       showToast(`✅ ${response.message || `Trabajadores en ruta hacia ${targetH3}`}`, 'success');
+      RouteVisualizer.drawWorkerPath(parsedId, fromH3, targetH3);
+      await fetchMyWorkers();
       await fetchHexagonData();
     } else {
       showToast(`⚠️ ${response.message || 'No se pudo mover los trabajadores'}`, 'warning');

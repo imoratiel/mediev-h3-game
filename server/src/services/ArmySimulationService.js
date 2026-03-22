@@ -173,7 +173,7 @@ class ArmySimulationService {
 
       // Validar que el ejército existe
       const armyCheck = await client.query(
-        'SELECT army_id, name FROM armies WHERE army_id = $1',
+        'SELECT army_id, name, battle_recovery_rate, battle_recovery_turns_left FROM armies WHERE army_id = $1',
         [armyId]
       );
 
@@ -186,7 +186,7 @@ class ArmySimulationService {
         };
       }
 
-      const armyName = armyCheck.rows[0].name;
+      const { name: armyName, battle_recovery_rate, battle_recovery_turns_left } = armyCheck.rows[0];
 
       // Obtener todas las unidades del ejército
       const troopsResult = await client.query(
@@ -206,12 +206,15 @@ class ArmySimulationService {
       }
 
       let releasedCount = 0;
-      const RECOVERY_RATE = config.MILITARY.STAMINA_RECOVERY_PER_TURN;
+      const MAX_STAMINA      = config.MILITARY.STAMINA_MAX;
       const RELEASE_THRESHOLD = config.MILITARY.FORCE_REST_THRESHOLD;
-      const MAX_STAMINA = config.MILITARY.STAMINA_MAX;
 
-      // Calcular stamina mínima antes de la recuperación
-      // parseFloat: troops.stamina es DECIMAL(5,2) → pg lo devuelve como string → hay que parsear antes de operar
+      // Usar tasa de recuperación rápida post-batalla si está activa; si no, la normal
+      const turnsLeft   = parseInt(battle_recovery_turns_left) || 0;
+      const RECOVERY_RATE = turnsLeft > 0
+        ? parseFloat(battle_recovery_rate) || config.MILITARY.STAMINA_RECOVERY_PER_TURN
+        : config.MILITARY.STAMINA_RECOVERY_PER_TURN;
+
       const minStaminaBefore = Math.min(...troopsResult.rows.map(t => parseFloat(t.stamina)));
       const unitsInForceRest = troopsResult.rows.filter(t => t.force_rest).length;
 
@@ -244,22 +247,31 @@ class ArmySimulationService {
         }
       }
 
-      // Calcular stamina mínima después de la recuperación
+      // Decrementar contador de recuperación rápida
+      if (turnsLeft > 0) {
+        await client.query(
+          `UPDATE armies
+           SET battle_recovery_turns_left = GREATEST(0, battle_recovery_turns_left - 1),
+               battle_recovery_rate = CASE WHEN battle_recovery_turns_left <= 1 THEN 0 ELSE battle_recovery_rate END
+           WHERE army_id = $1`,
+          [armyId]
+        );
+      }
+
       const minStaminaAfter = Math.min(MAX_STAMINA, minStaminaBefore + RECOVERY_RATE);
 
       await client.query('COMMIT');
 
-      // Log de recuperación
+      const recoveryLabel = turnsLeft > 0 ? `rápida (batalla, ${turnsLeft} turnos restantes)` : 'normal';
       Logger.army(armyId, 'STAMINA_RECOVERY',
-        `+${RECOVERY_RATE} puntos aplicados. Stamina mínima: ${minStaminaBefore} → ${minStaminaAfter}. Force_rest: ${unitsInForceRest - releasedCount}/${unitsInForceRest} unidades`,
+        `+${RECOVERY_RATE} pts (${recoveryLabel}). Stamina mínima: ${minStaminaBefore} → ${minStaminaAfter}. Force_rest: ${unitsInForceRest - releasedCount}/${unitsInForceRest} unidades`,
         {
           army_name: armyName,
           recovery_rate: RECOVERY_RATE,
+          battle_recovery_turns_left: turnsLeft,
           min_stamina_before: minStaminaBefore,
           min_stamina_after: minStaminaAfter,
           units_released: releasedCount,
-          units_still_resting: unitsInForceRest - releasedCount,
-          total_units_resting: unitsInForceRest
         }
       );
 
