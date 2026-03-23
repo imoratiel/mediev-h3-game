@@ -216,21 +216,26 @@ class NavalModel {
      * Land armies at the fleet's hex, owned by the player, not yet embarked.
      * Includes troop count, character count and (per-hex) worker count for UI display.
      */
-    async GetEmbarkableArmies(client, player_id, h3_index) {
+    /**
+     * Armies that can be embarked: at the fleet's hex or at adjacent land hexes.
+     * hex_candidates includes the fleet hex + all ring-1 neighbors.
+     */
+    async GetEmbarkableArmies(client, player_id, fleet_hex, hex_candidates) {
+        const hexes = hex_candidates || [fleet_hex];
         const result = await (client || pool).query(`
             SELECT
-                a.army_id, a.name,
+                a.army_id, a.name, a.h3_index,
                 COALESCE(SUM(t.quantity), 0)::int AS troop_count,
                 (SELECT COUNT(*) FROM characters c WHERE c.army_id = a.army_id)::int AS char_count
             FROM armies a
             LEFT JOIN troops t ON a.army_id = t.army_id
             WHERE a.player_id = $1
-              AND a.h3_index  = $2
+              AND a.h3_index  = ANY($2)
               AND a.is_naval  = FALSE
               AND a.is_garrison = FALSE
               AND a.transported_by IS NULL
-            GROUP BY a.army_id, a.name
-        `, [player_id, h3_index]);
+            GROUP BY a.army_id, a.name, a.h3_index
+        `, [player_id, hexes]);
         return result.rows;
     }
 }

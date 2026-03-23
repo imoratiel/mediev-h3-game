@@ -1,4 +1,5 @@
 const pool = require('../../db.js');
+const h3   = require('h3-js');
 const NavalModel = require('../models/NavalModel.js');
 const ArmyModel = require('../models/ArmyModel.js');
 const ArmySimulationService = require('./ArmySimulationService.js');
@@ -149,8 +150,9 @@ class NavalService {
             const fleet = await NavalModel.GetFleetByIdAndOwner(client, fleet_id, player_id);
             if (!fleet) return res.status(404).json({ success: false, message: 'Flota no encontrada.' });
 
+            const hex_candidates = h3.gridDisk(fleet.h3_index, 1);
             const [armies, cargo] = await Promise.all([
-                NavalModel.GetEmbarkableArmies(client, player_id, fleet.h3_index),
+                NavalModel.GetEmbarkableArmies(client, player_id, fleet.h3_index, hex_candidates),
                 NavalModel.GetFleetCargo(client, fleet_id),
             ]);
             res.json({ success: true, armies, cargo });
@@ -353,9 +355,24 @@ class NavalService {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Este ejército ya está embarcado.' });
             }
-            if (army.h3_index !== fleet.h3_index) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, message: 'El ejército y la flota deben estar en el mismo hex para embarcar.' });
+            const sameHex = army.h3_index === fleet.h3_index;
+            if (!sameHex) {
+                // Allow pickup from adjacent land hex (beach embarkation)
+                const neighbors = h3.gridDisk(fleet.h3_index, 1);
+                if (!neighbors.includes(army.h3_index)) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: 'El ejército no está en el mismo hex ni en un hex adyacente a la flota.' });
+                }
+                const landCheck = await client.query(
+                    `SELECT 1 FROM h3_map m
+                     JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+                     WHERE m.h3_index = $1 AND tt.is_naval_passable = FALSE`,
+                    [army.h3_index]
+                );
+                if (landCheck.rows.length === 0) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: 'El ejército debe estar en tierra para embarcar desde la orilla.' });
+                }
             }
 
             // ── Gather everything that wants to board ─────────────────────────
@@ -473,11 +490,11 @@ class NavalService {
         try {
             await client.query('BEGIN');
             const player_id = req.user.player_id;
-            const { army_id } = req.body;
+            const { army_id, target_h3 } = req.body;
 
-            // Fetch army + fleet hex in one join
+            // Fetch army + fleet hex + fleet_id in one join
             const armyRes = await client.query(
-                `SELECT a.army_id, f.h3_index AS fleet_hex
+                `SELECT a.army_id, a.transported_by AS fleet_id, f.h3_index AS fleet_hex
                  FROM armies a
                  JOIN armies f ON a.transported_by = f.army_id
                  WHERE a.army_id = $1 AND a.player_id = $2`,
@@ -487,43 +504,107 @@ class NavalService {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ success: false, message: 'Ejército no encontrado o no está embarcado.' });
             }
-            const { fleet_hex } = armyRes.rows[0];
+            const { fleet_hex, fleet_id } = armyRes.rows[0];
 
-            // Fleet must be at a coastal hex (is_naval_passable=true but not open sea)
-            const coastRes = await client.query(`
-                SELECT 1 FROM h3_map m
-                JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
-                WHERE m.h3_index = $1
-                  AND tt.is_naval_passable = TRUE
-                  AND tt.name != 'Mar'
-            `, [fleet_hex]);
-            if (coastRes.rows.length === 0) {
+            // Determine landing hex based on fleet's terrain
+            const terrainRes = await client.query(
+                `SELECT tt.name FROM h3_map m
+                 JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+                 WHERE m.h3_index = $1`,
+                [fleet_hex]
+            );
+            const fleetTerrain = terrainRes.rows[0]?.name;
+
+            let land_hex;
+            if (fleetTerrain === 'Mar') {
+                // Sea hex: target_h3 must be an adjacent land hex
+                if (!target_h3) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: 'Especifica una celda de tierra adyacente para desembarcar.' });
+                }
+                const neighbors = h3.gridDisk(fleet_hex, 1);
+                if (!neighbors.includes(target_h3)) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: 'La celda de destino no es adyacente a la flota.' });
+                }
+                const landCheck = await client.query(
+                    `SELECT 1 FROM h3_map m
+                     JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+                     WHERE m.h3_index = $1 AND tt.is_naval_passable = FALSE`,
+                    [target_h3]
+                );
+                if (landCheck.rows.length === 0) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: 'Solo puedes desembarcar en hexes de tierra.' });
+                }
+                land_hex = target_h3;
+            } else if (fleetTerrain === 'Costa') {
+                // Coastal hex: land here
+                land_hex = fleet_hex;
+            } else {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, message: 'Solo puedes desembarcar en hexes costeros o con puerto.' });
+                return res.status(400).json({ success: false, message: 'La flota debe estar en mar o costa para desembarcar.' });
             }
 
-            // Fetch fleet_id before clearing transported_by
-            const fleetIdRes = await client.query(
-                `SELECT transported_by FROM armies WHERE army_id = $1`, [army_id]
-            );
-            const fleet_id = fleetIdRes.rows[0]?.transported_by;
-
             await NavalModel.DisembarkArmy(client, army_id);
-            await client.query('UPDATE armies SET h3_index = $1 WHERE army_id = $2', [fleet_hex, army_id]);
+            await client.query('UPDATE armies SET h3_index = $1 WHERE army_id = $2', [land_hex, army_id]);
 
-            // Also disembark any workers transported by the same fleet
             if (fleet_id) {
-                await NavalModel.DisembarkWorkers(client, fleet_id, fleet_hex);
+                await NavalModel.DisembarkWorkers(client, fleet_id, land_hex);
             }
 
             await client.query('COMMIT');
 
-            Logger.action(`Ejército ${army_id} desembarcado en ${fleet_hex}`);
-            res.json({ success: true, landed_at: fleet_hex });
+            Logger.action(`Ejército ${army_id} desembarcado en ${land_hex}`);
+            res.json({ success: true, landed_at: land_hex });
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});
             Logger.error(err, { endpoint: '/naval/disembark', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al desembarcar el ejército.' });
+        } finally { client.release(); }
+    }
+
+    // ── GET /naval/landing-hexes/:fleet_id ───────────────────────────────────
+    // Returns adjacent land hexes where the fleet can disembark troops.
+    // is_sea=false → fleet is at a coastal hex, land directly here.
+    // is_sea=true  → fleet is at open sea, returns list of adjacent land hexes.
+
+    async GetLandingHexes(req, res) {
+        const client = await pool.connect();
+        try {
+            const fleet_id  = parseInt(req.params.fleet_id, 10);
+            const player_id = req.user.player_id;
+
+            const fleet = await NavalModel.GetFleetByIdAndOwner(client, fleet_id, player_id);
+            if (!fleet) return res.status(404).json({ success: false, message: 'Flota no encontrada.' });
+
+            const terrainRes = await client.query(
+                `SELECT tt.name FROM h3_map m
+                 JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+                 WHERE m.h3_index = $1`,
+                [fleet.h3_index]
+            );
+            const fleetTerrain = terrainRes.rows[0]?.name;
+
+            if (fleetTerrain !== 'Mar') {
+                // Coastal: land directly at fleet hex
+                return res.json({ success: true, is_sea: false, landing_hexes: [], fleet_hex: fleet.h3_index });
+            }
+
+            // Sea hex: find adjacent land hexes
+            const neighbors = h3.gridDisk(fleet.h3_index, 1).filter(n => n !== fleet.h3_index);
+            const landRes = await client.query(
+                `SELECT m.h3_index, tt.name AS terrain_name, m.player_id
+                 FROM h3_map m
+                 JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+                 WHERE m.h3_index = ANY($1) AND tt.is_naval_passable = FALSE`,
+                [neighbors]
+            );
+
+            res.json({ success: true, is_sea: true, fleet_hex: fleet.h3_index, landing_hexes: landRes.rows });
+        } catch (err) {
+            Logger.error(err, { endpoint: '/naval/landing-hexes/:fleet_id', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener hexes de desembarco.' });
         } finally { client.release(); }
     }
 

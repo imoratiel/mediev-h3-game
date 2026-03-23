@@ -2005,8 +2005,16 @@ const fetchHexagonData = async () => {
     // Render worker markers on separate layer
     renderWorkerMarkers(workers, currentPlayerId);
 
+    // Hexes where the own player already has land troops (fleet marker hidden there — accessible via nav popup)
+    const hexesWithOwnTroops = new Set(
+      armies
+        .filter(e => e.player_id === currentPlayerId && Number(e.total_troops) > 0)
+        .map(e => e.h3_index)
+    );
+
     // Render own fleet markers (interactive: move, stop, embark, disembark)
-    renderFleetMarkers(fleets);
+    // Skip hexes that already show a land-army HexStacker (fleet accessible via ◀/▶ navigation)
+    renderFleetMarkers(fleets, hexesWithOwnTroops);
     _all_fleets = fleets || [];
 
     // Render in-progress construction markers
@@ -2240,12 +2248,15 @@ const clearFleetMarkers = () => { if (fleetMarkersLayer) fleetMarkersLayer.clear
  * Each fleet gets a clickable ⛵ marker with a popup:
  * Moverse / Detenerse / Embarcar Tropas / Desembarcar Tropas
  */
-const renderFleetMarkers = (fleets) => {
+const renderFleetMarkers = (fleets, hexesWithOwnTroops = new Set()) => {
   clearFleetMarkers();
   if (!fleets || fleets.length === 0) return;
 
   for (const fleet of fleets) {
     try {
+      // Fleet hidden when own troops are already visible at this hex (accessible via ◀/▶ popup)
+      if (hexesWithOwnTroops.has(fleet.h3_index)) continue;
+
       const [lat, lng] = cellToLatLng(fleet.h3_index);
 
       const icon = L.divIcon({
@@ -2259,7 +2270,7 @@ const renderFleetMarkers = (fleets) => {
           cursor:pointer;"
           title="${fleet.name} · ${fleet.total_ships} barcos">⛵</div>`,
         iconSize: [26, 26],
-        iconAnchor: [20, 6],
+        iconAnchor: [13, 13],
         pane: 'fleetPane',
       });
 
@@ -4853,7 +4864,7 @@ const attachFleetListeners = (fleet) => {
         ? '<span style="color:#6b7280;">No hay tropas embarcadas.</span>'
         : embarked.map(a => `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #374151;">
             <span>⚔️ ${a.name} (${a.troop_count})</span>
-            <button onclick="window.doFleetDisembark(${a.army_id},'${a.name.replace(/'/g, "\\'")}',this)"
+            <button onclick="window.doFleetDisembark(${a.army_id},'${a.name.replace(/'/g, "\\'")}',${fid},this)"
               style="padding:2px 8px;border:none;border-radius:3px;background:#7c2d12;color:#fff;font-size:11px;cursor:pointer;">Desembarcar</button>
           </div>`).join('');
     } catch { panel.innerHTML = '<span style="color:#ef4444;">Error al cargar carga.</span>'; }
@@ -6119,11 +6130,54 @@ const setupMapInteractionController = () => {
     }
   };
 
-  window.doFleetDisembark = async (armyId, armyName, btn) => {
+  window.doFleetDisembark = async (armyId, armyName, fleetId, btn) => {
     if (btn) btn.disabled = true;
     try {
-      await mapApi.disembarkArmy(armyId);
-      showToast(`✅ ${armyName} desembarcado.`, 'success');
+      const landingData = await mapApi.getLandingHexes(fleetId);
+      if (!landingData.is_sea) {
+        // Coastal hex: land directly
+        await mapApi.disembarkArmy(armyId);
+        showToast(`✅ ${armyName} desembarcado.`, 'success');
+        map.closePopup();
+        await fetchHexagonData();
+      } else {
+        // Sea hex: need to pick a landing hex
+        const hexes = landingData.landing_hexes;
+        if (hexes.length === 0) {
+          showToast('No hay celdas de tierra adyacentes para desembarcar.', 'error');
+          if (btn) btn.disabled = false;
+          return;
+        }
+        if (hexes.length === 1) {
+          await mapApi.disembarkArmy(armyId, hexes[0].h3_index);
+          showToast(`✅ ${armyName} desembarcado en ${hexes[0].terrain_name}.`, 'success');
+          map.closePopup();
+          await fetchHexagonData();
+        } else {
+          // Show inline hex selector in the panel
+          const panel = btn?.closest('[id^="fl-panel-"]');
+          if (panel) {
+            const btnStyle = 'margin:2px;padding:3px 8px;border:none;border-radius:3px;background:#7c2d12;color:#fff;font-size:11px;cursor:pointer;';
+            panel.innerHTML = `<div style="font-size:11px;color:#d1d5db;margin-bottom:4px;">⚓ Elige celda de desembarco:</div>` +
+              hexes.map(hx => `<button onclick="window.doFleetDisembarkAt(${armyId},'${armyName.replace(/'/g, "\\'")}','${hx.h3_index}','${hx.terrain_name}',this)"
+                style="${btnStyle}">🏖️ ${hx.terrain_name} <span style="font-size:9px;opacity:0.6;">${hx.h3_index.slice(0,8)}…</span></button>`
+              ).join('');
+          } else {
+            if (btn) btn.disabled = false;
+          }
+        }
+      }
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showToast(`❌ ${err?.response?.data?.message || 'Error al desembarcar'}`, 'error');
+    }
+  };
+
+  window.doFleetDisembarkAt = async (armyId, armyName, targetH3, terrainName, btn) => {
+    if (btn) btn.disabled = true;
+    try {
+      await mapApi.disembarkArmy(armyId, targetH3);
+      showToast(`✅ ${armyName} desembarcado en ${terrainName}.`, 'success');
       map.closePopup();
       await fetchHexagonData();
     } catch (err) {

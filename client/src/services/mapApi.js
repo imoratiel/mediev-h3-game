@@ -896,8 +896,15 @@ export async function embarkArmy(fleet_id, army_id) {
   return response.data;
 }
 
-export async function disembarkArmy(army_id) {
-  const response = await axios.post(`${API_URL}/api/naval/disembark`, { army_id });
+export async function disembarkArmy(army_id, target_h3 = null) {
+  const body = { army_id };
+  if (target_h3) body.target_h3 = target_h3;
+  const response = await axios.post(`${API_URL}/api/naval/disembark`, body);
+  return response.data;
+}
+
+export async function getLandingHexes(fleet_id) {
+  const response = await axios.get(`${API_URL}/api/naval/landing-hexes/${fleet_id}`);
   return response.data;
 }
 

@@ -113,6 +113,7 @@ module.exports = function () {
     router.get('/naval/fleets/:id',              authenticateToken, (req, res) => NavalService.GetFleetDetail(req, res));
     router.get('/naval/capacity',                authenticateToken, (req, res) => NavalService.GetCapacity(req, res));
     router.get('/naval/embarkable/:fleet_id',    authenticateToken, (req, res) => NavalService.GetEmbarkable(req, res));
+    router.get('/naval/landing-hexes/:fleet_id', authenticateToken, (req, res) => NavalService.GetLandingHexes(req, res));
     router.post('/naval/create-fleet',           authenticateToken, (req, res) => NavalService.CreateFleet(req, res));
     router.post('/naval/recruit-ships',          authenticateToken, (req, res) => NavalService.RecruitShips(req, res));
     router.post('/naval/embark',                 authenticateToken, (req, res) => NavalService.EmbarkArmy(req, res));
