@@ -4,7 +4,9 @@ const path = require('path');
 // Load environment variables from root .env file
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const isLocal = process.env.NODE_ENV === 'development';
+// SSL solo si se activa explícitamente con DB_SSL=true (para servicios externos como Neon).
+// Con Postgres en Docker local o en VPS propio, no se necesita SSL.
+const useSSL = process.env.DB_SSL === 'true';
 
 // Create PostgreSQL connection pool
 const pool = new Pool({
@@ -13,7 +15,7 @@ const pool = new Pool({
   host: process.env.DB_HOST || 'db',
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME,
-  ssl: isLocal ? false : { rejectUnauthorized: false }
+  ssl: useSSL ? { rejectUnauthorized: false } : false,
 });
 
 // Test connection
