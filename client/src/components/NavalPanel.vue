@@ -169,6 +169,7 @@ import {
 const props = defineProps({
   playerGold: { type: Number, default: 0 },
   playerCultureId: { type: Number, default: null },
+  preselectedFleetId: { type: Number, default: null },
 });
 
 const emit = defineEmits(['gold-updated', 'refresh']);
@@ -191,6 +192,9 @@ const recruitQty     = ref({});
 // ── init ───────────────────────────────────────────────────────
 onMounted(async () => {
   await Promise.all([loadFleets(), loadCapacity(), loadShipTypes()]);
+  if (props.preselectedFleetId) {
+    await toggleFleet(props.preselectedFleetId);
+  }
 });
 
 async function loadFleets(silent = false) {

@@ -4,10 +4,10 @@
  */
 
 const GAME_CONFIG = {
-    // 🐛 Modo DEBUG — desactivar en producción
+    // 🐛 Modo DEBUG — se desactiva automáticamente en producción
     DEBUG: {
-        ENABLED:             true,   // false en producción
-        GOLD_MULTIPLIER:     100,    // Multiplicador de oro inicial cuando DEBUG está activo
+        ENABLED:         process.env.NODE_ENV !== 'production',
+        GOLD_MULTIPLIER: 100,    // Multiplicador de oro inicial cuando DEBUG está activo
     },
 
 
@@ -60,8 +60,8 @@ FIEF_DETECTION_RANGE: 2,        // Hexágonos visibles desde cada feudo propio (
 
     // 🌾 Producción y Cosecha
     HARVEST: {
-        FOOD_PRODUCTION_MULTIPLIER: 2.5,    // Balance test: multiplicador sobre producción agrícola de cosecha (restaurar a 1 para comportamiento normal)
-        GOLD_PRODUCTION_MULTIPLIER: 100,   // Balance test: multiplicador sobre producción de oro en cosecha (restaurar a 1 para comportamiento normal)
+        FOOD_PRODUCTION_MULTIPLIER: 1,      // Multiplicador sobre producción agrícola de cosecha
+        GOLD_PRODUCTION_MULTIPLIER: 1,      // Multiplicador sobre producción de oro en cosecha
         EMERGENCY_HARVEST_MIN: 2.0,       // Multiplicador mínimo de Cosecha Milagrosa (emergencia alimentaria)
         EMERGENCY_HARVEST_MAX: 4.0,       // Multiplicador máximo de Cosecha Milagrosa (exclusivo, rango [MIN, MAX))
     },
