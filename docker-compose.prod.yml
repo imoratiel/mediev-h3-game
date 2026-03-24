@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: marca_hispanica_backend
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - game-network
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: marca_hispanica_client
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - game-network
+
+  db:
+    image: postgres:15-alpine
+    container_name: marca_hispanica_db
+    restart: always
+    env_file: .env
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    # Puerto expuesto solo para el primer volcado del mapa (extractor.py).
+    # Una vez cargado el mapa puedes comentar esta línea.
+    ports:
+      - "5444:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d/:ro
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - game-network
+
+networks:
+  game-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
