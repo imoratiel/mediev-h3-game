@@ -423,7 +423,7 @@
                     class="worker-btn worker-btn-build-active"
                     title="Construir edificio en este feudo"
                     @click="buildModalOpenedFromWorker = true; activePanel = null; openBuildModal(worker.h3_index)"
-                  >🏛️ Edificio</button>
+                  >🏛️ Construir</button>
                   <button
                     class="worker-btn worker-btn-move"
                     @click="startWorkerMoveFromPanel(worker.id, worker.h3_index)"
