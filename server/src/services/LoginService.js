@@ -1,3 +1,4 @@
+const bcrypt = require('bcrypt');
 const { Logger } = require('../utils/logger');
 const PlayerModel = require('../models/PlayerModel.js');
 const { generateToken } = require('../middleware/auth');
@@ -29,7 +30,8 @@ class LoginService {
 
             const user = result.rows[0];
 
-            if (password !== user.password) {
+            const passwordValid = await bcrypt.compare(password, user.password);
+            if (!passwordValid) {
                 Logger.error(new Error('Login attempt with incorrect password'), {
                     endpoint: '/api/auth/login',
                     method: 'POST',

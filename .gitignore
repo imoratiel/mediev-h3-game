@@ -3,6 +3,7 @@ config.php
 config.pro.php
 config.json
 .env
+.env_pro
 logs/*.log
 *.log
 
