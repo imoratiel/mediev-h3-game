@@ -50,10 +50,9 @@ services:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
-    # Puerto expuesto solo para el primer volcado del mapa (extractor.py).
-    # Una vez cargado el mapa puedes comentar esta línea.
-    ports:
-      - "5444:5432"
+    # Puerto NO expuesto externamente. Para acceso local usa SSH tunnel:
+    #   ssh -L 5444:localhost:5444 deploy@77.42.41.33
+    # y conecta DBeaver a localhost:5444
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./sql:/docker-entrypoint-initdb.d/:ro
