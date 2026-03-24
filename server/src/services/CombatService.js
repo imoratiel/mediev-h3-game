@@ -334,8 +334,55 @@ class CombatService {
         const terrain = await CombatModel.getTerrainAtHex(client, h3Index);
 
         // 5. Tropas efectivas (reales o guardia virtual)
-        const troopsA = aHasTroops ? armyA.troops : this._buildGuardTroops(commanderA);
-        const troopsB = bHasTroops ? armyB.troops : this._buildGuardTroops(commanderB);
+        const troopsA = aHasTroops ? armyA.troops.map(t => ({ ...t })) : this._buildGuardTroops(commanderA);
+        const troopsB = bHasTroops ? armyB.troops.map(t => ({ ...t })) : this._buildGuardTroops(commanderB);
+
+        // 5b. Bonificadores de moral pre-batalla (solo afectan al cálculo, no se guardan)
+        const totalQtyA = troopsA.reduce((s, t) => s + t.quantity, 0);
+        const totalQtyB = troopsB.reduce((s, t) => s + t.quantity, 0);
+
+        // Territorio propio: +20 moral durante la batalla al ejército que defiende su feudo
+        const hexOwnerRes = await client.query(
+            'SELECT player_id FROM h3_map WHERE h3_index = $1', [h3Index]
+        );
+        const hexOwner = hexOwnerRes.rows[0]?.player_id ?? null;
+        if (hexOwner !== null) {
+            if (hexOwner === armyA.player_id)
+                troopsA.forEach(t => { t.morale = Math.min(100, parseFloat(t.morale) + 20).toString(); });
+            if (hexOwner === armyB.player_id)
+                troopsB.forEach(t => { t.morale = Math.min(100, parseFloat(t.morale) + 20).toString(); });
+        }
+
+        // Ejército aliado presente en el hex: +5 moral si ese ejército supone ≥10% del enemigo
+        const alliedBonus = async (playerIdFriend, enemyTotalQty, troopsTarget) => {
+            const allies = await client.query(`
+                SELECT a.army_id, COALESCE(SUM(t.quantity), 0)::int AS qty
+                FROM armies a
+                LEFT JOIN troops t ON t.army_id = a.army_id
+                WHERE a.h3_index = $1
+                  AND a.player_id != $2
+                  AND a.army_id NOT IN ($3, $4)
+                  AND EXISTS (
+                      SELECT 1 FROM player_relations pr
+                      JOIN relation_types rt ON rt.id = pr.type_id
+                      WHERE pr.status = 'active' AND rt.code IN ('alianza', 'mercenariado')
+                        AND ((pr.from_player_id = a.player_id AND pr.to_player_id = $2)
+                          OR (pr.from_player_id = $2 AND pr.to_player_id = a.player_id))
+                      UNION ALL
+                      SELECT 1 FROM player_relations pr
+                      JOIN relation_types rt ON rt.id = pr.type_id
+                      WHERE pr.status = 'active' AND rt.code = 'clientela'
+                        AND pr.from_player_id = a.player_id AND pr.to_player_id = $2
+                  )
+                GROUP BY a.army_id
+            `, [h3Index, playerIdFriend, armyAId, armyBId]);
+            const allyQty = allies.rows.reduce((s, r) => s + r.qty, 0);
+            if (allyQty >= enemyTotalQty * 0.10) {
+                troopsTarget.forEach(t => { t.morale = Math.min(100, parseFloat(t.morale) + 5).toString(); });
+            }
+        };
+        await alliedBonus(armyA.player_id, totalQtyB, troopsA);
+        await alliedBonus(armyB.player_id, totalQtyA, troopsB);
 
         // 6. Calcular tasas de bajas con el nuevo sistema daño-por-unidad
         // tasaOnB = % de bajas que A inflige sobre B
@@ -437,6 +484,25 @@ class CombatService {
             if (bestA) await CharacterModel.addXp(client, bestA.id, 2);
             const bestB = await CharacterModel.getBestInArmy(client, armyBId);
             if (bestB) await CharacterModel.addXp(client, bestB.id, 2);
+        }
+
+        // 12c. Modificadores de moral post-batalla
+        if (!isDraw && winner && loser) {
+            if (!armyADestroyed && aHasTroops) {
+                const delta = winner === armyA ? +5 : -5;
+                await client.query(
+                    `UPDATE troops SET morale = GREATEST(0, LEAST(100, morale + $1)) WHERE army_id = $2`,
+                    [delta, armyAId]
+                );
+            }
+            if (!armyBDestroyed && bHasTroops) {
+                const delta = winner === armyB ? +5 : -5;
+                await client.query(
+                    `UPDATE troops SET morale = GREATEST(0, LEAST(100, morale + $1)) WHERE army_id = $2`,
+                    [delta, armyBId]
+                );
+            }
+            Logger.engine(`[TURN ${turn}] Moral post-batalla: ganador +5, perdedor -5`);
         }
 
         // 13. Huida del perdedor

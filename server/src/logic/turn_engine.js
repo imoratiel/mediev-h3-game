@@ -917,10 +917,17 @@ async function processArmyRecovery(client, turn, config, movedArmyIds = new Set(
                 a.army_id,
                 a.name,
                 a.player_id,
+                a.h3_index,
                 a.battle_recovery_turns_left,
-                p.username
+                p.username,
+                EXISTS (
+                    SELECT 1 FROM characters c
+                    WHERE c.army_id = a.army_id AND c.age >= 16
+                ) AS has_character,
+                (m.player_id = a.player_id) AS in_own_fief
             FROM armies a
             JOIN players p ON a.player_id = p.player_id
+            LEFT JOIN h3_map m ON m.h3_index = a.h3_index
         `);
 
         let recoveredCount = 0;
@@ -988,6 +995,22 @@ async function processArmyRecovery(client, turn, config, movedArmyIds = new Set(
                             turn: turn,
                             armyId: army.army_id
                         });
+                    }
+
+                    // Moral pasiva: feudo propio +1/turno
+                    if (army.in_own_fief) {
+                        await client.query(
+                            `UPDATE troops SET morale = LEAST(100, morale + 1) WHERE army_id = $1`,
+                            [army.army_id]
+                        );
+                    }
+
+                    // Moral pasiva: personaje presente +5/mes (cada 30 turnos)
+                    if (army.has_character && (turn % 30) === 0) {
+                        await client.query(
+                            `UPDATE troops SET morale = LEAST(100, morale + 5) WHERE army_id = $1`,
+                            [army.army_id]
+                        );
                     }
                 }
 
