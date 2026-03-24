@@ -117,7 +117,11 @@ module.exports = function () {
     router.post('/naval/create-fleet',           authenticateToken, (req, res) => NavalService.CreateFleet(req, res));
     router.post('/naval/recruit-ships',          authenticateToken, (req, res) => NavalService.RecruitShips(req, res));
     router.post('/naval/embark',                 authenticateToken, (req, res) => NavalService.EmbarkArmy(req, res));
+    router.post('/naval/embark-character',       authenticateToken, (req, res) => NavalService.EmbarkCharacter(req, res));
+    router.post('/naval/embark-worker',          authenticateToken, (req, res) => NavalService.EmbarkWorkerDirect(req, res));
     router.post('/naval/disembark',              authenticateToken, (req, res) => NavalService.DisembarkArmy(req, res));
+    router.post('/naval/disembark-character',    authenticateToken, (req, res) => NavalService.DisembarkStandaloneChar(req, res));
+    router.post('/naval/disembark-worker',       authenticateToken, (req, res) => NavalService.DisembarkStandaloneWorker(req, res));
     router.post('/naval/move-fleet',             authenticateToken, (req, res) => NavalService.MoveFleet(req, res));
     router.post('/naval/stop-fleet',             authenticateToken, (req, res) => NavalService.StopFleet(req, res));
 

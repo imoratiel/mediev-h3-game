@@ -2659,9 +2659,10 @@ const fetchAndRenderCharacters = async () => {
     const characters = data.characters ?? [];
     _char_cache = characters;
     for (const char of characters) {
-      if (!char.h3_index) continue;  // sin posición → sin marcador
-      if (char.age < 16) continue;   // menores no visibles en el mapa
-      if (char.army_id)  continue;   // viaja con el ejército → sin marcador propio
+      if (!char.h3_index) continue;        // sin posición → sin marcador
+      if (char.age < 16) continue;         // menores no visibles en el mapa
+      if (char.army_id)  continue;         // viaja con el ejército → sin marcador propio
+      if (char.transported_by) continue;   // embarcado en flota → sin marcador en tierra
       try {
         const [lat, lng] = cellToLatLng(char.h3_index);
         const isMain = char.is_main_character;
@@ -4836,21 +4837,43 @@ const attachFleetListeners = (fleet) => {
     panel.innerHTML = '<span style="color:#9ca3af;">Cargando...</span>';
     try {
       const data = await mapApi.getEmbarkableArmies(fid);
-      const armies = data.armies || [];
-      panel.innerHTML = armies.length === 0
-        ? '<span style="color:#6b7280;">No hay ejércitos disponibles para embarcar.</span>'
-        : armies.map(a => {
-            const parts = [];
-            if (a.troop_count > 0) parts.push(`⚔️ ${a.troop_count}`);
-            if (a.char_count  > 0) parts.push(`👑 ${a.char_count}`);
-            const label = parts.length ? `${a.name} (${parts.join(' ')})` : a.name;
-            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #374151;">
-              <span style="font-size:12px;">${label}</span>
-              <button onclick="window.doFleetEmbark(${fid},${a.army_id},'${a.name.replace(/'/g, "\\'")}',this)"
-                style="padding:2px 8px;border:none;border-radius:3px;background:#065f46;color:#fff;font-size:11px;cursor:pointer;">Embarcar</button>
-            </div>`;
-          }).join('');
-    } catch { panel.innerHTML = '<span style="color:#ef4444;">Error al cargar ejércitos.</span>'; }
+      const armies  = data.armies               || [];
+      const chars   = data.standalone_characters || [];
+      const workers = data.standalone_workers    || [];
+      const rowStyle = 'display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #374151;';
+      const btnGreen = 'padding:2px 8px;border:none;border-radius:3px;background:#065f46;color:#fff;font-size:11px;cursor:pointer;';
+      let html = '';
+
+      if (armies.length) {
+        html += `<div style="font-size:10px;color:#9ca3af;margin:4px 0 2px;">⚔️ Ejércitos</div>`;
+        html += armies.map(a => {
+          const parts = [];
+          if (a.troop_count > 0) parts.push(`⚔️ ${a.troop_count}`);
+          if (a.char_count  > 0) parts.push(`👑 ${a.char_count}`);
+          const label = parts.length ? `${a.name} (${parts.join(' ')})` : a.name;
+          return `<div style="${rowStyle}"><span style="font-size:12px;">${label}</span>
+            <button onclick="window.doFleetEmbark(${fid},${a.army_id},'${a.name.replace(/'/g, "\\'")}',this)" style="${btnGreen}">Embarcar</button></div>`;
+        }).join('');
+      }
+
+      if (chars.length) {
+        html += `<div style="font-size:10px;color:#9ca3af;margin:4px 0 2px;">👑 Personajes sueltos</div>`;
+        html += chars.map(c =>
+          `<div style="${rowStyle}"><span style="font-size:12px;">👑 ${c.name}</span>
+            <button onclick="window.doFleetEmbarkChar(${fid},${c.id},'${c.name.replace(/'/g, "\\'")}',this)" style="${btnGreen}">Embarcar</button></div>`
+        ).join('');
+      }
+
+      if (workers.length) {
+        html += `<div style="font-size:10px;color:#9ca3af;margin:4px 0 2px;">⛏️ Constructores (${workers.length})</div>`;
+        html += workers.map(w =>
+          `<div style="${rowStyle}"><span style="font-size:12px;">⛏️ Constructor #${w.id}</span>
+            <button onclick="window.doFleetEmbarkWorker(${fid},${w.id},this)" style="${btnGreen}">Embarcar</button></div>`
+        ).join('');
+      }
+
+      panel.innerHTML = html || '<span style="color:#6b7280;">Nada disponible para embarcar.</span>';
+    } catch { panel.innerHTML = '<span style="color:#ef4444;">Error al cargar.</span>'; }
   });
 
   document.getElementById(`fl-disembark-${fid}`)?.addEventListener('click', async () => {
@@ -4859,14 +4882,39 @@ const attachFleetListeners = (fleet) => {
     panel.innerHTML = '<span style="color:#9ca3af;">Cargando...</span>';
     try {
       const data = await mapApi.getFleetDetail(fid);
-      const embarked = data.fleet?.cargo?.embarked_armies || [];
-      panel.innerHTML = embarked.length === 0
-        ? '<span style="color:#6b7280;">No hay tropas embarcadas.</span>'
-        : embarked.map(a => `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #374151;">
-            <span>⚔️ ${a.name} (${a.troop_count})</span>
-            <button onclick="window.doFleetDisembark(${a.army_id},'${a.name.replace(/'/g, "\\'")}',${fid},this)"
-              style="padding:2px 8px;border:none;border-radius:3px;background:#7c2d12;color:#fff;font-size:11px;cursor:pointer;">Desembarcar</button>
-          </div>`).join('');
+      const cargo   = data.fleet?.cargo || {};
+      const armies  = cargo.embarked_armies   || [];
+      const chars   = cargo.standalone_chars  || [];
+      const workers = cargo.standalone_workers || [];
+      const rowStyle = 'display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #374151;';
+      const btnRed = 'padding:2px 8px;border:none;border-radius:3px;background:#7c2d12;color:#fff;font-size:11px;cursor:pointer;';
+      let html = '';
+
+      if (armies.length) {
+        html += `<div style="font-size:10px;color:#9ca3af;margin:4px 0 2px;">⚔️ Ejércitos</div>`;
+        html += armies.map(a => `<div style="${rowStyle}">
+          <span>⚔️ ${a.name} (${a.troop_count})</span>
+          <button onclick="window.doFleetDisembark(${a.army_id},'${a.name.replace(/'/g, "\\'")}',${fid},this)" style="${btnRed}">Desembarcar</button>
+        </div>`).join('');
+      }
+
+      if (chars.length) {
+        html += `<div style="font-size:10px;color:#9ca3af;margin:4px 0 2px;">👑 Personajes</div>`;
+        html += chars.map(c => `<div style="${rowStyle}">
+          <span>👑 ${c.name}</span>
+          <button onclick="window.doFleetDisembarkChar(${c.id},'${c.name.replace(/'/g, "\\'")}',${fid},this)" style="${btnRed}">Desembarcar</button>
+        </div>`).join('');
+      }
+
+      if (workers.length) {
+        html += `<div style="font-size:10px;color:#9ca3af;margin:4px 0 2px;">⛏️ Constructores</div>`;
+        html += workers.map(w => `<div style="${rowStyle}">
+          <span>⛏️ ${w.type_name} #${w.id}</span>
+          <button onclick="window.doFleetDisembarkWorker(${w.id},${fid},this)" style="${btnRed}">Desembarcar</button>
+        </div>`).join('');
+      }
+
+      panel.innerHTML = html || '<span style="color:#6b7280;">Nada embarcado.</span>';
     } catch { panel.innerHTML = '<span style="color:#ef4444;">Error al cargar carga.</span>'; }
   });
 };
@@ -6130,6 +6178,32 @@ const setupMapInteractionController = () => {
     }
   };
 
+  window.doFleetEmbarkChar = async (fleetId, charId, charName, btn) => {
+    if (btn) btn.disabled = true;
+    try {
+      await mapApi.embarkCharacter(fleetId, charId);
+      showToast(`✅ ${charName} embarcado.`, 'success');
+      map.closePopup();
+      await fetchHexagonData();
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showToast(`❌ ${err?.response?.data?.message || 'Error al embarcar'}`, 'error');
+    }
+  };
+
+  window.doFleetEmbarkWorker = async (fleetId, workerId, btn) => {
+    if (btn) btn.disabled = true;
+    try {
+      await mapApi.embarkWorker(fleetId, workerId);
+      showToast(`✅ Constructor embarcado.`, 'success');
+      map.closePopup();
+      await fetchHexagonData();
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showToast(`❌ ${err?.response?.data?.message || 'Error al embarcar'}`, 'error');
+    }
+  };
+
   window.doFleetDisembark = async (armyId, armyName, fleetId, btn) => {
     if (btn) btn.disabled = true;
     try {
@@ -6178,6 +6252,100 @@ const setupMapInteractionController = () => {
     try {
       await mapApi.disembarkArmy(armyId, targetH3);
       showToast(`✅ ${armyName} desembarcado en ${terrainName}.`, 'success');
+      map.closePopup();
+      await fetchHexagonData();
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showToast(`❌ ${err?.response?.data?.message || 'Error al desembarcar'}`, 'error');
+    }
+  };
+
+  window.doFleetDisembarkChar = async (charId, charName, fleetId, btn) => {
+    if (btn) btn.disabled = true;
+    try {
+      const landing = await mapApi.getLandingHexes(fleetId);
+      if (!landing.is_sea) {
+        await mapApi.disembarkCharacter(charId);
+        showToast(`✅ ${charName} desembarcado.`, 'success');
+        map.closePopup();
+        await fetchHexagonData();
+      } else if (landing.landing_hexes.length === 1) {
+        await mapApi.disembarkCharacter(charId, landing.landing_hexes[0].h3_index);
+        showToast(`✅ ${charName} desembarcado en ${landing.landing_hexes[0].terrain_name}.`, 'success');
+        map.closePopup();
+        await fetchHexagonData();
+      } else if (landing.landing_hexes.length > 1) {
+        const panel = btn?.closest('[id^="fl-panel-"]');
+        if (panel) {
+          const btnRed = 'padding:2px 8px;border:none;border-radius:3px;background:#7c2d12;color:#fff;font-size:11px;cursor:pointer;margin:2px;';
+          panel.innerHTML = `<div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">Elige dónde desembarcar a ${charName}:</div>` +
+            landing.landing_hexes.map(hx =>
+              `<button onclick="window.doFleetDisembarkCharAt(${charId},'${charName.replace(/'/g, "\\'")}',${fleetId},'${hx.h3_index}','${hx.terrain_name}',this)" style="${btnRed}">${hx.terrain_name}</button>`
+            ).join('');
+        }
+        if (btn) btn.disabled = false;
+      } else {
+        showToast('❌ No hay hexes de tierra adyacentes.', 'error');
+        if (btn) btn.disabled = false;
+      }
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showToast(`❌ ${err?.response?.data?.message || 'Error al desembarcar'}`, 'error');
+    }
+  };
+
+  window.doFleetDisembarkCharAt = async (charId, charName, fleetId, targetH3, terrainName, btn) => {
+    if (btn) btn.disabled = true;
+    try {
+      await mapApi.disembarkCharacter(charId, targetH3);
+      showToast(`✅ ${charName} desembarcado en ${terrainName}.`, 'success');
+      map.closePopup();
+      await fetchHexagonData();
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showToast(`❌ ${err?.response?.data?.message || 'Error al desembarcar'}`, 'error');
+    }
+  };
+
+  window.doFleetDisembarkWorker = async (workerId, fleetId, btn) => {
+    if (btn) btn.disabled = true;
+    try {
+      const landing = await mapApi.getLandingHexes(fleetId);
+      if (!landing.is_sea) {
+        await mapApi.disembarkWorker(workerId);
+        showToast(`✅ Constructor desembarcado.`, 'success');
+        map.closePopup();
+        await fetchHexagonData();
+      } else if (landing.landing_hexes.length === 1) {
+        await mapApi.disembarkWorker(workerId, landing.landing_hexes[0].h3_index);
+        showToast(`✅ Constructor desembarcado en ${landing.landing_hexes[0].terrain_name}.`, 'success');
+        map.closePopup();
+        await fetchHexagonData();
+      } else if (landing.landing_hexes.length > 1) {
+        const panel = btn?.closest('[id^="fl-panel-"]');
+        if (panel) {
+          const btnRed = 'padding:2px 8px;border:none;border-radius:3px;background:#7c2d12;color:#fff;font-size:11px;cursor:pointer;margin:2px;';
+          panel.innerHTML = `<div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">Elige dónde desembarcar el constructor:</div>` +
+            landing.landing_hexes.map(hx =>
+              `<button onclick="window.doFleetDisembarkWorkerAt(${workerId},${fleetId},'${hx.h3_index}','${hx.terrain_name}',this)" style="${btnRed}">${hx.terrain_name}</button>`
+            ).join('');
+        }
+        if (btn) btn.disabled = false;
+      } else {
+        showToast('❌ No hay hexes de tierra adyacentes.', 'error');
+        if (btn) btn.disabled = false;
+      }
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      showToast(`❌ ${err?.response?.data?.message || 'Error al desembarcar'}`, 'error');
+    }
+  };
+
+  window.doFleetDisembarkWorkerAt = async (workerId, fleetId, targetH3, terrainName, btn) => {
+    if (btn) btn.disabled = true;
+    try {
+      await mapApi.disembarkWorker(workerId, targetH3);
+      showToast(`✅ Constructor desembarcado en ${terrainName}.`, 'success');
       map.closePopup();
       await fetchHexagonData();
     } catch (err) {

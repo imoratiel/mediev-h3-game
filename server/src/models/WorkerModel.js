@@ -75,6 +75,7 @@ class WorkerModel {
              LEFT JOIN h3_map m    ON w.h3_index  = m.h3_index
              LEFT JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
              WHERE w.h3_index = ANY($1::text[])
+               AND w.transported_by IS NULL
              GROUP BY w.h3_index, w.player_id, p.username, p.color, wt.name, tt.name
              ORDER BY w.h3_index`,
             [h3CellsArray]

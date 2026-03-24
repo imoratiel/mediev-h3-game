@@ -293,6 +293,7 @@ class CharacterModel {
              WHERE c.player_id != $1
                AND c.army_id IS NULL
                AND c.is_captive = FALSE
+               AND c.transported_by IS NULL
                AND c.h3_index IS NOT NULL
                AND c.h3_index = ANY($2::text[])`,
             [playerId, hexes]
@@ -310,6 +311,7 @@ class CharacterModel {
              WHERE player_id = $1
                AND army_id IS NULL
                AND is_captive = FALSE
+               AND transported_by IS NULL
                AND h3_index IS NOT NULL`,
             [playerId]
         );

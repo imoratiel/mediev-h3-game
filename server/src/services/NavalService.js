@@ -4,6 +4,7 @@ const NavalModel = require('../models/NavalModel.js');
 const ArmyModel = require('../models/ArmyModel.js');
 const ArmySimulationService = require('./ArmySimulationService.js');
 const { getFleetLimit } = require('../config/gameFunctions.js');
+const { generateFleetName } = require('../config/fleetNames.js');
 const { Logger } = require('../utils/logger.js');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -151,11 +152,14 @@ class NavalService {
             if (!fleet) return res.status(404).json({ success: false, message: 'Flota no encontrada.' });
 
             const hex_candidates = h3.gridDisk(fleet.h3_index, 1);
-            const [armies, cargo] = await Promise.all([
+            const [armies, cargo, standalone] = await Promise.all([
                 NavalModel.GetEmbarkableArmies(client, player_id, fleet.h3_index, hex_candidates),
                 NavalModel.GetFleetCargo(client, fleet_id),
+                NavalModel.GetStandaloneEntitiesAtHex(client, player_id, hex_candidates),
             ]);
-            res.json({ success: true, armies, cargo });
+            res.json({ success: true, armies, cargo,
+                standalone_characters: standalone.characters,
+                standalone_workers:    standalone.workers });
         } catch (err) {
             Logger.error(err, { endpoint: '/naval/embarkable', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al obtener ejércitos embarcables.' });
@@ -238,7 +242,7 @@ class NavalService {
             }
 
             // Create fleet
-            const fleetName = (name || '').trim() || `Flota de ${player_id}`;
+            const fleetName = (name || '').trim() || await generateFleetName(client, player_id, culture_id);
             const fleet = await NavalModel.CreateFleet(client, player_id, h3_index, fleetName);
 
             // Add initial ships
@@ -551,6 +555,7 @@ class NavalService {
 
             if (fleet_id) {
                 await NavalModel.DisembarkWorkers(client, fleet_id, land_hex);
+                await NavalModel.DisembarkStandaloneChars(client, fleet_id, land_hex);
             }
 
             await client.query('COMMIT');
@@ -562,6 +567,243 @@ class NavalService {
             Logger.error(err, { endpoint: '/naval/disembark', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al desembarcar el ejército.' });
         } finally { client.release(); }
+    }
+
+    // ── POST /naval/embark-character ─────────────────────────────────────────
+    // Body: { fleet_id, char_id }
+
+    async EmbarkCharacter(req, res) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const player_id = req.user.player_id;
+            const { fleet_id, char_id } = req.body;
+            if (!fleet_id || !char_id) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'fleet_id y char_id son obligatorios.' });
+            }
+
+            const fleet = await NavalModel.GetFleetByIdAndOwner(client, fleet_id, player_id);
+            if (!fleet) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Flota no encontrada.' });
+            }
+
+            // Character must belong to player and be standalone (no army) and at an adjacent-or-same hex
+            const charRes = await client.query(
+                `SELECT id, name, h3_index FROM characters
+                 WHERE id = $1 AND player_id = $2 AND army_id IS NULL AND transported_by IS NULL AND is_captive = FALSE`,
+                [char_id, player_id]
+            );
+            if (charRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Personaje no encontrado o no está disponible.' });
+            }
+            const char = charRes.rows[0];
+            const hex_candidates = h3.gridDisk(fleet.h3_index, 1);
+            if (!hex_candidates.includes(char.h3_index)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'El personaje no está en el hex de la flota ni en uno adyacente.' });
+            }
+
+            // Capacity check
+            const cargo = await NavalModel.GetFleetCargo(client, fleet_id);
+            if (cargo.used_capacity >= cargo.max_capacity) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'La flota no tiene capacidad disponible.' });
+            }
+
+            const embarked = await NavalModel.EmbarkCharacter(client, char_id, fleet_id);
+            if (!embarked) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, message: 'El personaje ya está embarcado.' });
+            }
+            await client.query('COMMIT');
+            Logger.action(`Personaje ${char.name} (${char_id}) embarcado en flota ${fleet_id} por player ${player_id}`);
+            res.json({ success: true });
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: '/naval/embark-character', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al embarcar el personaje.' });
+        } finally { client.release(); }
+    }
+
+    // ── POST /naval/embark-worker ─────────────────────────────────────────────
+    // Body: { fleet_id, worker_id }
+
+    async EmbarkWorkerDirect(req, res) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const player_id = req.user.player_id;
+            const { fleet_id, worker_id } = req.body;
+            if (!fleet_id || !worker_id) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'fleet_id y worker_id son obligatorios.' });
+            }
+
+            const fleet = await NavalModel.GetFleetByIdAndOwner(client, fleet_id, player_id);
+            if (!fleet) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Flota no encontrada.' });
+            }
+
+            const workerRes = await client.query(
+                `SELECT w.id, w.h3_index FROM workers w
+                 WHERE w.id = $1 AND w.player_id = $2 AND w.transported_by IS NULL`,
+                [worker_id, player_id]
+            );
+            if (workerRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Constructor no encontrado o ya embarcado.' });
+            }
+            const worker = workerRes.rows[0];
+            const hex_candidates = h3.gridDisk(fleet.h3_index, 1);
+            if (!hex_candidates.includes(worker.h3_index)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'El constructor no está en el hex de la flota ni en uno adyacente.' });
+            }
+
+            // Capacity check
+            const cargo = await NavalModel.GetFleetCargo(client, fleet_id);
+            if (cargo.used_capacity >= cargo.max_capacity) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'La flota no tiene capacidad disponible.' });
+            }
+
+            const embarked = await NavalModel.EmbarkWorker(client, worker_id, fleet_id);
+            if (!embarked) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, message: 'El constructor ya está embarcado.' });
+            }
+            await client.query('COMMIT');
+            Logger.action(`Constructor ${worker_id} embarcado en flota ${fleet_id} por player ${player_id}`);
+            res.json({ success: true });
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: '/naval/embark-worker', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al embarcar el constructor.' });
+        } finally { client.release(); }
+    }
+
+    // ── POST /naval/disembark-character ──────────────────────────────────────
+
+    async DisembarkStandaloneChar(req, res) {
+        const client = await pool.connect();
+        try {
+            const player_id = req.user.player_id;
+            const { char_id, target_h3 } = req.body;
+            if (!char_id) return res.status(400).json({ success: false, message: 'char_id es obligatorio.' });
+
+            await client.query('BEGIN');
+
+            const charRes = await client.query(
+                `SELECT c.id, c.transported_by FROM characters c
+                 WHERE c.id = $1 AND c.player_id = $2 AND c.transported_by IS NOT NULL AND c.army_id IS NULL`,
+                [char_id, player_id]
+            );
+            if (charRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Personaje no encontrado o no embarcado.' });
+            }
+            const fleet_id = charRes.rows[0].transported_by;
+
+            const fleet = await NavalModel.GetFleetByIdAndOwner(client, fleet_id, player_id);
+            if (!fleet) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'Flota no encontrada.' });
+            }
+
+            const land_hex = await this._resolveLandHex(client, fleet.h3_index, target_h3);
+            if (!land_hex) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Especifica un hex de desembarco válido.' });
+            }
+
+            await client.query(
+                `UPDATE characters SET h3_index = $1, transported_by = NULL WHERE id = $2`,
+                [land_hex, char_id]
+            );
+            await client.query('COMMIT');
+            Logger.action(`Personaje ${char_id} desembarcado en ${land_hex} por player ${player_id}`);
+            res.json({ success: true, h3_index: land_hex });
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: '/naval/disembark-character', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al desembarcar el personaje.' });
+        } finally { client.release(); }
+    }
+
+    // ── POST /naval/disembark-worker ──────────────────────────────────────────
+
+    async DisembarkStandaloneWorker(req, res) {
+        const client = await pool.connect();
+        try {
+            const player_id = req.user.player_id;
+            const { worker_id, target_h3 } = req.body;
+            if (!worker_id) return res.status(400).json({ success: false, message: 'worker_id es obligatorio.' });
+
+            await client.query('BEGIN');
+
+            const workerRes = await client.query(
+                `SELECT w.id, w.transported_by FROM workers w
+                 WHERE w.id = $1 AND w.player_id = $2 AND w.transported_by IS NOT NULL`,
+                [worker_id, player_id]
+            );
+            if (workerRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Constructor no encontrado o no embarcado.' });
+            }
+            const fleet_id = workerRes.rows[0].transported_by;
+
+            const fleet = await NavalModel.GetFleetByIdAndOwner(client, fleet_id, player_id);
+            if (!fleet) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'Flota no encontrada.' });
+            }
+
+            const land_hex = await this._resolveLandHex(client, fleet.h3_index, target_h3);
+            if (!land_hex) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Especifica un hex de desembarco válido.' });
+            }
+
+            await client.query(
+                `UPDATE workers SET h3_index = $1, transported_by = NULL, destination_h3 = NULL WHERE id = $2`,
+                [land_hex, worker_id]
+            );
+            await client.query('COMMIT');
+            Logger.action(`Constructor ${worker_id} desembarcado en ${land_hex} por player ${player_id}`);
+            res.json({ success: true, h3_index: land_hex });
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: '/naval/disembark-worker', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al desembarcar el constructor.' });
+        } finally { client.release(); }
+    }
+
+    /** Helper: resolve the landing hex given fleet position and optional target. */
+    async _resolveLandHex(client, fleet_h3, target_h3) {
+        const terrainRes = await client.query(
+            `SELECT tt.name FROM h3_map m
+             JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+             WHERE m.h3_index = $1`,
+            [fleet_h3]
+        );
+        const terrain = terrainRes.rows[0]?.name;
+        if (terrain !== 'Mar') return fleet_h3;  // coastal — land here
+        if (!target_h3) return null;               // sea — need explicit target
+
+        // Verify target_h3 is adjacent and is land
+        const neighbors = h3.gridDisk(fleet_h3, 1);
+        if (!neighbors.includes(target_h3)) return null;
+        const landRes = await client.query(
+            `SELECT m.h3_index FROM h3_map m
+             JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+             WHERE m.h3_index = $1 AND tt.is_naval_passable = FALSE`,
+            [target_h3]
+        );
+        return landRes.rows[0]?.h3_index ?? null;
     }
 
     // ── GET /naval/landing-hexes/:fleet_id ───────────────────────────────────

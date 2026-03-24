@@ -896,10 +896,34 @@ export async function embarkArmy(fleet_id, army_id) {
   return response.data;
 }
 
+export async function embarkCharacter(fleet_id, char_id) {
+  const response = await axios.post(`${API_URL}/api/naval/embark-character`, { fleet_id, char_id });
+  return response.data;
+}
+
+export async function embarkWorker(fleet_id, worker_id) {
+  const response = await axios.post(`${API_URL}/api/naval/embark-worker`, { fleet_id, worker_id });
+  return response.data;
+}
+
 export async function disembarkArmy(army_id, target_h3 = null) {
   const body = { army_id };
   if (target_h3) body.target_h3 = target_h3;
   const response = await axios.post(`${API_URL}/api/naval/disembark`, body);
+  return response.data;
+}
+
+export async function disembarkCharacter(char_id, target_h3 = null) {
+  const body = { char_id };
+  if (target_h3) body.target_h3 = target_h3;
+  const response = await axios.post(`${API_URL}/api/naval/disembark-character`, body);
+  return response.data;
+}
+
+export async function disembarkWorker(worker_id, target_h3 = null) {
+  const body = { worker_id };
+  if (target_h3) body.target_h3 = target_h3;
+  const response = await axios.post(`${API_URL}/api/naval/disembark-worker`, body);
   return response.data;
 }
 

@@ -77,7 +77,7 @@ class NavalModel {
 
     /**
      * Total transport capacity and currently embarked load for a fleet.
-     * Capacity is consumed by: troops + characters (attached to embarked armies) + workers.
+     * Capacity is consumed by: troops + army-attached chars + standalone chars + workers.
      */
     async GetFleetCargo(client, fleet_id) {
         const capRes = await (client || pool).query(`
@@ -101,20 +101,29 @@ class NavalModel {
         `, [fleet_id]);
 
         const workerRes = await (client || pool).query(
-            `SELECT COUNT(*)::int AS worker_count FROM workers WHERE transported_by = $1`,
+            `SELECT w.id, wt.name AS type_name FROM workers w
+             JOIN workers_types wt ON w.type_id = wt.id
+             WHERE w.transported_by = $1`,
             [fleet_id]
         );
 
-        const troops_used   = embarkRes.rows.reduce((s, r) => s + r.troop_count, 0);
-        const chars_used    = embarkRes.rows.reduce((s, r) => s + r.char_count,  0);
-        const workers_used  = workerRes.rows[0].worker_count;
-        const used_capacity = troops_used + chars_used + workers_used;
+        const standaloneCharRes = await (client || pool).query(
+            `SELECT id, name FROM characters WHERE transported_by = $1 AND army_id IS NULL`,
+            [fleet_id]
+        );
+
+        const troops_used      = embarkRes.rows.reduce((s, r) => s + r.troop_count, 0);
+        const chars_used       = embarkRes.rows.reduce((s, r) => s + r.char_count,  0);
+        const workers_used     = workerRes.rows.length;
+        const standalone_chars = standaloneCharRes.rows.length;
+        const used_capacity    = troops_used + chars_used + workers_used + standalone_chars;
 
         return {
-            max_capacity:    capRes.rows[0].max_capacity,
+            max_capacity:         capRes.rows[0].max_capacity,
             used_capacity,
-            embarked_armies: embarkRes.rows,
-            workers_count:   workers_used,
+            embarked_armies:      embarkRes.rows,
+            standalone_workers:   workerRes.rows,
+            standalone_chars:     standaloneCharRes.rows,
         };
     }
 
@@ -151,6 +160,65 @@ class NavalModel {
         await client.query(
             `UPDATE workers SET h3_index = $1, transported_by = NULL, destination_h3 = NULL
              WHERE transported_by = $2`,
+            [h3_index, fleet_id]
+        );
+    }
+
+    /**
+     * Standalone characters (no army) and free workers at given hexes.
+     */
+    async GetStandaloneEntitiesAtHex(client, player_id, hexes) {
+        const charsRes = await (client || pool).query(`
+            SELECT id, name
+            FROM characters
+            WHERE player_id = $1
+              AND h3_index = ANY($2)
+              AND army_id IS NULL
+              AND transported_by IS NULL
+              AND is_captive = FALSE
+        `, [player_id, hexes]);
+
+        const workersRes = await (client || pool).query(`
+            SELECT w.id, wt.name AS type_name
+            FROM workers w
+            JOIN workers_types wt ON w.type_id = wt.id
+            WHERE w.player_id = $1
+              AND w.h3_index = ANY($2)
+              AND w.transported_by IS NULL
+        `, [player_id, hexes]);
+
+        return { characters: charsRes.rows, workers: workersRes.rows };
+    }
+
+    /** Mark a standalone character as transported by a fleet. */
+    async EmbarkCharacter(client, char_id, fleet_id) {
+        const result = await client.query(
+            `UPDATE characters SET transported_by = $1
+             WHERE id = $2 AND army_id IS NULL AND transported_by IS NULL
+             RETURNING id`,
+            [fleet_id, char_id]
+        );
+        return result.rows[0] ?? null;
+    }
+
+    /** Mark a single worker as transported by a fleet. */
+    async EmbarkWorker(client, worker_id, fleet_id) {
+        const result = await client.query(
+            `UPDATE workers SET transported_by = $1
+             WHERE id = $2 AND transported_by IS NULL
+             RETURNING id`,
+            [fleet_id, worker_id]
+        );
+        return result.rows[0] ?? null;
+    }
+
+    /**
+     * Disembark standalone characters from a fleet to a landing hex.
+     */
+    async DisembarkStandaloneChars(client, fleet_id, h3_index) {
+        await client.query(
+            `UPDATE characters SET h3_index = $1, transported_by = NULL
+             WHERE transported_by = $2 AND army_id IS NULL`,
             [h3_index, fleet_id]
         );
     }
