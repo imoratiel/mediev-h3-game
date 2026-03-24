@@ -955,8 +955,10 @@
         </div>
         <div class="overlay-content">
           <NavalPanel
+            :key="newFleetId"
             :playerGold="playerGold"
             :playerCultureId="currentUser?.culture_id ?? null"
+            :preselectedFleetId="newFleetId"
             @gold-updated="onGoldUpdated"
             @refresh="fetchArmyData"
           />
@@ -1382,6 +1384,7 @@ const panelTitle = computed(() => {
 
 // Overlay system state (full-screen overlays like Messages)
 const activeOverlay = ref(null); // 'messages', 'fiefs', etc.
+const newFleetId    = ref(null); // fleet_id to auto-expand when naval panel opens
 
 // Infinite scroll for fiefs (Kingdom panel)
 const FIEFS_PER_PAGE = 20;
@@ -3985,6 +3988,7 @@ const closeOverlay = () => {
   const wasOverlay = activeOverlay.value;
   activeOverlay.value = null;
   selectedMessage.value = null;
+  if (wasOverlay === 'naval') newFleetId.value = null;
   console.log('✓ Overlay cerrado');
   if (wasOverlay === 'troops' || wasOverlay === 'reino') {
     fetchArmyData();
@@ -5899,6 +5903,7 @@ const createFleetAtHex = async (h3_index) => {
     const result = await mapApi.createFleet(h3_index);
     if (result.success) {
       showToast(`⛵ Flota "${result.name}" creada en el puerto.`, 'success');
+      newFleetId.value = result.fleet_id;
       openOverlay('naval');
     }
   } catch (err) {

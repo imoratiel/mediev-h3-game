@@ -106,8 +106,10 @@ class ArmyModel {
                 COALESCE(SUM(CASE WHEN NOT a.is_naval THEN t.quantity ELSE 0 END), 0)::int AS total_troops,
                 BOOL_OR(a.is_garrison) AS has_garrison,
                 BOOL_OR(a.is_naval)    AS has_naval,
-                BOOL_OR(CASE WHEN a.is_naval THEN EXISTS(
-                    SELECT 1 FROM armies a2 WHERE a2.transported_by = a.army_id
+                BOOL_OR(CASE WHEN a.is_naval THEN (
+                    EXISTS(SELECT 1 FROM armies    a2 WHERE a2.transported_by = a.army_id) OR
+                    EXISTS(SELECT 1 FROM characters c  WHERE c.transported_by = a.army_id) OR
+                    EXISTS(SELECT 1 FROM workers    w  WHERE w.transported_by = a.army_id)
                 ) ELSE FALSE END) AS has_embarked_armies
             FROM armies a
             LEFT JOIN troops t ON a.army_id = t.army_id AND NOT a.is_naval
