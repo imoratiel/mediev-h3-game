@@ -3,6 +3,7 @@ const TerrainModel = require('../models/TerrainModel.js');
 const h3 = require('h3-js');
 const { getTerrainColor } = require('../logic/territory.js');
 const { constants } = require('node:buffer');
+const pool = require('../../db.js');
 
 class TerrainService {
     async GetRegion(req,res){
@@ -98,6 +99,14 @@ class TerrainService {
 
             const is_capital = cell.player_id && cell.capital_h3 === h3_index;
 
+            // Cultura del feudo (puede no existir si no hay templos cerca aún)
+            const cultureRes = await pool.query(
+                `SELECT culture_romanos, culture_cartagineses, culture_iberos, culture_celtas
+                 FROM fief_culture WHERE h3_index = $1`,
+                [h3_index]
+            );
+            const cultureRow = cultureRes.rows[0] || null;
+
             res.json({
                 h3_index,
                 terrain_type: cell.terrain_type,
@@ -126,6 +135,12 @@ class TerrainService {
                 settlement_name: cell.settlement_name,
                 coord_x: cell.coord_x,
                 coord_y: cell.coord_y,
+                culture: cultureRow ? {
+                    romanos:       cultureRow.culture_romanos,
+                    cartagineses:  cultureRow.culture_cartagineses,
+                    iberos:        cultureRow.culture_iberos,
+                    celtas:        cultureRow.culture_celtas,
+                } : null,
                 territory: cell.population ? {
                     population: cell.population,
                     happiness: cell.division_id

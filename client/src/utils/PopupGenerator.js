@@ -102,6 +102,30 @@ export function generateCellPopupContent(cell, config) {
     popupContent += `<p class="popup-detail-item">👥 Población: ${cell.territory.population} habitantes</p>`;
     popupContent += `<p class="popup-detail-item">😊 Felicidad: ${cell.territory.happiness || 0}%</p>`;
 
+    // Cultura
+    if (cell.culture) {
+      const cultures = [
+        { name: 'Romanos',       val: cell.culture.romanos,       color: '#c0392b' },
+        { name: 'Cartagineses',  val: cell.culture.cartagineses,  color: '#8e44ad' },
+        { name: 'Íberos',        val: cell.culture.iberos,        color: '#d35400' },
+        { name: 'Celtas',        val: cell.culture.celtas,        color: '#27ae60' },
+      ].filter(c => c.val > 0);
+      if (cultures.length > 0) {
+        popupContent += `<p class="popup-details-title" style="margin-top:6px;">🏛️ Cultura</p>`;
+        popupContent += `<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:4px;">`;
+        for (const c of cultures) {
+          popupContent += `<div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+            <span style="width:80px;color:#d1d5db;">${c.name}</span>
+            <div style="flex:1;background:#374151;border-radius:3px;height:8px;overflow:hidden;">
+              <div style="width:${c.val}%;background:${c.color};height:100%;border-radius:3px;"></div>
+            </div>
+            <span style="width:28px;text-align:right;color:#9ca3af;">${c.val}</span>
+          </div>`;
+        }
+        popupContent += `</div>`;
+      }
+    }
+
     // Resources (DISABLED: wood/stone/iron hidden; exploration hidden)
     popupContent += '<p class="popup-resources-label">Recursos Almacenados:</p>';
     popupContent += '<div class="popup-resource-grid">';

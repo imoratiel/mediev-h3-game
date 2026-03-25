@@ -45,6 +45,9 @@ FIEF_DETECTION_RANGE: 2,        // Hexágonos visibles desde cada feudo propio (
         EXPLORE_COST: 100,              // Coste en provisiones del ejército para espionaje
         EXPLORE_COST_PLAYER: 1000,      // Coste en oro del jugador si el ejército no tiene provisiones
         UNIT_TYPE_EXPLORER: 'Explorador', // Nombre del tipo de unidad exploradora
+        // 🏛️ Cultura por Templos (proceso mensual, día 1 de cada mes)
+        CULTURE_TEMPLE_RINGS: [10, 7, 5, 4, 2], // bonus por ring 0→4 cada mes
+        CULTURE_MAX: 100,               // Techo de cultura por tipo
     },
 
     // ⏱️ Sistema de Turnos y Recuperación
