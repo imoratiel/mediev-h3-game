@@ -322,12 +322,19 @@
           <div class="market-section">
             <div class="market-section-title">⛏️ Contratar Trabajador</div>
             <div class="market-hire-form">
-              <select v-model="marketHireTypeId" class="market-select">
-                <option disabled value="null">Tipo de trabajador…</option>
-                <option v-for="t in workerTypes" :key="t.id" :value="t.id">
-                  {{ t.name }} — {{ t.cost }} 💰
-                </option>
-              </select>
+              <div class="market-worker-type-buttons">
+                <button
+                  v-for="t in workerTypes"
+                  :key="t.id"
+                  class="market-worker-type-btn"
+                  :class="{ active: marketHireTypeId === t.id }"
+                  @click="marketHireTypeId = t.id"
+                >
+                  <span class="worker-type-icon">{{ workerTypeIcon(t.name) }}</span>
+                  <span class="worker-type-name">{{ t.name }}</span>
+                  <span class="worker-type-cost">{{ Number(t.cost).toLocaleString('es-ES') }} 💰</span>
+                </button>
+              </div>
               <select v-model="marketHireH3" class="market-select">
                 <option disabled value="null">Feudo de contratación…</option>
                 <option v-for="f in marketFiefs" :key="f.h3_index" :value="f.h3_index">
@@ -1329,6 +1336,11 @@ const loadingWorkers = ref(false);
 // Market panel state
 const marketHireTypeId = ref(null);
 const marketHireH3 = ref(null);
+
+const workerTypeIcon = (name) => {
+  const icons = { constructor: '⛏️', farmer: '🌾', miner: '⛰️', lumberjack: '🪵', merchant: '🛒' };
+  return icons[name?.toLowerCase()] ?? '👷';
+};
 const marketFoodAmount = ref(100);
 const marketFiefs = computed(() => myFiefs.value.filter(f =>
     f.is_capital ||
@@ -7280,6 +7292,39 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 6px;
 }
+
+.market-worker-type-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.market-worker-type-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(197,160,89,0.35);
+  border-radius: 6px;
+  color: #e8d5b5;
+  cursor: pointer;
+  flex: 1;
+  min-width: 80px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.market-worker-type-btn:hover {
+  background: rgba(197,160,89,0.15);
+  border-color: rgba(197,160,89,0.6);
+}
+.market-worker-type-btn.active {
+  background: rgba(197,160,89,0.25);
+  border-color: #c5a059;
+}
+.worker-type-icon  { font-size: 20px; }
+.worker-type-name  { font-size: 11px; text-transform: capitalize; }
+.worker-type-cost  { font-size: 10px; color: #9ca3af; }
 
 .market-select {
   width: 100%;
