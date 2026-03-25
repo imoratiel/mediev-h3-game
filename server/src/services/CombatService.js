@@ -337,6 +337,21 @@ class CombatService {
         const troopsA = aHasTroops ? armyA.troops.map(t => ({ ...t })) : this._buildGuardTroops(commanderA);
         const troopsB = bHasTroops ? armyB.troops.map(t => ({ ...t })) : this._buildGuardTroops(commanderB);
 
+        // 5a. Coaliciones — terceros ejércitos que se unen al combate
+        const { joinA, joinB } = await this._resolveCoalitions(
+            client, h3Index, armyAId, armyBId, armyA.player_id, armyB.player_id
+        );
+        const coalitionArmyIds = [...joinA, ...joinB].map(a => a.army_id);
+
+        for (const ally of joinA) {
+            troopsA.push(...ally.troops.map(t => ({ ...t })));
+            Logger.engine(`[TURN ${turn}] Coalición: ejército ${ally.army_id} (player ${ally.player_id}) → bando A (${armyA.name})`);
+        }
+        for (const ally of joinB) {
+            troopsB.push(...ally.troops.map(t => ({ ...t })));
+            Logger.engine(`[TURN ${turn}] Coalición: ejército ${ally.army_id} (player ${ally.player_id}) → bando B (${armyB.name})`);
+        }
+
         // 5b. Bonificadores de moral pre-batalla (solo afectan al cálculo, no se guardan)
         const totalQtyA = troopsA.reduce((s, t) => s + t.quantity, 0);
         const totalQtyB = troopsB.reduce((s, t) => s + t.quantity, 0);
@@ -430,6 +445,18 @@ class CombatService {
             commanderB.personal_guard = Math.max(0, commanderB.personal_guard - lost);
             await CharacterModel.updateGuard(client, commanderB.id, commanderB.personal_guard);
         } else { deadB = 0; }
+
+        // 9b. Bajas a ejércitos de coalición (misma tasa que su bando)
+        for (const ally of joinA) {
+            await this._applyCasualties(client, ally.troops, lossRateA);
+            await CombatModel.deleteArmyIfEmpty(client, ally.army_id);
+            await ArmyModel.refreshDetectionRange(client, ally.army_id).catch(() => {});
+        }
+        for (const ally of joinB) {
+            await this._applyCasualties(client, ally.troops, lossRateB);
+            await CombatModel.deleteArmyIfEmpty(client, ally.army_id);
+            await ArmyModel.refreshDetectionRange(client, ally.army_id).catch(() => {});
+        }
 
         // 10. Saqueo — fracción proporcional a la diferencia de presión
         let loot = null;
@@ -689,6 +716,74 @@ class CombatService {
             await CombatModel.updateTroopQuantity(client, troop.troop_id, survivors);
         }
         return totalDead;
+    }
+
+    /**
+     * Determina qué ejércitos terceros en el hex se unen a cada bando.
+     * Reglas:
+     *  - Relaciones que causan unión: alianza, mercenariado, clientela, devotio (bidireccional)
+     *  - Rehenes: solo el que entregó (to_player_id) se une al que los tiene (from_player_id)
+     *  - Si T tiene relación válida con AMBOS bandos → neutral
+     *  - Si T tiene relación válida con solo uno → se une a ese bando
+     *
+     * @returns {{ joinA: Army[], joinB: Army[] }}
+     */
+    async _resolveCoalitions(client, h3Index, armyAId, armyBId, playerAId, playerBId) {
+        // Obtener otros ejércitos en el hex que no sean A ni B
+        const othersRes = await client.query(`
+            SELECT a.army_id, a.player_id,
+                   json_agg(json_build_object(
+                       'troop_id',     t.troop_id,
+                       'unit_type_id', t.unit_type_id,
+                       'quantity',     t.quantity,
+                       'attack',       ut.attack,
+                       'defense',      ut.defense,
+                       'morale',       t.morale,
+                       'stamina',      t.stamina,
+                       'health_points',ut.health_points
+                   )) FILTER (WHERE t.troop_id IS NOT NULL) AS troops
+            FROM armies a
+            LEFT JOIN troops t ON t.army_id = a.army_id
+            LEFT JOIN unit_types ut ON ut.id = t.unit_type_id
+            WHERE a.h3_index = $1
+              AND a.army_id NOT IN ($2, $3)
+              AND a.is_naval = FALSE
+            GROUP BY a.army_id, a.player_id
+        `, [h3Index, armyAId, armyBId]);
+
+        const joinA = [];
+        const joinB = [];
+
+        for (const third of othersRes.rows) {
+            if (!third.troops || third.troops.length === 0) continue;
+            const T = third.player_id;
+
+            const qualifies = async (T, X) => {
+                const res = await client.query(`
+                    SELECT 1 FROM player_relations pr
+                    JOIN relation_types rt ON rt.id = pr.type_id
+                    WHERE pr.status = 'active' AND (
+                        (rt.code IN ('alianza', 'mercenariado', 'clientela', 'devotio')
+                         AND ((pr.from_player_id = $1 AND pr.to_player_id = $2)
+                           OR (pr.from_player_id = $2 AND pr.to_player_id = $1)))
+                        OR
+                        (rt.code = 'rehenes'
+                         AND pr.from_player_id = $2 AND pr.to_player_id = $1)
+                    )
+                    LIMIT 1
+                `, [T, X]);
+                return res.rows.length > 0;
+            };
+
+            const withA = await qualifies(T, playerAId);
+            const withB = await qualifies(T, playerBId);
+
+            if (withA && !withB) joinA.push(third);
+            else if (withB && !withA) joinB.push(third);
+            // Si withA && withB, o ninguno → neutral
+        }
+
+        return { joinA, joinB };
     }
 
     /**
