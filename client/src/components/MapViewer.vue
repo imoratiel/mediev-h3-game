@@ -2711,7 +2711,6 @@ const fetchAndRenderCharacters = async () => {
               <circle cx="12" cy="7" r="4"/>
               <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
             </svg>
-            <span class="char-map-name">${char.name.split(' ')[0]}</span>
           </div>`;
 
         const icon = L.divIcon({
@@ -2792,7 +2791,6 @@ const fetchAndRenderCharacters = async () => {
               <circle cx="12" cy="7" r="4"/>
               <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
             </svg>
-            <span class="char-map-name">${char.name.split(' ')[0]}</span>
           </div>`;
         const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [52, 36], iconAnchor: [26, 36] });
         const marker = L.marker([lat, lng], { icon, pane: 'characterPane', interactive: true });
