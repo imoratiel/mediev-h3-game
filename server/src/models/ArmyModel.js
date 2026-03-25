@@ -226,6 +226,7 @@ class ArmyModel {
              JOIN building_types bt ON b.type_id = bt.building_type_id
              WHERE fb.h3_index = $1
                AND fb.is_under_construction = FALSE
+               AND fb.conservation > 20
                AND bt.name = 'military'`,
             [h3_index]
         );

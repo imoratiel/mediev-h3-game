@@ -36,16 +36,23 @@
 - `066_noble_rank_promotion.sql`: añade `players.last_rank_promotion VARCHAR(20)` — ver error 2026-03-20
 - Al detectar `column X does not exist`, siempre buscar primero en `/sql/` si hay una migración que añade esa columna
 
+## `fief_buildings` — Esquema (sin columna player_id)
+- Tabla definida en `sql/019_buildings.sql`: columnas `h3_index (PK)`, `building_id`, `remaining_construction_turns`, `is_under_construction`, `created_at`
+- `player_id` del propietario del edificio NO está en `fief_buildings` — se obtiene via JOIN a `h3_map.player_id`
+- `building_decay.js` usó `fb.player_id` directamente → error SQL "column fb.player_id does not exist"
+- Fix: reemplazar `fb.player_id` por `m.player_id` y añadir `JOIN h3_map m ON m.h3_index = fb.h3_index` en las queries de `building_decay.js`
+
 ## Sistema Naval - Flotas (is_naval = TRUE)
 
 - Flotas usan la tabla `armies` con `is_naval = TRUE` y `fleet_ships` para sus barcos
 - Las flotas NO tienen registros en la tabla `troops` — usan `fleet_ships` en su lugar
 - `executeArmyTurn` en `ArmySimulationService.js` lines 606-609: si `troops` está vacío → devuelve `success: false, moved: false`
 - Este guard bloquea TODAS las flotas con destino porque nunca tienen filas en `troops`
-- Fix: saltar la consulta a `troops` y usar `fleet_ships` para `speed`/`stamina` cuando `army.is_naval = TRUE`
+- `processArmyRecovery` en `turn_engine.js` (~línea 984): NO filtra `is_naval = FALSE` → llama `processPassiveRecovery` para flotas → falla con "no tiene unidades" porque flotas no tienen filas en `troops`
+- Fix recovery: añadir `AND a.is_naval = FALSE` en la SELECT de `processArmyRecovery`, O skipear flotas con `if (army.is_naval) continue`
+- Fix recovery (alternativa): añadir `a.is_naval` a la SELECT y hacer `if (army.is_naval) { skippedCount++; continue; }`
+- Error en exceptions.log: `"Ejército Flota de N no tiene unidades"` y `"Ejército Tridens no tiene unidades"` — ambos son flotas navales (×1515 en sesión 2026-03-25)
 - Patrón de velocidad naval: derivar `maxCells` de `MIN(st.speed)` sobre `fleet_ships JOIN ship_types`
-- Las flotas no consumen stamina como tropas terrestres (no tienen `force_rest` en `troops`)
-- Error en exceptions.log: `"Ejército Flota de N no tiene unidades"` (×474 al momento de diagnóstico)
 
 ## Archivos Clave
 

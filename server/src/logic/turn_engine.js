@@ -751,7 +751,8 @@ async function processCultureRadiation(client, turn) {
             JOIN buildings b ON b.id = fb.building_id
             JOIN building_types bt ON bt.building_type_id = b.type_id
             WHERE bt.name = 'religious'
-              AND fb.status = 'completed'
+              AND fb.is_under_construction = FALSE
+              AND fb.conservation > 20
               AND b.culture_id IS NOT NULL
         `);
 
@@ -1001,6 +1002,7 @@ async function processArmyRecovery(client, turn, config, movedArmyIds = new Set(
             FROM armies a
             JOIN players p ON a.player_id = p.player_id
             LEFT JOIN h3_map m ON m.h3_index = a.h3_index
+            WHERE a.is_naval = FALSE
         `);
 
         let recoveredCount = 0;

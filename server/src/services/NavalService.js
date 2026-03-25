@@ -72,6 +72,7 @@ async function _checkPortAtHex(client, h3_index, player_id) {
           AND bt.name = 'maritime'
           AND m.player_id = $2
           AND fb.is_under_construction = FALSE
+          AND fb.conservation > 20
     `, [h3_index, player_id]);
     return r.rows.length > 0;
 }

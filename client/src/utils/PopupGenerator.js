@@ -103,27 +103,28 @@ export function generateCellPopupContent(cell, config) {
     popupContent += `<p class="popup-detail-item">😊 Felicidad: ${cell.territory.happiness || 0}%</p>`;
 
     // Cultura
-    if (cell.culture) {
-      const cultures = [
-        { name: 'Romanos',       val: cell.culture.romanos,       color: '#c0392b' },
-        { name: 'Cartagineses',  val: cell.culture.cartagineses,  color: '#8e44ad' },
-        { name: 'Íberos',        val: cell.culture.iberos,        color: '#d35400' },
-        { name: 'Celtas',        val: cell.culture.celtas,        color: '#27ae60' },
-      ].filter(c => c.val > 0);
-      if (cultures.length > 0) {
-        popupContent += `<p class="popup-details-title" style="margin-top:6px;">🏛️ Cultura</p>`;
-        popupContent += `<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:4px;">`;
-        for (const c of cultures) {
-          popupContent += `<div style="display:flex;align-items:center;gap:6px;font-size:11px;">
-            <span style="width:80px;color:#d1d5db;">${c.name}</span>
-            <div style="flex:1;background:#374151;border-radius:3px;height:8px;overflow:hidden;">
-              <div style="width:${c.val}%;background:${c.color};height:100%;border-radius:3px;"></div>
-            </div>
-            <span style="width:28px;text-align:right;color:#9ca3af;">${c.val}</span>
-          </div>`;
-        }
-        popupContent += `</div>`;
+    const cultures = [
+      { name: 'Romanos',       val: cell.culture?.romanos      ?? 0, color: '#c0392b' },
+      { name: 'Cartagineses',  val: cell.culture?.cartagineses ?? 0, color: '#8e44ad' },
+      { name: 'Íberos',        val: cell.culture?.iberos       ?? 0, color: '#d35400' },
+      { name: 'Celtas',        val: cell.culture?.celtas       ?? 0, color: '#27ae60' },
+    ];
+    popupContent += `<p class="popup-details-title" style="margin-top:6px;">🏛️ Cultura</p>`;
+    const activeCultures = cultures.filter(c => c.val > 0);
+    if (activeCultures.length === 0) {
+      popupContent += `<div style="font-size:11px;color:#6b7280;margin-bottom:4px;font-style:italic;">Sin cultura dominante</div>`;
+    } else {
+      popupContent += `<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:4px;">`;
+      for (const c of activeCultures) {
+        popupContent += `<div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+          <span style="width:80px;color:#d1d5db;">${c.name}</span>
+          <div style="flex:1;background:#374151;border-radius:3px;height:8px;overflow:hidden;">
+            <div style="width:${c.val}%;background:${c.color};height:100%;border-radius:3px;transition:width 0.3s;"></div>
+          </div>
+          <span style="width:28px;text-align:right;color:#9ca3af;">${c.val}</span>
+        </div>`;
       }
+      popupContent += `</div>`;
     }
 
     // Resources (DISABLED: wood/stone/iron hidden; exploration hidden)
@@ -145,17 +146,25 @@ export function generateCellPopupContent(cell, config) {
         popupContent += `<div class="popup-building-status popup-building-progress">🏗️ En construcción: <strong>${cell.fief_building.name}</strong> (${turnsLeft} turno${turnsLeft !== 1 ? 's' : ''})</div>`;
       } else {
         const cons = cell.fief_building.conservation ?? 100;
-        const consColor = cons >= 70 ? '#4caf50' : cons >= 40 ? '#ff9800' : '#f44336';
-        popupContent += `<div class="popup-building-status popup-building-done">
-          ${getBuildingIcon(cell.fief_building.name, cell.fief_building.type_name)} Edificio: <strong>${cell.fief_building.name}</strong>
-          <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
-            <span style="font-size:11px;color:#aaa;">Conservación</span>
-            <div style="flex:1;height:6px;background:#333;border-radius:3px;overflow:hidden;">
-              <div style="width:${cons}%;height:100%;background:${consColor};border-radius:3px;transition:width .3s;"></div>
+        if (cons === 0) {
+          popupContent += `<div class="popup-building-status popup-building-ruins">
+            🏚️ <strong>${cell.fief_building.name}</strong> — <span style="color:#f44336;font-style:italic;">En Ruinas</span>
+          </div>`;
+        } else {
+          const consColor = cons >= 70 ? '#4caf50' : cons >= 40 ? '#ff9800' : '#f44336';
+          const inactiveWarning = cons < 20 ? `<div style="font-size:11px;color:#f44336;margin-top:3px;">⚠️ Inactivo (conservación &lt; 20%)</div>` : '';
+          popupContent += `<div class="popup-building-status popup-building-done">
+            ${getBuildingIcon(cell.fief_building.name, cell.fief_building.type_name)} Edificio: <strong>${cell.fief_building.name}</strong>
+            <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
+              <span style="font-size:11px;color:#aaa;">Conservación</span>
+              <div style="flex:1;height:6px;background:#333;border-radius:3px;overflow:hidden;">
+                <div style="width:${cons}%;height:100%;background:${consColor};border-radius:3px;transition:width .3s;"></div>
+              </div>
+              <span style="font-size:11px;color:${consColor};min-width:30px;">${cons}%</span>
             </div>
-            <span style="font-size:11px;color:${consColor};min-width:30px;">${cons}%</span>
-          </div>
-        </div>`;
+            ${inactiveWarning}
+          </div>`;
+        }
       }
     }
   }
