@@ -742,7 +742,7 @@ async function processCultureRadiation(client, turn) {
             4: 'culture_celtas',
         };
         const ALL_COLS   = Object.values(CULTURE_COL);
-        const RING_BONUS = M.CULTURE_TEMPLE_RINGS;
+        const RING_BONUS = GAME_CONFIG.MILITARY.CULTURE_TEMPLE_RINGS;
         const MAX_RING   = RING_BONUS.length - 1;  // 4
 
         const templesRes = await client.query(`
@@ -792,7 +792,7 @@ async function processCultureRadiation(client, turn) {
                     SET ${col}     = LEAST($3, fief_culture.${col} + $1),
                         ${decaySet},
                         updated_at = NOW()
-                `, [bonus, hexes, M.CULTURE_MAX]);
+                `, [bonus, hexes, GAME_CONFIG.MILITARY.CULTURE_MAX]);
             }
         }
 
