@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.2.0...v0.3.0) (2026-03-26)
+
+
+### Nuevas funcionalidades
+
+* mejora usabilidad de los paneles laterales ([96fd72d](https://github.com/imoratiel/hipania210ac-game/commit/96fd72dd9d60a9cd0b4e5558e7529f6f7a957ca7))
+* niebla de guerra para flotas y trabajadores ([52cb0be](https://github.com/imoratiel/hipania210ac-game/commit/52cb0be152735ef1ae0e40c343875952963632f1))
+
+
+### Correcciones
+
+* el reporte de bajas depende ahora de si ha vencido a perdido ([7f429a0](https://github.com/imoratiel/hipania210ac-game/commit/7f429a0ea58857566434b1ca3007feb75fa4dec1))
+* error en peticion workers ([b1d605e](https://github.com/imoratiel/hipania210ac-game/commit/b1d605e5751505009ea6dc2a860e15d7d2052d8a))
+* errores de stackeado ([f236792](https://github.com/imoratiel/hipania210ac-game/commit/f2367927aca90752c7e68d6cb310afda7830f509))
+* flotas enemigas aparecian como ejercitos ([026c1c2](https://github.com/imoratiel/hipania210ac-game/commit/026c1c275a8872cd82f76d94202383a1dd174a31))
+* mensaje duplicado de edificios ([3808367](https://github.com/imoratiel/hipania210ac-game/commit/3808367838d67bb2a6db497aa75bf9960b0dd97f))
+* niebla de guerra para los constructores ([d312edf](https://github.com/imoratiel/hipania210ac-game/commit/d312edf23e2ebd6b2f3374f288ac9163e0f6d4d6))
+* warning de release please ([1d04c5f](https://github.com/imoratiel/hipania210ac-game/commit/1d04c5fe132e23af03a7c4367794e76f37f0fc19))
+
 ## [0.2.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.1.0...v0.2.0) (2026-03-26)
 
 
