@@ -1170,7 +1170,7 @@ import { getHexagonStyles } from '@/utils/mapStyles.js';
 import { generateCellPopupContent, generateArmyPopup } from '@/utils/PopupGenerator.js';
 import MapInteractionController from '@/utils/MapInteractionController.js';
 import RouteVisualizer from '@/utils/RouteVisualizer.js';
-import { createStackerDivIcon } from '@/utils/HexStacker.js';
+import { createStackerDivIcon, advanceNavIdx } from '@/utils/HexStacker.js';
 
 // Import API service
 import * as mapApi from '@/services/mapApi.js';
@@ -1285,8 +1285,18 @@ let _pp_index = 0;
 let _pp_ref = null;
 let _pp_h3 = '';
 let _pp_coords = { x: null, y: null, ownerId: null };
-let _char_cache  = []; // personajes del jugador, actualizados en fetchAndRenderCharacters
-let _all_fleets  = []; // flotas propias, actualizadas en fetchHexagonData
+let _char_cache       = []; // own characters — updated in fetchAndRenderCharacters
+let _enemy_char_cache = []; // visible enemy characters — updated in fetchAndRenderCharacters
+let _all_fleets       = []; // own fleets — updated in fetchHexagonData
+
+// Stacker render caches — kept so fetchAndRenderCharacters can re-render stackers
+let _cachedBuildings       = [];
+let _cachedArmies          = [];
+let _cachedWorkers         = [];
+let _cachedCurrentPlayerId = null;
+let _cachedOwnerMap        = new Map();
+// Map: h3_index → Leaflet marker, for icon updates after nav-arrow clicks
+let _hexStackerMarkers     = new Map();
 
 // Action panel state
 const showActionPanel = ref(false);
@@ -2036,11 +2046,15 @@ const fetchHexagonData = async () => {
       ? fleetData.value.fleets
       : [];
 
-    // Render combined HexStacker icons (replaces separate army + building markers)
-    renderHexStackers(buildings, armies, currentPlayerId, ownerMap);
+    // Cache for re-renders triggered by fetchAndRenderCharacters
+    _cachedBuildings       = buildings;
+    _cachedArmies          = armies;
+    _cachedWorkers         = workers;
+    _cachedCurrentPlayerId = currentPlayerId;
+    _cachedOwnerMap        = ownerMap;
 
-    // Render worker markers on separate layer
-    renderWorkerMarkers(workers, currentPlayerId);
+    // Render combined HexStacker icons (troops + workers + chars in one marker per hex)
+    renderHexStackers(buildings, armies, workers, _char_cache, _enemy_char_cache, currentPlayerId, ownerMap);
 
     // Hexes where the own player already has land troops (fleet marker hidden there — accessible via nav popup)
     const hexesWithOwnTroops = new Set(
@@ -2341,9 +2355,8 @@ const clearFiefIcons = () => {
  * Clear all HexStacker combined markers from the map
  */
 const clearHexStackers = () => {
-  if (hexStackerLayer) {
-    hexStackerLayer.clearLayers();
-  }
+  if (hexStackerLayer) hexStackerLayer.clearLayers();
+  _hexStackerMarkers.clear();
 };
 
 /**
@@ -2412,89 +2425,178 @@ const renderFiefIcons = (buildings) => {
 };
 
 /**
- * Renders combined HexStacker markers (Owner + Building + Troops) on the map.
- * One marker per hex that has at least one piece of information to show.
- * Replaces the separate renderArmyMarkers + renderFiefIcons calls.
+ * Renders combined HexStacker markers per hex.
+ * Each hex gets one divIcon combining building (top) + own entities (bottom-left)
+ * + enemy entities (bottom-right). Entities include troops, characters, workers.
+ * When a slot has > 1 entity, ◀/▶ nav arrows appear.
  *
- * @param {Array}  buildings       - [{ h3_index, building_name, type_name, is_under_construction }]
- * @param {Array}  armyEntries     - [{ h3_index, player_id, army_count, total_troops }]
- * @param {number} currentPlayerId - the viewing player's ID
+ * @param {Array}  buildings       - building entries from API
+ * @param {Array}  armyEntries     - army entries from API
+ * @param {Array}  workers         - worker entries from API
+ * @param {Array}  ownChars        - own character objects (_char_cache)
+ * @param {Array}  enemyChars      - visible enemy character objects
+ * @param {number} currentPlayerId
  * @param {Map}    ownerMap        - h3_index → { color, player_id }
  */
-const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) => {
+const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars, currentPlayerId, ownerMap) => {
   clearHexStackers();
-  clearArmyMarkers();   // also clear legacy army layer to avoid duplicates
-  clearFiefIcons();     // also clear legacy building layer to avoid duplicates
+  clearArmyMarkers();
+  clearFiefIcons();
 
-  // ── Build per-hex building index ─────────────────────────────────────────
+  // ── Per-hex indices ───────────────────────────────────────────────────────
   const buildingByHex = new Map();
-  for (const b of (buildings || [])) {
-    buildingByHex.set(b.h3_index, b);
-  }
+  for (const b of (buildings || [])) buildingByHex.set(b.h3_index, b);
 
-  // ── Build per-hex army index (group by h3_index) ─────────────────────────
   const armyByHex = new Map();
   for (const a of (armyEntries || [])) {
     if (!armyByHex.has(a.h3_index)) armyByHex.set(a.h3_index, []);
     armyByHex.get(a.h3_index).push(a);
   }
 
-  // ── Collect hex indices that have buildings or troops (owner-only hexes
-  //    are already rendered by territory fill polygons, so skip them here) ─────
+  // Workers grouped by hex (sum counts, keep lowest first_worker_id)
+  const workerByHex = new Map();
+  for (const w of (workers || [])) {
+    if (!workerByHex.has(w.h3_index)) {
+      workerByHex.set(w.h3_index, { ...w });
+    } else {
+      const ex = workerByHex.get(w.h3_index);
+      ex.worker_count += w.worker_count;
+      if (w.first_worker_id < ex.first_worker_id) ex.first_worker_id = w.first_worker_id;
+    }
+  }
+
+  // Own chars by hex (skip chars travelling with armies / fleets / underage)
+  const ownCharsByHex = new Map();
+  for (const c of (ownChars || [])) {
+    if (!c.h3_index || c.age < 16 || c.army_id || c.transported_by) continue;
+    if (!ownCharsByHex.has(c.h3_index)) ownCharsByHex.set(c.h3_index, []);
+    ownCharsByHex.get(c.h3_index).push(c);
+  }
+
+  // Enemy chars by hex
+  const enemyCharsByHex = new Map();
+  for (const c of (enemyChars || [])) {
+    if (!c.h3_index) continue;
+    if (!enemyCharsByHex.has(c.h3_index)) enemyCharsByHex.set(c.h3_index, []);
+    enemyCharsByHex.get(c.h3_index).push(c);
+  }
+
   const candidateHexes = new Set([
     ...buildingByHex.keys(),
     ...armyByHex.keys(),
+    ...workerByHex.keys(),
+    ...ownCharsByHex.keys(),
+    ...enemyCharsByHex.keys(),
   ]);
 
   for (const h3_index of candidateHexes) {
     try {
       const [lat, lng] = cellToLatLng(h3_index);
-
-      // ── Owner data ──────────────────────────────────────────────────────
-      const ownerInfo = ownerMap ? ownerMap.get(h3_index) : null;
-      const owner = ownerInfo ? { color: ownerInfo.color } : null;
-
-      // ── Building data ───────────────────────────────────────────────────
       const bld = buildingByHex.get(h3_index) || null;
 
-      // ── Army data (own vs enemy separated) ─────────────────────────────
-      let units = null;
-      const group = armyByHex.get(h3_index);
-      if (group && group.length > 0) {
-        let ownTroops          = 0;
-        let enemyTroops        = 0;
-        let ownHasFieldArmy    = false;   // true if own player has at least one non-garrison army here
-        let hasEmbarckedTroops = false;
-        for (const e of group) {
+      // ── Own entities ──────────────────────────────────────────────────────
+      const ownEntities = [];
+      let ownTroops = 0;
+      let ownHasFieldArmy = false;
+      let hasEmbarckedTroops = false;
+      const armyGroup = armyByHex.get(h3_index);
+      if (armyGroup) {
+        for (const e of armyGroup) {
           if (e.player_id === currentPlayerId) {
-            const count = Number(e.total_troops) || 0;
-            ownTroops += count;
+            ownTroops += Number(e.total_troops) || 0;
             if (!e.has_garrison || Number(e.army_count) > 1) ownHasFieldArmy = true;
             if (e.has_embarked_armies) hasEmbarckedTroops = true;
-          } else {
-            // Enemy entries only expose {h3_index, player_id} — no troop count.
-            // Use 1 as sentinel so the stacker icon shows enemy presence.
-            enemyTroops += 1;
-            if (e.has_embarked_armies) hasEmbarckedTroops = true;
+          } else if (e.has_embarked_armies) {
+            hasEmbarckedTroops = true;
           }
         }
-        const isConflict      = ownTroops > 0 && enemyTroops > 0;
-        const ownGarrisonOnly = ownTroops > 0 && !ownHasFieldArmy;
-        units = { own_troops: ownTroops, enemy_troops: enemyTroops, is_conflict: isConflict, own_garrison_only: ownGarrisonOnly, has_embarked_troops: hasEmbarckedTroops };
+      }
+      if (ownTroops > 0) {
+        ownEntities.push({ type: 'troops', count: ownTroops, isGarrisonOnly: !ownHasFieldArmy });
+      }
+      for (const c of (ownCharsByHex.get(h3_index) || [])) {
+        ownEntities.push({ type: 'char', ...c });
+      }
+      const workerData = workerByHex.get(h3_index);
+      if (workerData && workerData.player_id === currentPlayerId) {
+        ownEntities.push({ type: 'worker', ...workerData });
       }
 
-      const divIcon = createStackerDivIcon(L, { building: bld, units });
+      // ── Enemy entities ────────────────────────────────────────────────────
+      const enemyEntities = [];
+      let enemyTroops = 0;
+      if (armyGroup) {
+        for (const e of armyGroup) {
+          if (e.player_id !== currentPlayerId) enemyTroops += 1;
+        }
+      }
+      if (enemyTroops > 0) {
+        enemyEntities.push({ type: 'troops', count: enemyTroops, isGarrisonOnly: false });
+      }
+      for (const c of (enemyCharsByHex.get(h3_index) || [])) {
+        enemyEntities.push({ type: 'char', ...c });
+      }
+      if (workerData && workerData.player_id !== currentPlayerId) {
+        enemyEntities.push({ type: 'worker', ...workerData });
+      }
+
+      const isConflict = ownTroops > 0 && enemyTroops > 0;
+
+      if (!bld && ownEntities.length === 0 && enemyEntities.length === 0 && !hasEmbarckedTroops) continue;
+
+      const divIcon = createStackerDivIcon(L, {
+        building: bld,
+        ownEntities,
+        enemyEntities,
+        h3Index: h3_index,
+        isConflict,
+        hasFleet: hasEmbarckedTroops,
+      });
 
       const marker = L.marker([lat, lng], {
         icon:        divIcon,
         pane:        'stackerPane',
-        interactive: true, // always interactive so both troop and fief clicks work
+        interactive: true,
       });
 
-      // Route click: troops circle → army popup / anywhere else → fief popup
-      marker.on('click', (e) => {
-        const clickedTroops = e.originalEvent?.target?.closest?.('.hs-troops');
-        if (units && clickedTroops) {
+      marker.on('click', (ev) => {
+        const tgt = ev.originalEvent?.target;
+
+        // ── Nav arrow click ────────────────────────────────────────────────
+        const navBtn = tgt?.closest?.('.hs-nav-btn');
+        if (navBtn) {
+          ev.originalEvent.stopPropagation();
+          const side  = navBtn.dataset.side;
+          const dir   = parseInt(navBtn.dataset.dir, 10);
+          const count = parseInt(navBtn.dataset.count, 10);
+          advanceNavIdx(h3_index, side, dir, count);
+          const newIcon = createStackerDivIcon(L, {
+            building: bld, ownEntities, enemyEntities,
+            h3Index: h3_index, isConflict, hasFleet: hasEmbarckedTroops,
+          });
+          marker.setIcon(newIcon);
+          return;
+        }
+
+        // ── Character badge click ──────────────────────────────────────────
+        const charEl = tgt?.closest?.('.hs-char');
+        if (charEl) {
+          const charId  = parseInt(charEl.dataset.charId, 10);
+          const isEnemy = charEl.dataset.isEnemy === '1';
+          openCharPopup(charId, isEnemy, [lat, lng]);
+          return;
+        }
+
+        // ── Worker badge click ─────────────────────────────────────────────
+        const workerEl = tgt?.closest?.('.hs-worker');
+        if (workerEl) {
+          openWorkerPopup(workerEl.dataset.workerH3, [lat, lng]);
+          return;
+        }
+
+        // ── Troops badge click ─────────────────────────────────────────────
+        const troopsEl = tgt?.closest?.('.hs-troops');
+        if (troopsEl && (ownTroops > 0 || enemyTroops > 0)) {
           MapInteractionController.handleMapClick(h3_index, {
             onNormal: async () => showArmyDetailsPopup(h3_index, [lat, lng]),
             onSelectDestination: dispatchMovement,
@@ -2502,19 +2604,21 @@ const renderHexStackers = (buildings, armyEntries, currentPlayerId, ownerMap) =>
               await processWorkerMovement(workerId, fromH3, targetH3);
             },
           });
-        } else {
-          // Clicked on building icon, owner dot, or empty area → show fief details
-          MapInteractionController.handleMapClick(h3_index, {
-            onNormal: async () => showCellDetailsPopup(h3_index, [lat, lng]),
-            onSelectDestination: dispatchMovement,
-            onSelectWorkerDestination: async (workerId, fromH3, targetH3) => {
-              await processWorkerMovement(workerId, fromH3, targetH3);
-            },
-          });
+          return;
         }
+
+        // ── Fief / building click (default) ───────────────────────────────
+        MapInteractionController.handleMapClick(h3_index, {
+          onNormal: async () => showCellDetailsPopup(h3_index, [lat, lng]),
+          onSelectDestination: dispatchMovement,
+          onSelectWorkerDestination: async (workerId, fromH3, targetH3) => {
+            await processWorkerMovement(workerId, fromH3, targetH3);
+          },
+        });
       });
 
       marker.addTo(hexStackerLayer);
+      _hexStackerMarkers.set(h3_index, marker);
     } catch (err) {
       // Skip bad hex silently
     }
@@ -2592,7 +2696,10 @@ const fetchArmyData = async () => {
     const fleets    = fleetRes.status === 'fulfilled' && fleetRes.value.success
       ? fleetRes.value.fleets : [];
 
-    renderHexStackers(buildings, armies, cPlayerId, null);
+    _cachedBuildings       = buildings;
+    _cachedArmies          = armies;
+    _cachedCurrentPlayerId = cPlayerId;
+    renderHexStackers(buildings, armies, _cachedWorkers, _char_cache, _enemy_char_cache, cPlayerId, null);
     renderFleetMarkers(fleets);
   } catch (err) {
     console.error('Failed to fetch army data:', err);
@@ -2685,149 +2792,201 @@ const renderArmyMarkers = (armies, currentPlayerId) => {
 };
 
 /**
- * Fetch characters and render their icons on the map.
- * Only characters with army_id (deployed) get a map marker.
+ * Opens a Leaflet popup with character details at the given latlng.
+ * Handles both own characters (with action buttons) and enemy characters.
+ *
+ * @param {number}  charId  - character id
+ * @param {boolean} isEnemy - true if enemy character
+ * @param {Array}   latlng  - [lat, lng]
+ */
+const openCharPopup = (charId, isEnemy, latlng) => {
+  const char = isEnemy
+    ? _enemy_char_cache.find(c => c.id === charId)
+    : _char_cache.find(c => c.id === charId);
+  if (!char) return;
+
+  let popupHtml;
+  if (isEnemy) {
+    const icon = char.is_main_character ? '👑' : '🧑';
+    popupHtml = `
+      <div class="char-popup">
+        <div class="char-popup-header">
+          <span class="char-popup-icon">${icon}</span>
+          <div>
+            <div class="char-popup-name">${char.name}</div>
+            <div class="char-popup-meta" style="color:#9ca3af">${char.player_name}</div>
+          </div>
+        </div>
+        <div class="char-popup-actions">
+          <button id="char-capture-${char.id}" class="army-action-icon army-action-disabled" title="Necesitas un ejército en este feudo para capturar">⛓️</button>
+        </div>
+      </div>`;
+  } else {
+    const isMain      = char.is_main_character;
+    const label       = char.full_title || char.name;
+    const isMoving    = !!char.destination;
+    const stopTitle   = isMoving ? 'Detener movimiento' : 'Retirar del mapa';
+    const movingBadge = isMoving ? `<span class="char-popup-moving">&#8594; en marcha</span>` : '';
+    const popupIcon   = isMain ? '👑' : char.is_heir ? '🤴' : char.age < 16 ? '🧒' : '⭐';
+    const joinLeaveBtn = char.army_id
+      ? `<button id="char-leave-${char.id}" class="army-action-icon" title="Abandonar ejército">🚪</button>`
+      : `<button id="char-join-${char.id}" class="army-action-icon" title="Unirse al ejército del feudo">🔗</button>`;
+    popupHtml = `
+      <div class="char-popup">
+        <div class="char-popup-header">
+          <span class="char-popup-icon">${popupIcon}</span>
+          <div>
+            <div class="char-popup-name">${label} ${movingBadge}</div>
+            <div class="char-popup-meta">Nv.${Math.floor((char.level ?? 1) / 10)} · +${char.combat_buff_pct}% combate · Guardia ${char.personal_guard}/25</div>
+          </div>
+        </div>
+        <div class="char-popup-actions">
+          <button id="char-move-${char.id}" class="army-action-icon" title="Establecer destino">📍</button>
+          <button id="char-stop-${char.id}" class="army-action-icon" title="${stopTitle}">🛑</button>
+          ${joinLeaveBtn}
+        </div>
+      </div>`;
+  }
+
+  L.popup({ className: 'char-leaflet-popup', maxWidth: 220 })
+    .setLatLng(latlng)
+    .setContent(popupHtml)
+    .openOn(map);
+
+  setTimeout(() => {
+    if (isEnemy) {
+      const btn = document.getElementById(`char-capture-${char.id}`);
+      if (!btn) return;
+      const hasArmyHere = armies.value.some(a => a.h3_index === char.h3_index && !a.destination);
+      if (hasArmyHere) {
+        btn.classList.remove('army-action-disabled');
+        btn.title = 'Capturar';
+        btn.addEventListener('click', () => handleEnemyCharacterCapture(char));
+      }
+    } else {
+      const moveBtn  = document.getElementById(`char-move-${char.id}`);
+      const stopBtn  = document.getElementById(`char-stop-${char.id}`);
+      const joinBtn  = document.getElementById(`char-join-${char.id}`);
+      const leaveBtn = document.getElementById(`char-leave-${char.id}`);
+      if (moveBtn)  moveBtn.addEventListener('click',  () => handleCharacterMove(char));
+      if (stopBtn)  stopBtn.addEventListener('click',  () => handleCharacterStop(char));
+      if (joinBtn)  joinBtn.addEventListener('click',  () => handleCharacterJoin(char));
+      if (leaveBtn) leaveBtn.addEventListener('click', () => handleCharacterLeave(char));
+    }
+  }, 50);
+};
+
+/**
+ * Opens a Leaflet popup with worker details at the given latlng.
+ *
+ * @param {string} h3Index - hex index of the worker group
+ * @param {Array}  latlng  - [lat, lng]
+ */
+const openWorkerPopup = (h3Index, latlng) => {
+  // Workers are cached in _cachedWorkers; rebuild by-hex map on demand
+  const workerData = _cachedWorkers.reduce((acc, w) => {
+    if (w.h3_index !== h3Index) return acc;
+    if (!acc) return { ...w };
+    acc.worker_count += w.worker_count;
+    if (w.first_worker_id < acc.first_worker_id) acc.first_worker_id = w.first_worker_id;
+    return acc;
+  }, null);
+  if (!workerData) return;
+
+  const isOwn = workerData.player_id === _cachedCurrentPlayerId;
+  const BRIDGE_TERRAINS = ['Río', 'Agua'];
+  const canBuildBridge   = isOwn && BRIDGE_TERRAINS.includes(workerData.terrain_type);
+  const canBuildEdificio = isOwn && !BRIDGE_TERRAINS.includes(workerData.terrain_type);
+
+  const terrainLabel = workerData.terrain_type
+    ? `<span style="color:#6b7280;font-size:11px;">🌍 ${workerData.terrain_type}</span><br>`
+    : '';
+
+  const buildBtn = isOwn
+    ? canBuildBridge
+      ? `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir puente (consume trabajadores)">🌉 Puente</button>`
+      : `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir edificio en este feudo">🏛️ Edificio</button>`
+    : '';
+
+  const ownActions = isOwn ? `
+    <div style="display:flex;gap:6px;margin-top:8px;">
+      ${buildBtn}
+      <button id="worker-move-btn-${h3Index}" data-worker-id="${workerData.first_worker_id}"
+        style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#f59e0b;color:#1c1917;font-size:12px;font-weight:600;cursor:pointer;">➡️ Mover</button>
+    </div>` : '';
+
+  const popupHtml = `
+    <div style="font-family:sans-serif;font-size:13px;min-width:160px;">
+      <strong>⛏️ Trabajadores</strong><br>
+      <span style="color:#d1d5db;">${workerData.worker_count} ${workerData.worker_type}(s)</span><br>
+      <span style="color:#6b7280;">👤 ${workerData.player_name}</span><br>
+      <span style="color:#6b7280;font-size:11px;">📍 ${h3Index}</span><br>
+      ${terrainLabel}
+      ${ownActions}
+    </div>`;
+
+  L.popup({ maxWidth: 220 })
+    .setLatLng(latlng)
+    .setContent(popupHtml)
+    .openOn(map);
+
+  if (isOwn) {
+    setTimeout(() => {
+      const moveBtn = document.getElementById(`worker-move-btn-${h3Index}`);
+      if (moveBtn) {
+        moveBtn.addEventListener('click', () => {
+          const workerId = parseInt(moveBtn.dataset.workerId, 10);
+          map.closePopup();
+          window.startWorkerMovement(h3Index, workerId);
+        });
+      }
+      const buildBtnEl = document.getElementById(`worker-build-btn-${h3Index}`);
+      if (buildBtnEl) {
+        buildBtnEl.addEventListener('click', () => {
+          map.closePopup();
+          if (canBuildBridge) {
+            buildBridgeFromPopup(h3Index);
+          } else {
+            buildModalOpenedFromWorker.value = true;
+            openBuildModal(h3Index);
+          }
+        });
+      }
+    }, 50);
+  }
+};
+
+/**
+ * Fetch characters and update stacker caches. Routes are drawn here.
+ * Characters are now rendered as stacker entities, not separate markers.
  */
 const fetchAndRenderCharacters = async () => {
-  if (!characterMarkersLayer) return;
-  characterMarkersLayer.clearLayers();
   try {
+    // ── Own characters ────────────────────────────────────────────────────────
     const data = await mapApi.getMyCharacters();
-    const characters = data.characters ?? [];
-    _char_cache = characters;
-    for (const char of characters) {
-      if (!char.h3_index) continue;        // sin posición → sin marcador
-      if (char.age < 16) continue;         // menores no visibles en el mapa
-      if (char.army_id)  continue;         // viaja con el ejército → sin marcador propio
-      if (char.transported_by) continue;   // embarcado en flota → sin marcador en tierra
-      try {
-        const [lat, lng] = cellToLatLng(char.h3_index);
-        const isMain = char.is_main_character;
-        const label  = char.full_title || char.name;
+    _char_cache = data.characters ?? [];
 
-        const iconHtml = `
-          <div class="char-map-marker ${isMain ? 'char-map-marker--main' : ''}" title="${label}">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <circle cx="12" cy="7" r="4"/>
-              <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
-            </svg>
-          </div>`;
-
-        const icon = L.divIcon({
-          html:       iconHtml,
-          className:  '',
-          iconSize:   [52, 36],
-          iconAnchor: [40, 26],
-        });
-
-        const marker = L.marker([lat, lng], { icon, pane: 'characterPane', interactive: true });
-
-        const isMoving    = !!char.destination;
-        const stopTitle   = isMoving ? 'Detener movimiento' : 'Retirar del mapa';
-        const movingBadge = isMoving
-          ? `<span class="char-popup-moving">&#8594; en marcha</span>`
-          : '';
-        const hasArmy = !!char.army_id;
-        const joinLeaveBtn = hasArmy
-          ? `<button id="char-leave-${char.id}" class="army-action-icon" title="Abandonar ejército">🚪</button>`
-          : `<button id="char-join-${char.id}" class="army-action-icon" title="Unirse al ejército del feudo">🔗</button>`;
-
-        const popupIcon = isMain ? '👑' : char.is_heir ? '🤴' : char.age < 16 ? '🧒' : '⭐';
-        const popupHtml = `
-          <div class="char-popup">
-            <div class="char-popup-header">
-              <span class="char-popup-icon">${popupIcon}</span>
-              <div>
-                <div class="char-popup-name">${label} ${movingBadge}</div>
-                <div class="char-popup-meta">Nv.${Math.floor((char.level??1)/10)} · +${char.combat_buff_pct}% combate · Guardia ${char.personal_guard}/25</div>
-              </div>
-            </div>
-            <div class="char-popup-actions">
-              <button id="char-move-${char.id}" class="army-action-icon" title="Establecer destino">📍</button>
-              <button id="char-stop-${char.id}" class="army-action-icon" title="${stopTitle}">🛑</button>
-              ${joinLeaveBtn}
-            </div>
-          </div>`;
-
-        marker.bindPopup(popupHtml, { className: 'char-leaflet-popup', maxWidth: 220 });
-        marker.on('popupopen', () => {
-          setTimeout(() => {
-            const moveBtn = document.getElementById(`char-move-${char.id}`);
-            if (moveBtn) moveBtn.addEventListener('click', () => handleCharacterMove(char));
-            const stopBtn = document.getElementById(`char-stop-${char.id}`);
-            if (stopBtn) stopBtn.addEventListener('click', () => handleCharacterStop(char));
-            const joinBtn = document.getElementById(`char-join-${char.id}`);
-            if (joinBtn) joinBtn.addEventListener('click', () => handleCharacterJoin(char));
-            const leaveBtn = document.getElementById(`char-leave-${char.id}`);
-            if (leaveBtn) leaveBtn.addEventListener('click', () => handleCharacterLeave(char));
-          }, 50);
-        });
-
-        characterMarkersLayer.addLayer(marker);
-
-        // Dibujar ruta si el personaje ya tiene destino pendiente
-        if (char.destination && char.h3_index) {
-          try {
-            const path = gridPathCells(char.h3_index, char.destination).slice(1);
-            RouteVisualizer.drawPath(`char_${char.id}`, path, char.h3_index);
-          } catch (_) { /* ignorar si la ruta no es calculable */ }
-        }
-      } catch (e) {
-        console.error('Error rendering character marker:', e);
+    // Draw routes for moving characters
+    for (const char of _char_cache) {
+      if (char.destination && char.h3_index) {
+        try {
+          const path = gridPathCells(char.h3_index, char.destination).slice(1);
+          RouteVisualizer.drawPath(`char_${char.id}`, path, char.h3_index);
+        } catch (_) { /* ignore unreachable destinations */ }
       }
     }
 
-    // ── Personajes enemigos visibles ─────────────────────────────────────────
+    // ── Visible enemy characters ──────────────────────────────────────────────
     const enemyData = await mapApi.getVisibleEnemyCharacters();
-    for (const char of (enemyData.characters ?? [])) {
-      if (!char.h3_index) continue;
-      try {
-        const [lat, lng] = cellToLatLng(char.h3_index);
-        const color = char.player_color || '#e53e3e';
-        const iconHtml = `
-          <div class="char-map-marker char-map-marker--enemy" title="${char.name} (${char.player_name})"
-               style="--enemy-color:${color}">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <circle cx="12" cy="7" r="4"/>
-              <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
-            </svg>
-          </div>`;
-        const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [52, 36], iconAnchor: [26, 36] });
-        const marker = L.marker([lat, lng], { icon, pane: 'characterPane', interactive: true });
+    _enemy_char_cache = enemyData.characters ?? [];
 
-        marker.bindPopup(`
-          <div class="char-popup">
-            <div class="char-popup-header">
-              <span class="char-popup-icon">${char.is_main_character ? '👑' : '🧑'}</span>
-              <div>
-                <div class="char-popup-name">${char.name}</div>
-                <div class="char-popup-meta" style="color:#9ca3af">${char.player_name}</div>
-              </div>
-            </div>
-            <div class="char-popup-actions">
-              <button id="char-capture-${char.id}" class="army-action-icon army-action-disabled" title="Necesitas un ejército en este feudo para capturar">⛓️</button>
-            </div>
-          </div>`, { className: 'char-leaflet-popup', maxWidth: 220 });
-
-        marker.on('popupopen', () => {
-          setTimeout(() => {
-            const btn = document.getElementById(`char-capture-${char.id}`);
-            if (!btn) return;
-            // Habilitado solo si el jugador tiene un ejército parado en la misma celda
-            // y el personaje no tiene ejército (garantizado por getEnemyCharactersAtHexes)
-            const hasArmyHere = armies.value.some(a => a.h3_index === char.h3_index && !a.destination);
-            if (hasArmyHere) {
-              btn.classList.remove('army-action-disabled');
-              btn.title = 'Capturar';
-              btn.addEventListener('click', () => handleEnemyCharacterCapture(char, marker));
-            }
-          }, 50);
-        });
-
-        characterMarkersLayer.addLayer(marker);
-      } catch (e) {
-        console.error('Error rendering enemy character marker:', e);
-      }
+    // ── Re-render stackers with updated character data ────────────────────────
+    if (_cachedCurrentPlayerId !== null) {
+      renderHexStackers(
+        _cachedBuildings, _cachedArmies, _cachedWorkers,
+        _char_cache, _enemy_char_cache,
+        _cachedCurrentPlayerId, _cachedOwnerMap,
+      );
     }
   } catch (e) {
     console.error('Error fetching characters for map:', e);
@@ -4582,10 +4741,10 @@ const handleCharacterLeave = async (char) => {
   }
 };
 
-const handleEnemyCharacterCapture = async (char, marker) => {
+const handleEnemyCharacterCapture = async (char) => {
   try {
     const result = await mapApi.captureCharacter(char.id);
-    marker.closePopup();
+    map.closePopup();
     showToast(`⛓️ ${result.message}`, 'success');
     await fetchAndRenderCharacters();
   } catch (err) {

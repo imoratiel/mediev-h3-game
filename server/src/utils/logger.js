@@ -302,6 +302,16 @@ function errorLoggingMiddleware(err, req, res, next) {
 }
 
 /**
+ * Registrar líneas de debug de combate detallado.
+ * Solo escribe si la variable de entorno DEBUG_COMBAT=true.
+ * Escribe en engine.log con prefijo [COMBAT-DEBUG].
+ */
+function logCombatDebug(message) {
+    if (process.env.DEBUG_COMBAT !== 'true') return;
+    appendToLog(LOG_FILES.engine, `[COMBAT-DEBUG] ${message}`);
+}
+
+/**
  * Logger unificado con métodos segregados
  */
 const Logger = {
@@ -348,7 +358,13 @@ const Logger = {
      * Compatibilidad con logGameEvent
      * @param {string} message - Mensaje
      */
-    event: logGameEvent
+    event: logGameEvent,
+
+    /**
+     * Debug detallado de combate (solo cuando DEBUG_COMBAT=true en .env)
+     * @param {string} message
+     */
+    combatDebug: logCombatDebug,
 };
 
 module.exports = {

@@ -83,7 +83,9 @@
       "WebSearch",
       "mcp__plugin_playwright_playwright__browser_snapshot",
       "mcp__notion__API-get-block-children",
-      "mcp__notion__API-update-a-block"
+      "mcp__notion__API-update-a-block",
+      "Bash(find d:/claude/mediev-h3-game/server/src -name logger*)",
+      "Bash(\"d:/claude/mediev-h3-game/.env.example\")"
     ]
   }
 }
