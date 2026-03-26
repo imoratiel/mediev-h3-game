@@ -4157,6 +4157,10 @@ const onNotificationsPanelClose = () => {
  * Open full-screen overlay
  */
 const openOverlay = (overlayName) => {
+  if (activeOverlay.value === overlayName) {
+    closeOverlay();
+    return;
+  }
   activeOverlay.value = overlayName;
   activePanel.value = null; // Close any open panel
   console.log(`✓ Overlay abierto: ${overlayName}`);
