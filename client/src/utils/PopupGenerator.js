@@ -259,8 +259,8 @@ export function generateCellPopupContent(cell, config) {
           </button>
         </div>
       </div>`;
-  } else if (isOwnFief && !canHireWorkers && workerTypes.length > 0) {
-    // Own fief but no valid location — hint without a form
+  } else if (isOwnFief && !canHireWorkers && workerTypes.length > 0 && !cell.fief_building) {
+    // Own fief, no building yet — hint that a Mercado would enable workers
     popupContent += `
       <p style="font-size:0.75rem;color:#6b7280;margin:8px 0 0 0;">
         ⚒️ Construye un <strong>Mercado</strong> para poder contratar trabajadores aquí.
