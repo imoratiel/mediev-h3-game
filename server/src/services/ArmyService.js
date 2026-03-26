@@ -816,8 +816,8 @@ class ArmyService {
                 .filter(army => army.player_id === playerId || visibleHexes.has(army.h3_index))
                 .map(army => {
                     if (army.player_id === playerId) return army;
-                    // Enemy army: only expose position and owner, no military intelligence
-                    return { h3_index: army.h3_index, player_id: army.player_id };
+                    // Enemy army: only expose position, owner and naval flag (for map icon), no military intelligence
+                    return { h3_index: army.h3_index, player_id: army.player_id, has_naval: army.has_naval, has_garrison: army.has_garrison, total_troops: army.total_troops };
                 });
 
             res.json({ success: true, armies: visibleArmies, current_player_id: playerId });

@@ -10,6 +10,7 @@
  *
  * Entity object shapes passed in ownEntities / enemyEntities arrays:
  *   { type: 'troops', count, isGarrisonOnly }
+ *   { type: 'fleet',  count }
  *   { type: 'char',   id, name, is_main_character, is_heir }
  *   { type: 'worker', h3_index, worker_count, worker_type }
  */
@@ -148,8 +149,15 @@ function _workerBadge(entity) {
   return `<div class="hs-entity hs-worker" data-worker-h3="${entity.h3_index}" style="background:${bg};border:2px solid ${border};border-radius:4px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;position:relative;">⛏️${counter}</div>`;
 }
 
+function _fleetBadge(entity, isEnemy) {
+  const bg     = isEnemy ? '#b71c1c' : '#1a4a8a';
+  const border = isEnemy ? '#ef5350' : '#4a9eff';
+  return `<div class="hs-entity hs-fleet" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;">⛵</div>`;
+}
+
 function _entityBadge(entity, isEnemy, isConflict) {
   if (entity.type === 'troops') return _troopsBadge(entity, isEnemy, isConflict);
+  if (entity.type === 'fleet')  return _fleetBadge(entity, isEnemy);
   if (entity.type === 'char')   return _charBadge(entity, isEnemy);
   if (entity.type === 'worker') return _workerBadge(entity);
   return '';

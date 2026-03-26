@@ -2525,13 +2525,23 @@ const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars
       // ── Enemy entities ────────────────────────────────────────────────────
       const enemyEntities = [];
       let enemyTroops = 0;
+      let enemyNaval = 0;
       if (armyGroup) {
         for (const e of armyGroup) {
-          if (e.player_id !== currentPlayerId) enemyTroops += 1;
+          if (e.player_id !== currentPlayerId) {
+            if (e.has_naval && !e.has_garrison && Number(e.total_troops) === 0) {
+              enemyNaval += 1;
+            } else {
+              enemyTroops += 1;
+            }
+          }
         }
       }
       if (enemyTroops > 0) {
         enemyEntities.push({ type: 'troops', count: enemyTroops, isGarrisonOnly: false });
+      }
+      if (enemyNaval > 0) {
+        enemyEntities.push({ type: 'fleet', count: enemyNaval });
       }
       for (const c of (enemyCharsByHex.get(h3_index) || [])) {
         enemyEntities.push({ type: 'char', ...c });
@@ -2740,8 +2750,9 @@ const renderArmyMarkers = (armies, currentPlayerId) => {
       // Conflict: armies from different players share the hex
       const isConflict = playerIds.size > 1;
 
-      // Icon glyph: single dagger for lone army, crossed swords for many
-      const glyph = isMultiple ? '⚔️' : '🗡️';
+      // Icon glyph: ship for pure naval groups, swords for land armies
+      const allNaval = group.every(e => e.has_naval && !e.has_garrison && Number(e.total_troops) === 0);
+      const glyph = allNaval ? '⛵' : (isMultiple ? '⚔️' : '🗡️');
 
       // Colors
       // Color rule: any enemy present → red. Own troops only → blue.
