@@ -4876,6 +4876,7 @@ window.armyPopupNavigate = (delta) => {
   if (item.type === 'character') {
     const newContent = _generateCharacterItemHTML(item.data, _pp_items.length, _pp_index);
     _pp_ref.setContent(newContent);
+    setTimeout(() => attachCharacterListeners(item.data), 50);
     return;
   }
 
@@ -4959,8 +4960,26 @@ const _generateCharacterItemHTML = (char, totalItems, globalIndex) => {
     html += `</div>`;
   }
 
+  // Action buttons
+  const isMoving = !!char.destination;
+  const actionBtnBase = 'padding:5px 10px;border:none;border-radius:4px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;';
+  html += `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;">`;
+  html += `<button id="char-pp-move-${char.id}" style="${actionBtnBase}background:#1e40af;">📍 Mover</button>`;
+  html += `<button id="char-pp-stop-${char.id}" ${isMoving ? '' : 'disabled'} style="${actionBtnBase}background:${isMoving ? '#7c3aed' : '#374151'};opacity:${isMoving ? 1 : 0.5};cursor:${isMoving ? 'pointer' : 'not-allowed'};">🛑 Detener</button>`;
+  html += `<button id="char-pp-join-${char.id}" style="${actionBtnBase}background:#065f46;">🔗 Unirse</button>`;
+  html += `</div>`;
+
   html += `</div></div>`;
   return html;
+};
+
+const attachCharacterListeners = (char) => {
+  const moveBtn = document.getElementById(`char-pp-move-${char.id}`);
+  const stopBtn = document.getElementById(`char-pp-stop-${char.id}`);
+  const joinBtn = document.getElementById(`char-pp-join-${char.id}`);
+  if (moveBtn) moveBtn.addEventListener('click', () => handleCharacterMove(char));
+  if (stopBtn) stopBtn.addEventListener('click', () => handleCharacterStop(char));
+  if (joinBtn) joinBtn.addEventListener('click', () => handleCharacterJoin(char));
 };
 
 // Builds the fleet inspector HTML for the popup navigation
@@ -5175,6 +5194,8 @@ const showArmyDetailsPopup = async (h3_index, latLng) => {
     let popupContent;
     if (firstItem.type === 'fleet') {
       popupContent = _generateFleetItemHTML(firstItem.data, _pp_items.length, 0);
+    } else if (firstItem.type === 'character') {
+      popupContent = _generateCharacterItemHTML(firstItem.data, _pp_items.length, 0);
     } else {
       popupContent = generateArmyPopup(data, {
         currentPlayerId: playerId.value,
@@ -5206,6 +5227,8 @@ const showArmyDetailsPopup = async (h3_index, latLng) => {
     setTimeout(() => {
       if (firstItem.type === 'fleet') {
         attachFleetListeners(firstItem.data);
+      } else if (firstItem.type === 'character') {
+        attachCharacterListeners(firstItem.data);
       } else if (_pp_armies.length > 0) {
         const first = _pp_armies[0];
         if (first.player_id === playerId.value) attachArmyListeners(first, h3_index);
