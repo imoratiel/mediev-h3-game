@@ -1,3 +1,4 @@
+<!-- [DEAD_CODE] Componente de scaffolding de Vue/Vite — no está importado ni usado en ningún lugar del proyecto -->
 <script setup>
 import { ref } from 'vue'
 

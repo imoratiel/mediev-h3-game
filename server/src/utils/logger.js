@@ -288,7 +288,7 @@ function logGameEvent(message) {
  * @param {Object} res - Response de Express
  * @param {Function} next - Next middleware
  */
-// TODO(dead-code): Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
+// [DEAD_CODE] TODO: Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
 function errorLoggingMiddleware(err, req, res, next) {
     logError(err, {
         endpoint: req.originalUrl || req.url,

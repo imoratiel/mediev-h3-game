@@ -7,7 +7,7 @@ const h3 = require('h3-js');
  * @param {Object} pool - DB Pool
  * @returns {Promise<boolean>} True if adjacent
  */
-// TODO(dead-code): Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
+// [DEAD_CODE] TODO: Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
 async function checkContiguity(h3Index, playerId, pool) {
     const neighbors = h3.gridDisk(h3Index, 1);
     const immediateNeighbors = neighbors.filter(neighbor => neighbor !== h3Index);

@@ -22,7 +22,7 @@ const TERRAIN_COLORS = {
  * @param {number} days - Total days
  * @returns {string} Formatted string
  */
-// TODO(dead-code): Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
+// [DEAD_CODE] TODO: Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
 function formatDaysToYearsAndDays(days) {
     if (days >= 999999) {
         return 'más de 2,700 años (reservas ilimitadas)';

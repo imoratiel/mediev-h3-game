@@ -2,6 +2,7 @@ const { Logger } = require('../utils/logger');
 const TerrainModel = require('../models/TerrainModel.js');
 const h3 = require('h3-js');
 const { getTerrainColor } = require('../logic/territory.js');
+// [DEAD_CODE] Import de 'constants' de 'node:buffer' nunca utilizado en este módulo
 const { constants } = require('node:buffer');
 
 class TerrainService {

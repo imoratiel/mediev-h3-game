@@ -792,6 +792,7 @@ class ArmySimulationService {
   /**
    * Procesa un paso de movimiento automático para un ejército con destino
    * @deprecated Usar executeArmyTurn en su lugar
+   * [DEAD_CODE] Función deprecada — no se llama desde ningún otro módulo; candidata a eliminación
    * @param {number} armyId - ID del ejército
    * @returns {Promise<Object>} - { success, moved, arrived, message }
    */

@@ -26,7 +26,7 @@ function logEconomyEvent(turnNumber, eventType, details) {
  * @param {Object} config - Game configuration
  * @returns {Object} Produced resources
  */
-// TODO(dead-code): Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
+// [DEAD_CODE] TODO: Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
 function calculateProduction(territory, config) {
     const prodMultiplier = config.infrastructure.prod_multiplier_per_level;
 
@@ -77,7 +77,7 @@ function calculateProduction(territory, config) {
  * @param {number} population - Current population
  * @returns {number} Food consumption
  */
-// TODO(dead-code): Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
+// [DEAD_CODE] TODO: Sin referencias de uso en el proyecto; revisar y eliminar si no se reutiliza.
 function calculateFoodConsumption(population) {
     return Math.floor(population / 100.0) * 0.01;
 }
