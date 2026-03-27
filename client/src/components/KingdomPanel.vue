@@ -9,13 +9,13 @@
             <th class="col-number">💰</th>
             <th class="col-number">👥</th>
             <th class="col-number">😊</th>
-            <th class="col-number">🌾</th>
-            <th class="col-number">Auton.</th>
-            <th class="col-farm">Nivel Granja</th>
-            <th class="col-division">Pagus</th>
-            <th class="col-number">⚔️</th>
-            <th class="col-edificio">🏛️</th>
-            <th class="col-actions">Acciones</th>
+            <th class="col-number mobile-hide">🌾</th>
+            <th class="col-number mobile-hide">Auton.</th>
+            <th class="col-farm mobile-hide">Granja</th>
+            <th class="col-division mobile-hide">Pagus</th>
+            <th class="col-number mobile-hide">⚔️</th>
+            <th class="col-edificio mobile-hide">🏛️</th>
+            <th class="col-actions">Acc.</th>
           </tr>
         </thead>
         <tbody>
@@ -24,7 +24,10 @@
               <span v-if="fief.is_capital" class="capital-icon" title="Capital del Reino">👑 </span>{{ cellToLatLng(fief.h3_index).map(v => v.toFixed(3)).join(', ') }} ({{ fief.h3_index }})
               <span v-if="fief.grace_turns > 0" class="occupation-badge" :title="`Bajo ocupación militar — ${fief.grace_turns} turno${fief.grace_turns !== 1 ? 's' : ''} restante${fief.grace_turns !== 1 ? 's' : ''}`">⚔️ ({{ fief.grace_turns }})</span>
             </td>
-            <td class="terrain-cell">{{ fief.terrain }}</td>
+            <td class="terrain-cell">
+              <span class="terrain-dot" :style="{ background: terrainColor(fief.terrain) }" :title="fief.terrain"></span>
+              <span class="terrain-label">{{ fief.terrain }}</span>
+            </td>
             <td class="text-gold text-right">{{ formatGold(fief.gold) }}</td>
             <td class="text-right pop-cell">{{ formatNumber(fief.population) }}</td>
             <td class="text-right" :class="{ 'happiness-low': fief.happiness < 30 }">
@@ -37,14 +40,14 @@
                   :class="fief.happiness_delta > 0 ? 'delta-positive' : 'delta-negative'"
                 > ({{ fief.happiness_delta > 0 ? '+' : '' }}{{ fief.happiness_delta }})</span></span>
             </td>
-            <td class="text-right">{{ formatNumber(fief.food) }}</td>
-            <td :class="['text-right', {
+            <td class="text-right mobile-hide">{{ formatNumber(fief.food) }}</td>
+            <td class="mobile-hide" :class="['text-right', {
               'text-danger': fief.autonomy < 30,
               'text-success': fief.autonomy > 365
             }]">
               {{ fief.autonomy === Infinity ? '∞' : fief.autonomy }}
             </td>
-            <td class="farm-cell">
+            <td class="farm-cell mobile-hide">
               <span class="farm-lvl" :class="{ 'farm-max': fief.farm_level >= 5 }">
                 {{ fief.farm_level }}/5
               </span>
@@ -60,14 +63,14 @@
               </button>
               <span v-else-if="fief.farm_level >= 5" class="farm-max-text">Máx</span>
             </td>
-            <td class="division-cell">
+            <td class="division-cell mobile-hide">
               <span v-if="fief.division_name" class="division-badge" :title="fief.division_name">
                 ⚜️ {{ fief.division_name }}
               </span>
               <span v-else class="dimmed-dash">—</span>
             </td>
-            <td class="text-right troops-cell">{{ fief.total_troops || 0 }}</td>
-            <td class="text-center building-cell">
+            <td class="text-right troops-cell mobile-hide">{{ fief.total_troops || 0 }}</td>
+            <td class="text-center building-cell mobile-hide">
               <template v-if="fief.fief_building">
                 <span
                   v-if="fief.fief_building.is_under_construction"
@@ -242,6 +245,20 @@ const emit = defineEmits([
   'change-page', 'change-limit',
   'buyWorker', 'upgradeFarm',
 ]);
+
+const TERRAIN_COLORS = {
+  'Mar':                '#1a6b9e',
+  'Costa':              '#4a9eff',
+  'Llanura':            '#8aad5a',
+  'Tierras de Cultivo': '#a0c060',
+  'Río':                '#3a8fc4',
+  'Agua':               '#3a8fc4',
+  'Pantano':            '#5a7a4a',
+  'Bosque':             '#3a6b3a',
+  'Colinas':            '#9a8060',
+  'Montaña':            '#7a7a7a',
+};
+const terrainColor = (name) => TERRAIN_COLORS[name] ?? '#6b6b6b';
 
 const upgradingFarm = ref(null);
 
@@ -854,5 +871,66 @@ const formatGold = (val) => {
   opacity: 0.4;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+/* ── Terrain dot (visible always, label hidden on mobile) ── */
+.terrain-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.terrain-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+/* ── Mobile ─────────────────────────────────────────────── */
+@media (max-width: 768px), (max-height: 480px) and (orientation: landscape) {
+  .mobile-hide {
+    display: none !important;
+  }
+
+  /* Tabla compacta */
+  .kingdom-table {
+    font-size: 0.78rem;
+  }
+
+  .kingdom-table th,
+  .kingdom-table td {
+    padding: 6px 4px;
+  }
+
+  .fief-name-cell {
+    font-size: 0.78rem;
+    max-width: 120px;
+  }
+
+  /* Ocultar label del terreno, solo cuadrado */
+  .terrain-label {
+    display: none;
+  }
+
+  .terrain-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+  }
+
+  /* Botones de acción más pequeños */
+  .btn-micro {
+    padding: 4px 6px;
+    font-size: 0.85rem;
+  }
+
+  /* Paginación compacta */
+  .pagination-row {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.8rem;
+  }
 }
 </style>

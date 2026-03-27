@@ -9316,7 +9316,7 @@ onBeforeUnmount(() => {
 }
 
 /* ── Responsive: móvil ≤ 768px ──────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 480px) and (orientation: landscape) {
 
   /* Ocultar sidebar completo */
   #main-sidebar,
@@ -9519,11 +9519,122 @@ onBeforeUnmount(() => {
     top: 48px;
   }
 
-  /* ── Overlays y paneles a pantalla completa ───────────────────── */
+  /* ── Overlays fullscreen (game-overlay) ──────────────────────── */
+  .game-overlay {
+    left: 0 !important;
+    top: 48px !important;
+    overflow-y: auto !important;
+  }
+
+  .overlay-container {
+    padding: 8px 12px !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: calc(100vh - 48px) !important;
+  }
+
+  .overlay-header {
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .overlay-title {
+    font-size: 1rem !important;
+  }
+
+  .overlay-close {
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 16px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Mensajes: columnas → filas apiladas */
+  .overlay-content {
+    grid-template-columns: 1fr !important;
+    overflow-y: visible !important;
+    gap: 16px !important;
+  }
+
+  .messages-list-column,
+  .message-viewer-column,
+  .message-compose-column {
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+
+  /* ── Kingdom/Imperium: sidebar lateral → pestañas arriba ─────── */
+  .kingdom-content {
+    flex-direction: column !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .kingdom-sidebar {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--color-accent-gold) !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 12px !important;
+    overflow-y: visible !important;
+  }
+
+  /* Ocultar el bloque de estadísticas en la sidebar en móvil */
+  .kingdom-sidebar .sidebar-section:not(:first-child) {
+    display: none !important;
+  }
+
+  .kingdom-sidebar .kingdom-actions-vertical {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  .kingdom-action-btn-sidebar {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding: 8px 10px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .kingdom-main {
+    overflow-y: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    flex: unset !important;
+  }
+
+  /* ── Context panel (market, notifications…) ───────────────────── */
   .context-panel {
+    left: 0 !important;
     top: 48px;
     width: 100vw !important;
-    left: 0 !important;
+    height: calc(100vh - 48px);
+    padding: 16px;
+    transform: translateX(-100%);
+  }
+  .context-panel.open {
+    transform: translateX(0);
+  }
+
+  /* ── Sub-componentes: quitar height:100% para que fluyan natural ─ */
+  :deep(.troops-panel),
+  :deep(.naval-panel),
+  :deep(.economy-panel),
+  :deep(.diplomacy-panel),
+  :deep(.character-panel) {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Build modal: que no se corte */
+  .build-modal-overlay .build-modal {
+    width: 95vw !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
   }
 
   /* ── Ajustes de texto en mapa ─────────────────────────────────── */
@@ -10405,7 +10516,7 @@ onBeforeUnmount(() => {
 }
 
 /* Mobile adjustments for gold indicator and action panel */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 480px) and (orientation: landscape) {
   .player-gold-indicator {
     top: 10px;
     left: 10px; /* Keep on left side for mobile */
@@ -10789,7 +10900,7 @@ onBeforeUnmount(() => {
 }
 
 /* Mobile adjustments for toasts */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 480px) and (orientation: landscape) {
   .toast-container {
     bottom: 10px;
     right: 10px;
