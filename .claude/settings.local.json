@@ -87,7 +87,8 @@
       "Bash(find d:/claude/mediev-h3-game/server/src -name logger*)",
       "Bash(\"d:/claude/mediev-h3-game/.env.example\")",
       "WebFetch(domain:skills.sh)",
-      "Bash(head -15 grep -n \"h3_index\\\\|h3-index\" d:/claude/mediev-h3-game/client/src/components/NavalPanel.vue)"
+      "Bash(head -15 grep -n \"h3_index\\\\|h3-index\" d:/claude/mediev-h3-game/client/src/components/NavalPanel.vue)",
+      "Bash(git remote:*)"
     ]
   }
 }

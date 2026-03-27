@@ -1,5 +1,57 @@
 <template>
   <div class="app-container">
+
+    <!-- ── MOBILE TOP BAR ─────────────────────────────────────────────── -->
+    <div v-if="currentUser" class="mobile-topbar">
+      <button class="mobile-hamburger" @click="showMobileMenu = !showMobileMenu" :class="{ open: showMobileMenu }">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="mobile-topbar-center">
+        <span class="mobile-date">📅 {{ formattedDate }}</span>
+        <span class="mobile-gold">💰 {{ Number(playerGold).toLocaleString('es-ES') }}</span>
+      </div>
+      <div class="mobile-topbar-right">
+        {{ currentUser.culture_id === 1 ? 'Gens' : 'Casa' }} {{ currentUser.display_name || currentUser.username }}
+      </div>
+    </div>
+
+    <!-- ── MOBILE DRAWER OVERLAY ──────────────────────────────────────── -->
+    <div v-if="showMobileMenu" class="mobile-drawer-overlay" @click="showMobileMenu = false"></div>
+
+    <!-- ── MOBILE DRAWER ──────────────────────────────────────────────── -->
+    <div class="mobile-drawer" :class="{ open: showMobileMenu }">
+      <div class="mobile-drawer-header">
+        <span>⚔️ Hispania 210 a.C.</span>
+        <button class="mobile-drawer-close" @click="showMobileMenu = false">✕</button>
+      </div>
+      <nav class="mobile-drawer-nav">
+        <button class="mobile-drawer-btn" @click="openOverlay('reino');  showMobileMenu = false"><span>🏰</span> Imperium</button>
+        <button class="mobile-drawer-btn" @click="openOverlay('characters'); showMobileMenu = false"><span>👑</span> Dinastía</button>
+        <button class="mobile-drawer-btn" @click="openOverlay('diplomacy'); showMobileMenu = false">
+          <span>⚖️</span> Diplomacia
+          <span v-if="pendingRelationsCount > 0" class="mobile-badge">{{ pendingRelationsCount }}</span>
+        </button>
+        <button class="mobile-drawer-btn" @click="openOverlay('economy'); showMobileMenu = false"><span>💰</span> Economía</button>
+        <button class="mobile-drawer-btn" @click="togglePanel('market');  showMobileMenu = false"><span>🏪</span> Mercado</button>
+        <button class="mobile-drawer-btn" @click="openOverlay('troops');  showMobileMenu = false"><span>⚔️</span> Tropas</button>
+        <button class="mobile-drawer-btn" @click="openOverlay('naval');   showMobileMenu = false"><span>⛵</span> Flotas</button>
+        <button class="mobile-drawer-btn" @click="openOverlay('messages'); showMobileMenu = false">
+          <span>📜</span> Mensajes
+          <span v-if="unreadCount > 0" class="mobile-badge">{{ unreadCount }}</span>
+        </button>
+        <button class="mobile-drawer-btn" @click="togglePanel('notifications'); showMobileMenu = false">
+          <span>🔔</span> Notificaciones
+          <span v-if="unreadNotifCount > 0" class="mobile-badge">{{ unreadNotifCount }}</span>
+        </button>
+        <button class="mobile-drawer-btn" @click="openOverlay('layers'); showMobileMenu = false"><span>🗺️</span> Mapa</button>
+      </nav>
+      <div class="mobile-drawer-footer">
+        <button v-if="currentUser && currentUser.role === 'admin'" class="mobile-drawer-btn" @click="openOverlay('admin'); showMobileMenu = false"><span>⚙️</span> Administración</button>
+        <button class="mobile-drawer-btn" @click="showChangelog = !showChangelog; showMobileMenu = false"><span>📋</span> Novedades</button>
+        <button class="mobile-drawer-btn mobile-drawer-logout" @click="handleLogout"><span>🚪</span> Cerrar Sesión</button>
+      </div>
+    </div>
+
     <!-- Full Background Map -->
     <div class="map-background">
       <div v-if="loading" class="loading-overlay">
@@ -1353,6 +1405,9 @@ const isColonizing = ref(false); // Track colonization state to prevent multiple
 const workerTypes = ref([]);    // Loaded once on mount from /api/workers/types
 const myWorkers = ref([]);       // Player's hired workers (shown in market panel)
 const loadingWorkers = ref(false);
+
+// Mobile menu
+const showMobileMenu = ref(false);
 
 // Market panel state
 const marketHireTypeId = ref(null);
@@ -9247,33 +9302,344 @@ onBeforeUnmount(() => {
 
 /* Import Google Font - Moved to style.css */
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .sidebar {
-    width: 100%;
-    height: auto;
-    max-height: 40vh;
-    border-right: none;
-    border-bottom: 2px solid #ddd;
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE TOP BAR + DRAWER  (hidden on desktop)
+   ═══════════════════════════════════════════════════════════════════ */
+.mobile-topbar {
+  display: none;
+}
+.mobile-drawer-overlay {
+  display: none;
+}
+.mobile-drawer {
+  display: none;
+}
+
+/* ── Responsive: móvil ≤ 768px ──────────────────────────────────── */
+@media (max-width: 768px), (max-height: 480px) and (orientation: landscape) {
+
+  /* Ocultar sidebar completo */
+  #main-sidebar,
+  .main-sidebar {
+    display: none !important;
   }
 
-  .app-container {
+  /* Ocultar widget de búsqueda en móvil (se usa el drawer) */
+  .h3-search-widget {
+    display: none;
+  }
+
+  /* ── Top Bar ──────────────────────────────────────────────────── */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: #110f0d;
+    border-bottom: 2px solid #c5a059;
+    z-index: 1100;
+    padding: 0 10px;
+    gap: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.8);
+  }
+
+  /* Hamburger button */
+  .mobile-hamburger {
+    display: flex;
     flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 36px;
+    height: 36px;
+    padding: 6px;
+    background: rgba(197,160,89,0.1);
+    border: 1px solid #c5a059;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .mobile-hamburger span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: #c5a059;
+    border-radius: 2px;
+    transition: transform 0.2s, opacity 0.2s;
+  }
+  .mobile-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .mobile-hamburger.open span:nth-child(2) { opacity: 0; }
+  .mobile-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+  /* Center: date + gold */
+  .mobile-topbar-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    overflow: hidden;
+  }
+  .mobile-date {
+    font-size: 0.7rem;
+    color: #9ca3af;
+    line-height: 1;
+  }
+  .mobile-gold {
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: #c5a059;
+    line-height: 1;
   }
 
-  .map-container {
-    height: 60vh;
+  /* Right: house name */
+  .mobile-topbar-right {
+    font-size: 0.75rem;
+    color: #e8d5b5;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+    flex-shrink: 0;
   }
 
-  /* Adjust settlement labels for mobile */
-  :deep(.settlement-label) {
-    font-size: 12px;
+  /* ── Drawer Overlay ───────────────────────────────────────────── */
+  .mobile-drawer-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 1150;
   }
 
-  :deep(.settlement-icon) {
-    font-size: 24px;
+  /* ── Drawer Panel ─────────────────────────────────────────────── */
+  .mobile-drawer {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100vh;
+    background: #110f0d;
+    border-right: 2px solid #c5a059;
+    z-index: 1200;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+  }
+  .mobile-drawer.open {
+    transform: translateX(0);
   }
 
+  .mobile-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid #c5a059;
+    font-size: 1rem;
+    color: #c5a059;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+  .mobile-drawer-close {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .mobile-drawer-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+    flex: 1;
+  }
+
+  .mobile-drawer-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 20px;
+    background: none;
+    border: none;
+    color: #e8d5b5;
+    font-size: 0.95rem;
+    text-align: left;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s;
+  }
+  .mobile-drawer-btn:active,
+  .mobile-drawer-btn:hover {
+    background: rgba(197,160,89,0.12);
+    color: #c5a059;
+  }
+  .mobile-drawer-btn span:first-child {
+    font-size: 1.2rem;
+    width: 24px;
+    text-align: center;
+  }
+
+  .mobile-badge {
+    position: absolute;
+    right: 16px;
+    background: #b91c1c;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: bold;
+    border-radius: 10px;
+    padding: 1px 6px;
+    min-width: 18px;
+    text-align: center;
+  }
+
+  .mobile-drawer-footer {
+    border-top: 1px solid #3a3020;
+    padding: 8px 0 16px;
+    flex-shrink: 0;
+  }
+
+  .mobile-drawer-logout {
+    color: #f87171;
+  }
+  .mobile-drawer-logout:hover {
+    background: rgba(185,28,28,0.15);
+    color: #fca5a5;
+  }
+
+  /* ── Mapa: respetar top bar ───────────────────────────────────── */
+  .map-background {
+    top: 48px;
+  }
+
+  /* ── Overlays fullscreen (game-overlay) ──────────────────────── */
+  .game-overlay {
+    left: 0 !important;
+    top: 48px !important;
+    overflow-y: auto !important;
+  }
+
+  .overlay-container {
+    padding: 8px 12px !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: calc(100vh - 48px) !important;
+  }
+
+  .overlay-header {
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .overlay-title {
+    font-size: 1rem !important;
+  }
+
+  .overlay-close {
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 16px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Mensajes: columnas → filas apiladas */
+  .overlay-content {
+    grid-template-columns: 1fr !important;
+    overflow-y: visible !important;
+    gap: 16px !important;
+  }
+
+  .messages-list-column,
+  .message-viewer-column,
+  .message-compose-column {
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+
+  /* ── Kingdom/Imperium: sidebar lateral → pestañas arriba ─────── */
+  .kingdom-content {
+    flex-direction: column !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .kingdom-sidebar {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--color-accent-gold) !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 12px !important;
+    overflow-y: visible !important;
+  }
+
+  /* Ocultar el bloque de estadísticas en la sidebar en móvil */
+  .kingdom-sidebar .sidebar-section:not(:first-child) {
+    display: none !important;
+  }
+
+  .kingdom-sidebar .kingdom-actions-vertical {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  .kingdom-action-btn-sidebar {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding: 8px 10px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .kingdom-main {
+    overflow-y: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    flex: unset !important;
+  }
+
+  /* ── Context panel (market, notifications…) ───────────────────── */
+  .context-panel {
+    left: 0 !important;
+    top: 48px;
+    width: 100vw !important;
+    height: calc(100vh - 48px);
+    padding: 16px;
+    transform: translateX(-100%);
+  }
+  .context-panel.open {
+    transform: translateX(0);
+  }
+
+  /* ── Sub-componentes: quitar height:100% para que fluyan natural ─ */
+  :deep(.troops-panel),
+  :deep(.naval-panel),
+  :deep(.economy-panel),
+  :deep(.diplomacy-panel),
+  :deep(.character-panel) {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Build modal: que no se corte */
+  .build-modal-overlay .build-modal {
+    width: 95vw !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+
+  /* ── Ajustes de texto en mapa ─────────────────────────────────── */
+  :deep(.settlement-label) { font-size: 12px; }
+  :deep(.settlement-icon)  { font-size: 24px; }
 }
 
 /* Player Gold Indicator - Top Left Corner */
@@ -10150,7 +10516,7 @@ onBeforeUnmount(() => {
 }
 
 /* Mobile adjustments for gold indicator and action panel */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 480px) and (orientation: landscape) {
   .player-gold-indicator {
     top: 10px;
     left: 10px; /* Keep on left side for mobile */
@@ -10534,7 +10900,7 @@ onBeforeUnmount(() => {
 }
 
 /* Mobile adjustments for toasts */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 480px) and (orientation: landscape) {
   .toast-container {
     bottom: 10px;
     right: 10px;
