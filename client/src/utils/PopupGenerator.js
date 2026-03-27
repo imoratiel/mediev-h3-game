@@ -178,25 +178,27 @@ export function generateCellPopupContent(cell, config) {
     popupContent += `<button id="repair-btn-${h3_index}" class="btn-popup btn-repair" title="Reparar edificio (${cost} 💰)">🔧 Reparar (${cost} 💰)</button>`;
   }
 
-  // Upgrade button - for own fief with a completed building that has an upgrade
-  if (cell.player_id === playerId && cell.fief_building && !cell.fief_building.is_under_construction && cell.fief_building.upgrade) {
+  const buildingActive = cell.fief_building && !cell.fief_building.is_under_construction &&
+                         (cell.fief_building.conservation ?? 100) > 20;
+
+  // Upgrade button - requires active building (conservation > 20)
+  if (cell.player_id === playerId && buildingActive && cell.fief_building.upgrade) {
     const upg = cell.fief_building.upgrade;
     popupContent += `<button id="upgrade-btn-${h3_index}" class="btn-popup btn-upgrade" data-upgrade='${JSON.stringify(upg)}' title="Ampliar a ${upg.name} (${upg.gold_cost}💰, ${upg.turns}t)">🏰 Ampliar → ${upg.name}</button>`;
   }
 
-  // Recruit button - for own fief with a completed military building
-  if (cell.player_id === playerId && cell.fief_building && !cell.fief_building.is_under_construction && cell.fief_building.type_name === 'military') {
+  // Recruit button - requires active military building (conservation > 20)
+  if (cell.player_id === playerId && buildingActive && cell.fief_building.type_name === 'military') {
     popupContent += `<button id="recruit-btn-${h3_index}" class="btn-popup btn-recruit" title="Reclutar tropas en este feudo">⚔️ Reclutar</button>`;
   }
 
-  // Nueva Flota button - for own fief with a completed maritime building (port)
-  if (cell.player_id === playerId && cell.fief_building && !cell.fief_building.is_under_construction && cell.fief_building.type_name === 'maritime') {
+  // Nueva Flota button - requires active maritime building (conservation > 20)
+  if (cell.player_id === playerId && buildingActive && cell.fief_building.type_name === 'maritime') {
     popupContent += `<button id="new-fleet-btn-${h3_index}" class="btn-popup btn-naval" title="Crear nueva flota en este puerto">⛵ Nueva Flota</button>`;
   }
 
-  // Fueros y Leyes button - for own fief with a completed Fortaleza
-  if (cell.player_id === playerId && cell.fief_building &&
-      !cell.fief_building.is_under_construction && cell.fief_building.name === 'Fortaleza') {
+  // Fueros y Leyes button - requires active Fortaleza (conservation > 20)
+  if (cell.player_id === playerId && buildingActive && cell.fief_building.name === 'Fortaleza') {
     popupContent += `<button id="fueros-btn-${h3_index}" class="btn-popup btn-fueros" title="Gestionar Edictos de este feudo">📜 Edictos</button>`;
   }
 

@@ -36,6 +36,7 @@ class WorkerModel {
              JOIN buildings b ON fb.building_id = b.id
              WHERE fb.h3_index = $1
                AND fb.is_under_construction = FALSE
+               AND fb.conservation > 20
                AND b.name = 'Mercado'`,
             [h3_index]
         );
