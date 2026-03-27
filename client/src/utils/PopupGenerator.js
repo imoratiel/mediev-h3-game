@@ -2,6 +2,7 @@
  * popupGenerator.js
  * Genera el contenido HTML para los popups del mapa
  */
+import { cellToLatLng } from 'h3-js';
 
 
 function getBuildingIcon(name = '', typeName = '') {
@@ -63,13 +64,9 @@ export function generateCellPopupContent(cell, config) {
   // HEXAGON INFO - ID and Coordinates in one line
   popupContent += '<div class="hex-info-box">';
 
-  // Build single line: 📍 h3_index (coord_x, coord_y)
-  let hexInfo = `📍 ${h3_index}`;
-  if (cell.coord_x !== null && cell.coord_x !== undefined && cell.coord_y !== null && cell.coord_y !== undefined) {
-    hexInfo += ` (${cell.coord_x}, ${cell.coord_y})`;
-  }
-
-  popupContent += `<p class="hex-info-item">${hexInfo}</p>`;
+  const [lat, lng] = cellToLatLng(h3_index);
+  const coordStr = `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+  popupContent += `<p class="hex-info-item">📍 ${coordStr}</p>`;
   popupContent += '</div>';
 
   // OWNER - Player name or "Sin reclamar"
@@ -181,25 +178,27 @@ export function generateCellPopupContent(cell, config) {
     popupContent += `<button id="repair-btn-${h3_index}" class="btn-popup btn-repair" title="Reparar edificio (${cost} 💰)">🔧 Reparar (${cost} 💰)</button>`;
   }
 
-  // Upgrade button - for own fief with a completed building that has an upgrade
-  if (cell.player_id === playerId && cell.fief_building && !cell.fief_building.is_under_construction && cell.fief_building.upgrade) {
+  const buildingActive = cell.fief_building && !cell.fief_building.is_under_construction &&
+                         (cell.fief_building.conservation ?? 100) > 20;
+
+  // Upgrade button - requires active building (conservation > 20)
+  if (cell.player_id === playerId && buildingActive && cell.fief_building.upgrade) {
     const upg = cell.fief_building.upgrade;
     popupContent += `<button id="upgrade-btn-${h3_index}" class="btn-popup btn-upgrade" data-upgrade='${JSON.stringify(upg)}' title="Ampliar a ${upg.name} (${upg.gold_cost}💰, ${upg.turns}t)">🏰 Ampliar → ${upg.name}</button>`;
   }
 
-  // Recruit button - for own fief with a completed military building
-  if (cell.player_id === playerId && cell.fief_building && !cell.fief_building.is_under_construction && cell.fief_building.type_name === 'military') {
+  // Recruit button - requires active military building (conservation > 20)
+  if (cell.player_id === playerId && buildingActive && cell.fief_building.type_name === 'military') {
     popupContent += `<button id="recruit-btn-${h3_index}" class="btn-popup btn-recruit" title="Reclutar tropas en este feudo">⚔️ Reclutar</button>`;
   }
 
-  // Nueva Flota button - for own fief with a completed maritime building (port)
-  if (cell.player_id === playerId && cell.fief_building && !cell.fief_building.is_under_construction && cell.fief_building.type_name === 'maritime') {
+  // Nueva Flota button - requires active maritime building (conservation > 20)
+  if (cell.player_id === playerId && buildingActive && cell.fief_building.type_name === 'maritime') {
     popupContent += `<button id="new-fleet-btn-${h3_index}" class="btn-popup btn-naval" title="Crear nueva flota en este puerto">⛵ Nueva Flota</button>`;
   }
 
-  // Fueros y Leyes button - for own fief with a completed Fortaleza
-  if (cell.player_id === playerId && cell.fief_building &&
-      !cell.fief_building.is_under_construction && cell.fief_building.name === 'Fortaleza') {
+  // Fueros y Leyes button - requires active Fortaleza (conservation > 20)
+  if (cell.player_id === playerId && buildingActive && cell.fief_building.name === 'Fortaleza') {
     popupContent += `<button id="fueros-btn-${h3_index}" class="btn-popup btn-fueros" title="Gestionar Edictos de este feudo">📜 Edictos</button>`;
   }
 
@@ -232,7 +231,9 @@ export function generateCellPopupContent(cell, config) {
   // WORKER HIRE — shown on own hexes that are Capital or have a completed Mercado
   const isOwnFief = cell.player_id === playerId;
   const hasMarket = isOwnFief && cell.fief_building &&
-    cell.fief_building.name === 'Mercado' && !cell.fief_building.is_under_construction;
+    cell.fief_building.type_name === 'economic' &&
+    !cell.fief_building.is_under_construction &&
+    (cell.fief_building.conservation ?? 100) > 20;
   const isCapitalHex = cell.is_capital && isOwnFief;
   const canHireWorkers = (isCapitalHex || hasMarket) && workerTypes.length > 0;
 
@@ -263,7 +264,7 @@ export function generateCellPopupContent(cell, config) {
     // Own fief, no building yet — hint that a Mercado would enable workers
     popupContent += `
       <p style="font-size:0.75rem;color:#6b7280;margin:8px 0 0 0;">
-        ⚒️ Construye un <strong>Mercado</strong> para poder contratar trabajadores aquí.
+        ⚒️ Construye un edificio económico (Foro, Factoría...) para poder contratar trabajadores aquí.
       </p>`;
   }
 
@@ -345,9 +346,8 @@ export function generateArmyPopup(armyData, config) {
 
     // LOCATION
     popupContent += '<div class="army-info-box">';
-    let locationInfo = `📍 ${h3_index}`;
-    if (coord_x != null && coord_y != null) locationInfo += ` (${coord_x}, ${coord_y})`;
-    popupContent += `<p class="army-location">${locationInfo}</p>`;
+    const [_lat, _lng] = cellToLatLng(h3_index);
+    popupContent += `<p class="army-location">📍 ${_lat.toFixed(3)}, ${_lng.toFixed(3)}</p>`;
     popupContent += '</div>';
 
     if (isOwnArmy) {

@@ -17,6 +17,12 @@ const CharacterService = require('../services/CharacterService');
 const { calculateHappiness } = require('../services/FiefService');
 const h3 = require('h3-js');
 
+/** Formats an H3 index as "lat, lng (h3_index)" for player-facing notifications */
+function fmtHex(h3_index) {
+    const [lat, lng] = h3.cellToLatLng(h3_index);
+    return `${lat.toFixed(3)}, ${lng.toFixed(3)} (${h3_index})`;
+}
+
 /**
  * Process harvest for all players
  * @param {Object} client - PostgreSQL client (within transaction)
@@ -151,7 +157,7 @@ async function processHarvest(client, turn, config) {
                     ? `\n\n✨ **¡Cosecha Milagrosa!**\n` +
                       `Los campesinos han redoblado esfuerzos ante la hambruna y la producción ha aumentado:\n` +
                       miracleHarvests.map(m =>
-                          `• ${m.h3_index}: ×${m.multiplier.toFixed(2)} (+${m.bonus} comida extra)`
+                          `• ${fmtHex(m.h3_index)}: ×${m.multiplier.toFixed(2)} (+${m.bonus} comida extra)`
                       ).join('\n')
                     : '';
 
@@ -689,8 +695,8 @@ async function processExplorations(client, turn, config) {
 
                 // Generate notification for player
                 const messageBody = discoveredResource === 'none'
-                    ? `La exploración del territorio ${exploration.h3_index} ha finalizado.\n\n❌ No se encontraron recursos especiales en este territorio.`
-                    : `¡La exploración del territorio ${exploration.h3_index} ha finalizado con éxito!\n\n✨ **Recurso descubierto**: ${discoveredResource.toUpperCase()}\n\nEste recurso estará disponible para su explotación.`;
+                    ? `La exploración del territorio ${fmtHex(exploration.h3_index)} ha finalizado.\n\n❌ No se encontraron recursos especiales en este territorio.`
+                    : `¡La exploración del territorio ${fmtHex(exploration.h3_index)} ha finalizado con éxito!\n\n✨ **Recurso descubierto**: ${discoveredResource.toUpperCase()}\n\nEste recurso estará disponible para su explotación.`;
 
                 await NotificationService.createSystemNotification(exploration.player_id, 'Económico', messageBody, turn);
 
@@ -845,7 +851,7 @@ async function processConstructionTicks(client, turn) {
                         await NotificationService.createSystemNotification(
                             player_id,
                             'Económico',
-                            `🏗️ Construcción completada\n\n"${building_name}" ha sido construido en el feudo ${building.h3_index} y ya está operativo.`,
+                            `🏗️ Construcción completada\n\n"${building_name}" ha sido construido en el feudo ${fmtHex(building.h3_index)} y ya está operativo.`,
                             turn
                         );
                     }
@@ -947,7 +953,7 @@ async function processWorkerConstructions(client, turn) {
                         await NotificationService.createSystemNotification(
                             player_id,
                             'Económico',
-                            `🌉 Puente completado\n\nTus trabajadores han terminado la construcción del puente en ${h3_index}. El hexágono es ahora transitable.`,
+                            `🌉 Puente completado\n\nTus trabajadores han terminado la construcción del puente en ${fmtHex(h3_index)}. El hexágono es ahora transitable.`,
                             turn
                         );
                     }
@@ -1295,7 +1301,7 @@ async function processGameTurn(pool, config) {
                                 await NotificationService.createSystemNotification(
                                     t.player_id,
                                     'Hambre',
-                                    `🚨 HAMBRUNA en ${t.h3_index}\n\nSin reservas de comida, la población ha descendido en ${deaths} ${noun} debido a la falta de suministros.\n\nAbastece el territorio urgentemente para detener la crisis.`,
+                                    `🚨 HAMBRUNA en ${fmtHex(t.h3_index)}\n\nSin reservas de comida, la población ha descendido en ${deaths} ${noun} debido a la falta de suministros.\n\nAbastece el territorio urgentemente para detener la crisis.`,
                                     newTurn
                                 );
                             }

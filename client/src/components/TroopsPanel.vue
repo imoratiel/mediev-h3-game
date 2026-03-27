@@ -102,8 +102,7 @@
               <td class="location-cell">
                 <div class="location-info">
                   <div v-if="army.location_name" class="army-name">{{ army.location_name }}</div>
-                  <div class="h3-index">{{ army.h3_index }}</div>
-                  <div class="h3-index">X: {{ army.coord_x }}, Y: {{ army.coord_y }}</div>
+                  <div class="h3-index">{{ cellToLatLng(army.h3_index).map(v => v.toFixed(3)).join(', ') }} ({{ army.h3_index }})</div>
                 </div>
               </td>
               <td class="actions-cell">
@@ -177,6 +176,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { cellToLatLng } from 'h3-js';
 import { stopArmy, attackArmy } from '../services/mapApi.js';
 import ArmyDetailModal from './ArmyDetailModal.vue';
 import ArmyTransferPanel from './ArmyTransferPanel.vue';

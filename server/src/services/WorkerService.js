@@ -57,6 +57,21 @@ class WorkerService {
     }
 
     /**
+     * GET /api/workers/hire-locations
+     * Returns all hexes where the player can hire workers:
+     * Capital + fiefs with a completed Mercado (conservation > 20).
+     */
+    async GetHireLocations(req, res) {
+        try {
+            const locations = await WorkerModel.GetHireLocations(req.user.player_id);
+            res.json({ success: true, locations });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/workers/hire-locations', method: 'GET', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener ubicaciones de contratación' });
+        }
+    }
+
+    /**
      * GET /api/map/workers?minLat=&maxLat=&minLng=&maxLng=
      * Returns workers grouped by hex for map icon rendering.
      * Same bounding-box approach as /api/map/armies.

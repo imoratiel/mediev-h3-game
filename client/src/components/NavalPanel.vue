@@ -32,7 +32,7 @@
             <span class="fleet-icon">⛵</span>
             <div class="fleet-title-block">
               <span class="fleet-name">{{ fleet.name }}</span>
-              <span class="fleet-pos">📍 {{ fleet.h3_index }}</span>
+              <span class="fleet-pos">📍 {{ cellToLatLng(fleet.h3_index).map(v => v.toFixed(3)).join(', ') }} ({{ fleet.h3_index }})</span>
             </div>
           </div>
           <div class="fleet-header-right">
@@ -161,6 +161,7 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue';
+import { cellToLatLng } from 'h3-js';
 import {
   getFleets, getFleetDetail, getNavalCapacity, getShipTypes,
   getEmbarkableArmies, recruitShips, embarkArmy, disembarkArmy,

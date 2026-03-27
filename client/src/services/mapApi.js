@@ -211,6 +211,14 @@ export async function getMyFiefs({ page = 1, limit = 10, filter_name = '', filte
 }
 
 /**
+ * Get all hexes where the player can hire workers (capital + active mercados)
+ */
+export async function getWorkerHireLocations() {
+  const response = await axios.get(`${API_URL}/api/workers/hire-locations`);
+  return response.data;
+}
+
+/**
  * Get capital information
  */
 export async function getCapital() {

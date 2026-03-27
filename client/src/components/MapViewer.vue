@@ -16,7 +16,7 @@
         <input
           type="text"
           v-model="searchH3Input"
-          placeholder="Índice H3..."
+          placeholder="lat lon ó h3"
           @keyup.enter="goToH3Index"
           class="h3-search-input"
         />
@@ -171,6 +171,15 @@
         </button>
         <button
           v-if="currentUser"
+          class="footer-button changelog-button"
+          :class="{ active: showChangelog }"
+          title="Novedades"
+          @click="showChangelog = !showChangelog"
+        >
+          <span class="footer-icon">📋</span>
+        </button>
+        <button
+          v-if="currentUser"
           class="footer-button logout-button"
           @click="handleLogout"
           title="Cerrar Sesión"
@@ -302,10 +311,6 @@
                 <span class="telemetry-label">Hexágonos Totales:</span>
                 <span class="telemetry-value">{{ hexagonCount }}</span>
               </div>
-              <div class="telemetry-item">
-                <span class="telemetry-label">H3 bajo cursor:</span>
-                <span class="telemetry-value telemetry-h3">{{ mouseH3Index || 'Mueve el ratón' }}</span>
-              </div>
             </div>
           </div>
 
@@ -337,8 +342,8 @@
               </div>
               <select v-model="marketHireH3" class="market-select">
                 <option disabled value="null">Feudo de contratación…</option>
-                <option v-for="f in marketFiefs" :key="f.h3_index" :value="f.h3_index">
-                  {{ f.is_capital ? '👑 Capital' : '🏛️ ' + (f.settlement_name || f.h3_index) }}
+                <option v-for="loc in workerHireLocations" :key="loc.h3_index" :value="loc.h3_index">
+                  {{ loc.is_capital ? '👑 Capital' : '🏪 ' + (loc.settlement_name || loc.h3_index) }}
                 </option>
               </select>
               <button
@@ -348,8 +353,8 @@
                 title="Contratar trabajador en el feudo seleccionado"
               >⛏️ Contratar</button>
             </div>
-            <p v-if="marketFiefs.length === 0" class="market-hint">
-              Necesitas una Capital o un <strong>Mercado</strong> completado para contratar.
+            <p v-if="workerHireLocations.length === 0" class="market-hint">
+              Necesitas una Capital o un edificio económico completado para contratar.
             </p>
           </div>
 
@@ -408,10 +413,10 @@
                   <span class="worker-id">#{{ worker.id }}</span>
                 </div>
                 <div class="worker-card-info">
-                  <span title="Ubicación actual">📍 {{ worker.h3_index }}</span>
+                  <span title="Ubicación actual">📍 {{ cellToLatLng(worker.h3_index).map(v => v.toFixed(3)).join(', ') }} ({{ worker.h3_index }})</span>
                   <span v-if="worker.terrain_type" class="worker-terrain">🌍 {{ worker.terrain_type }}</span>
                   <span v-if="worker.destination_h3" class="worker-en-route" title="Destino">
-                    ➡️ {{ worker.destination_h3 }}
+                    ➡️ {{ cellToLatLng(worker.destination_h3).map(v => v.toFixed(3)).join(', ') }} ({{ worker.destination_h3 }})
                   </span>
                 </div>
                 <div class="worker-card-stats">
@@ -1157,6 +1162,10 @@
   </div>
 
   </div>
+
+  <!-- Changelog Panel (fuera del sidebar para evitar clipping por transform) -->
+  <ChangelogPanel v-if="showChangelog" @close="showChangelog = false" />
+
 </template>
 
 <script setup>
@@ -1190,6 +1199,7 @@ import DivisionsTab from './DivisionsTab.vue';
 import CharacterPanel from './CharacterPanel.vue';
 import DiplomacyPanel from './DiplomacyPanel.vue';
 import NavalPanel from './NavalPanel.vue';
+import ChangelogPanel from './ChangelogPanel.vue';
 
 const mapContainer = ref(null);
 const loading = ref(false);
@@ -1207,6 +1217,7 @@ const mouseH3Index = ref(''); // H3 index under cursor
 // Player state (from session)
 const currentUser = ref(null);       // Current logged-in user { player_id, username, role }
 const showWelcomePanel = ref(false); // Epic Initialization overlay for new players
+const showChangelog = ref(false);
 const playerId = computed(() => currentUser.value?.player_id || 1); // Player ID from session
 const playerGold = ref(0); // Oro inicial (se carga del servidor)
 const playerHexes = ref(new Set()); // Track player's owned hexagons for adjacency checks
@@ -1346,16 +1357,23 @@ const loadingWorkers = ref(false);
 // Market panel state
 const marketHireTypeId = ref(null);
 const marketHireH3 = ref(null);
+const workerHireLocations = ref([]);
 
 const workerTypeIcon = (name) => {
   const icons = { constructor: '⛏️', farmer: '🌾', miner: '⛰️', lumberjack: '🪵', merchant: '🛒' };
   return icons[name?.toLowerCase()] ?? '👷';
 };
 const marketFoodAmount = ref(100);
-const marketFiefs = computed(() => myFiefs.value.filter(f =>
-    f.is_capital ||
-    (f.fief_building?.name === 'Mercado' && !f.fief_building?.is_under_construction)
-));
+
+const loadWorkerHireLocations = async () => {
+  try {
+    const data = await mapApi.getWorkerHireLocations();
+    workerHireLocations.value = data.locations || [];
+  } catch (e) {
+    console.error('[Market] Error cargando ubicaciones de contratación', e);
+    workerHireLocations.value = [];
+  }
+};
 
 // Building construction modal state
 const showBuildModal = ref(false);
@@ -4147,6 +4165,7 @@ const togglePanel = (panelName) => {
     }
     if (panelName === 'market') {
       fetchMyWorkers();
+      loadWorkerHireLocations();
     }
   }
 };
@@ -4398,20 +4417,37 @@ const focusOnHex = async (h3Index) => {
  * Navigate to H3 index from search input
  */
 const goToH3Index = async () => {
-  const h3Index = searchH3Input.value.trim();
+  const raw = searchH3Input.value.trim();
 
-  if (!h3Index) {
-    showToast('Por favor introduce un índice H3', 'warning');
+  if (!raw) {
+    showToast('Introduce coordenadas (lat lon) o un índice H3', 'warning');
     return;
   }
 
-  // Validate H3 index format (basic check - should be 15 character hex string)
-  if (!/^[0-9a-f]{15}$/i.test(h3Index)) {
-    showToast('Formato de índice H3 inválido', 'error');
+  // Normalize European decimal comma: "39,589 -0,550" → "39.589 -0.550"
+  const normalized = /^-?\d+,\d+\s+-?\d+,\d+$/.test(raw) ? raw.replace(/,/g, '.') : raw;
+
+  // Try lat/lon: accepts "39.589 -0.550", "39.589, -0.550", "39.589,-0.550"
+  const coordMatch = normalized.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/);
+  if (coordMatch) {
+    const lat = parseFloat(coordMatch[1]);
+    const lng = parseFloat(coordMatch[2]);
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      showToast('Coordenadas fuera de rango', 'error');
+      return;
+    }
+    const h3Index = latLngToCell(lat, lng, 7);
+    await focusOnHex(h3Index);
     return;
   }
 
-  await focusOnHex(h3Index);
+  // Try H3 index (15-char hex string)
+  if (/^[0-9a-f]{15}$/i.test(raw)) {
+    await focusOnHex(raw);
+    return;
+  }
+
+  showToast('Formato no reconocido. Usa "lat lon" o un índice H3', 'error');
 };
 
 /**
@@ -4676,10 +4712,12 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       }, 100);
     }
 
-    // Add event listener to hire-worker button (own Capital or fief with Mercado)
+    // Add event listener to hire-worker button (own Capital or fief with active economic building)
     const isOwnFief = cell.player_id === playerId.value;
     const hasMarket = isOwnFief && cell.fief_building &&
-      cell.fief_building.name === 'Mercado' && !cell.fief_building.is_under_construction;
+      cell.fief_building.type_name === 'economic' &&
+      !cell.fief_building.is_under_construction &&
+      (cell.fief_building.conservation ?? 100) > 20;
     if (isOwnFief && (cell.is_capital || hasMarket) && workerTypes.value.length > 0) {
       setTimeout(() => {
         const buyBtn = document.getElementById(`buy-worker-btn-${h3_index}`);

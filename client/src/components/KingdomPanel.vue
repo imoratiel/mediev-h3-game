@@ -21,7 +21,7 @@
         <tbody>
           <tr v-for="fief in fiefs" :key="fief.h3_index" :class="{ 'capital-row': fief.is_capital }">
             <td class="fief-name-cell">
-              <span v-if="fief.is_capital" class="capital-icon" title="Capital del Reino">👑 </span>{{ fief.name }}
+              <span v-if="fief.is_capital" class="capital-icon" title="Capital del Reino">👑 </span>{{ cellToLatLng(fief.h3_index).map(v => v.toFixed(3)).join(', ') }} ({{ fief.h3_index }})
               <span v-if="fief.grace_turns > 0" class="occupation-badge" :title="`Bajo ocupación militar — ${fief.grace_turns} turno${fief.grace_turns !== 1 ? 's' : ''} restante${fief.grace_turns !== 1 ? 's' : ''}`">⚔️ ({{ fief.grace_turns }})</span>
             </td>
             <td class="terrain-cell">{{ fief.terrain }}</td>
@@ -225,6 +225,7 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue';
+import { cellToLatLng } from 'h3-js';
 
 const props = defineProps({
   fiefs:             { type: Array,  default: () => [] },
