@@ -950,4 +950,65 @@ onMounted(() => {
   color: rgba(197,160,89,0.5);
   margin-top: 2px;
 }
+
+/* ── Mobile ─────────────────────────────────────────────── */
+@media (max-width: 768px), (max-height: 480px) and (orientation: landscape) {
+  .eco-overlay {
+    padding: 0;
+    top: 48px;
+  }
+
+  .eco-container {
+    border-radius: 0;
+    border: none;
+    max-width: 100%;
+  }
+
+  .eco-header {
+    padding: 8px 12px;
+  }
+
+  .eco-title {
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+  }
+
+  .eco-content {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .eco-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #3d2e1a;
+    overflow-y: visible;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0;
+  }
+
+  /* Ocultar recursos totales en móvil — prioridad al impuesto y diezmo */
+  .eco-sidebar .eco-card:first-child {
+    display: none;
+  }
+
+  /* Cards de impuesto y diezmo en horizontal */
+  .eco-sidebar .eco-card {
+    flex: 1 1 160px;
+    padding: 10px 12px;
+    border-right: 1px solid #3d2e1a;
+  }
+
+  .eco-card-title {
+    font-size: 0.78rem;
+    margin-bottom: 6px;
+  }
+
+  .eco-main {
+    overflow-y: visible;
+    padding: 12px;
+    gap: 8px;
+  }
+}
 </style>

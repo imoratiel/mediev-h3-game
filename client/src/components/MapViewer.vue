@@ -9606,17 +9606,74 @@ onBeforeUnmount(() => {
     flex: unset !important;
   }
 
-  /* ── Context panel (market, notifications…) ───────────────────── */
+  /* ── Context panel (market, notifications, layers) ────────────── */
   .context-panel {
     left: 0 !important;
-    top: 48px;
+    top: 48px !important;
     width: 100vw !important;
-    height: calc(100vh - 48px);
-    padding: 16px;
+    height: calc(100vh - 48px) !important;
+    padding: 0 !important;
     transform: translateX(-100%);
   }
   .context-panel.open {
     transform: translateX(0);
+  }
+
+  /* Header del panel: compacto */
+  .panel-header {
+    padding: 10px 14px !important;
+    margin: 0 0 0 0 !important;
+  }
+  .panel-title {
+    font-size: 13px !important;
+    letter-spacing: 0.5px !important;
+  }
+
+  /* Contenido con scroll */
+  .panel-content {
+    padding: 0 !important;
+    height: calc(100% - 45px) !important;
+    overflow-y: auto !important;
+  }
+
+  /* Market: secciones compactas */
+  .market-section {
+    padding: 10px 12px !important;
+  }
+  .market-section-title {
+    font-size: 10px !important;
+  }
+  .market-select,
+  .market-worker-type-btn {
+    font-size: 0.82rem !important;
+  }
+  .market-btn {
+    padding: 7px 12px !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Workers table en mercado: compacta */
+  .workers-table {
+    font-size: 0.78rem !important;
+  }
+  .workers-table th,
+  .workers-table td {
+    padding: 5px 4px !important;
+  }
+
+  /* Notifications: compactas */
+  .notification-item {
+    padding: 8px 12px !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Layers/leyenda: compacta */
+  .legend-section {
+    padding: 10px 12px !important;
+  }
+  .legend-item {
+    padding: 4px 0 !important;
+    font-size: 0.82rem !important;
   }
 
   /* ── Sub-componentes: quitar height:100% para que fluyan natural ─ */
