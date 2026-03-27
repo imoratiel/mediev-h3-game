@@ -13,6 +13,9 @@ RUN npm install
 # Copiamos el resto del código del servidor
 COPY . .
 
+# Fallback vacío: el volumen de docker-compose monta el CHANGELOG.md real en runtime
+RUN [ -f CHANGELOG.md ] || echo "# Changelog" > CHANGELOG.md
+
 # Exponemos el puerto que usa tu app (ej. 3000)
 EXPOSE 3000
 

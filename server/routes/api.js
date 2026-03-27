@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const { authenticateToken, requireAdmin, generateToken } = require('../src/middleware/auth');
 
 // This file will contain all the endpoints moved from index.js
@@ -450,6 +452,39 @@ module.exports = function () {
     router.delete('/characters/:id/move',  authenticateToken, (req, res) => CharacterService.StopCharacter(req, res));
     router.post('/characters/:id/capture', authenticateToken, (req, res) => CharacterService.CaptureCharacter(req, res));
     router.put('/armies/:id/commander',    authenticateToken, (req, res) => CharacterService.AssignCommander(req, res));
+
+    // ============================================
+    // CHANGELOG
+    // ============================================
+    router.get('/changelog', authenticateToken, (req, res) => {
+        try {
+            const changelogPath = path.resolve(__dirname, '../../CHANGELOG.md');
+            if (!fs.existsSync(changelogPath)) {
+                return res.json({ success: true, releases: [] });
+            }
+            const raw = fs.readFileSync(changelogPath, 'utf8');
+
+            // Split by release headers "## [x.y.z]" or "## [x.y.z] - date"
+            const releases = [];
+            const sections = raw.split(/^## /m).slice(1); // skip content before first release
+
+            for (const section of sections.slice(0, 10)) {
+                const lines = section.split('\n');
+                const header = lines[0].trim();
+                // Extract version and date from "[1.0.0] - 2026-03-27" or "[1.0.0](url) (2026-03-27)"
+                const versionMatch = header.match(/\[([^\]]+)\]/);
+                const dateMatch = header.match(/[-–]\s*(\d{4}-\d{2}-\d{2})/) || header.match(/\((\d{4}-\d{2}-\d{2})\)/);
+                const version = versionMatch ? versionMatch[1] : header;
+                const date = dateMatch ? dateMatch[1] : null;
+                const body = lines.slice(1).join('\n').trim();
+                releases.push({ version, date, body });
+            }
+
+            res.json({ success: true, releases });
+        } catch (err) {
+            res.status(500).json({ success: false, message: 'Error al leer el changelog' });
+        }
+    });
 
     return router;
 };

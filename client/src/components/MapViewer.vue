@@ -171,6 +171,15 @@
         </button>
         <button
           v-if="currentUser"
+          class="footer-button changelog-button"
+          :class="{ active: showChangelog }"
+          title="Novedades"
+          @click="showChangelog = !showChangelog"
+        >
+          <span class="footer-icon">📋</span>
+        </button>
+        <button
+          v-if="currentUser"
           class="footer-button logout-button"
           @click="handleLogout"
           title="Cerrar Sesión"
@@ -1153,6 +1162,10 @@
   </div>
 
   </div>
+
+  <!-- Changelog Panel (fuera del sidebar para evitar clipping por transform) -->
+  <ChangelogPanel v-if="showChangelog" @close="showChangelog = false" />
+
 </template>
 
 <script setup>
@@ -1186,6 +1199,7 @@ import DivisionsTab from './DivisionsTab.vue';
 import CharacterPanel from './CharacterPanel.vue';
 import DiplomacyPanel from './DiplomacyPanel.vue';
 import NavalPanel from './NavalPanel.vue';
+import ChangelogPanel from './ChangelogPanel.vue';
 
 const mapContainer = ref(null);
 const loading = ref(false);
@@ -1203,6 +1217,7 @@ const mouseH3Index = ref(''); // H3 index under cursor
 // Player state (from session)
 const currentUser = ref(null);       // Current logged-in user { player_id, username, role }
 const showWelcomePanel = ref(false); // Epic Initialization overlay for new players
+const showChangelog = ref(false);
 const playerId = computed(() => currentUser.value?.player_id || 1); // Player ID from session
 const playerGold = ref(0); // Oro inicial (se carga del servidor)
 const playerHexes = ref(new Set()); // Track player's owned hexagons for adjacency checks
