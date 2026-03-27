@@ -33,14 +33,48 @@ class WorkerModel {
         const result = await client.query(
             `SELECT 1
              FROM fief_buildings fb
-             JOIN buildings b ON fb.building_id = b.id
+             JOIN buildings b  ON fb.building_id = b.id
+             JOIN building_types bt ON b.type_id = bt.building_type_id
              WHERE fb.h3_index = $1
                AND fb.is_under_construction = FALSE
                AND fb.conservation > 20
-               AND b.name = 'Mercado'`,
+               AND bt.name = 'economic'`,
             [h3_index]
         );
         return result.rows.length > 0;
+    }
+
+    /**
+     * Insert a new worker instance. Stats are copied from the worker type at purchase time
+     * to allow future buffs/debuffs without losing the original template.
+     */
+    /**
+     * Returns all hexes where player_id can hire workers:
+     * their Capital + fiefs with a completed Mercado at conservation > 20.
+     */
+    async GetHireLocations(player_id) {
+        const result = await pool.query(
+            `SELECT m.h3_index,
+                    (m.h3_index = p.capital_h3) AS is_capital,
+                    COALESCE(td.custom_name, s.name) AS settlement_name
+             FROM h3_map m
+             JOIN players p           ON m.player_id = p.player_id
+             JOIN territory_details td ON m.h3_index = td.h3_index
+             LEFT JOIN settlements s   ON m.h3_index = s.h3_index
+             LEFT JOIN fief_buildings fb ON m.h3_index = fb.h3_index
+             LEFT JOIN buildings bld   ON fb.building_id = bld.id
+             LEFT JOIN building_types bt ON bld.type_id = bt.building_type_id
+             WHERE m.player_id = $1
+               AND (
+                 m.h3_index = p.capital_h3
+                 OR (bt.name = 'economic'
+                     AND fb.is_under_construction = FALSE
+                     AND fb.conservation > 20)
+               )
+             ORDER BY (m.h3_index = p.capital_h3) DESC, td.population DESC`,
+            [player_id]
+        );
+        return result.rows;
     }
 
     /**

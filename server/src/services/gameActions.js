@@ -383,7 +383,7 @@ async function buyWorker(client, playerId, { h3_index, worker_type_id }, meta = 
         const hasMarket = await WorkerModel.CheckMarketInFief(client, h3_index);
         if (!hasMarket) {
             throw new GameActionError(
-                'Los trabajadores solo se pueden contratar en tu Capital o en feudos con un Mercado construido.',
+                'Los trabajadores solo se pueden contratar en tu Capital o en feudos con un edificio económico activo.',
                 'FORBIDDEN'
             );
         }

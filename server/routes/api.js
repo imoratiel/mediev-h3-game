@@ -223,6 +223,7 @@ module.exports = function () {
     // WORKERS
     // ============================================
     router.get('/workers/types', (req, res) => WorkerService.GetTypes(req, res));
+    router.get('/workers/hire-locations', authenticateToken, (req, res) => WorkerService.GetHireLocations(req, res));
     router.post('/workers/buy', authenticateToken, (req, res) => WorkerService.Buy(req, res));
     router.get('/map/workers', authenticateToken, (req, res) => WorkerService.GetInRegion(req, res));
     router.get('/map/constructions', authenticateToken, (req, res) => WorkerService.GetConstructionsInRegion(req, res));

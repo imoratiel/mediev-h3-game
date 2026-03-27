@@ -231,7 +231,9 @@ export function generateCellPopupContent(cell, config) {
   // WORKER HIRE — shown on own hexes that are Capital or have a completed Mercado
   const isOwnFief = cell.player_id === playerId;
   const hasMarket = isOwnFief && cell.fief_building &&
-    cell.fief_building.name === 'Mercado' && !cell.fief_building.is_under_construction;
+    cell.fief_building.type_name === 'economic' &&
+    !cell.fief_building.is_under_construction &&
+    (cell.fief_building.conservation ?? 100) > 20;
   const isCapitalHex = cell.is_capital && isOwnFief;
   const canHireWorkers = (isCapitalHex || hasMarket) && workerTypes.length > 0;
 
@@ -262,7 +264,7 @@ export function generateCellPopupContent(cell, config) {
     // Own fief, no building yet — hint that a Mercado would enable workers
     popupContent += `
       <p style="font-size:0.75rem;color:#6b7280;margin:8px 0 0 0;">
-        ⚒️ Construye un <strong>Mercado</strong> para poder contratar trabajadores aquí.
+        ⚒️ Construye un edificio económico (Foro, Factoría...) para poder contratar trabajadores aquí.
       </p>`;
   }
 

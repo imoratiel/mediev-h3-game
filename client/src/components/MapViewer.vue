@@ -342,8 +342,8 @@
               </div>
               <select v-model="marketHireH3" class="market-select">
                 <option disabled value="null">Feudo de contratación…</option>
-                <option v-for="f in marketFiefs" :key="f.h3_index" :value="f.h3_index">
-                  {{ f.is_capital ? '👑 Capital' : '🏛️ ' + (f.settlement_name || f.h3_index) }}
+                <option v-for="loc in workerHireLocations" :key="loc.h3_index" :value="loc.h3_index">
+                  {{ loc.is_capital ? '👑 Capital' : '🏪 ' + (loc.settlement_name || loc.h3_index) }}
                 </option>
               </select>
               <button
@@ -353,8 +353,8 @@
                 title="Contratar trabajador en el feudo seleccionado"
               >⛏️ Contratar</button>
             </div>
-            <p v-if="marketFiefs.length === 0" class="market-hint">
-              Necesitas una Capital o un <strong>Mercado</strong> completado para contratar.
+            <p v-if="workerHireLocations.length === 0" class="market-hint">
+              Necesitas una Capital o un edificio económico completado para contratar.
             </p>
           </div>
 
@@ -1357,16 +1357,23 @@ const loadingWorkers = ref(false);
 // Market panel state
 const marketHireTypeId = ref(null);
 const marketHireH3 = ref(null);
+const workerHireLocations = ref([]);
 
 const workerTypeIcon = (name) => {
   const icons = { constructor: '⛏️', farmer: '🌾', miner: '⛰️', lumberjack: '🪵', merchant: '🛒' };
   return icons[name?.toLowerCase()] ?? '👷';
 };
 const marketFoodAmount = ref(100);
-const marketFiefs = computed(() => myFiefs.value.filter(f =>
-    f.is_capital ||
-    (f.fief_building?.name === 'Mercado' && !f.fief_building?.is_under_construction)
-));
+
+const loadWorkerHireLocations = async () => {
+  try {
+    const data = await mapApi.getWorkerHireLocations();
+    workerHireLocations.value = data.locations || [];
+  } catch (e) {
+    console.error('[Market] Error cargando ubicaciones de contratación', e);
+    workerHireLocations.value = [];
+  }
+};
 
 // Building construction modal state
 const showBuildModal = ref(false);
@@ -4158,6 +4165,7 @@ const togglePanel = (panelName) => {
     }
     if (panelName === 'market') {
       fetchMyWorkers();
+      loadWorkerHireLocations();
     }
   }
 };
@@ -4704,10 +4712,12 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       }, 100);
     }
 
-    // Add event listener to hire-worker button (own Capital or fief with Mercado)
+    // Add event listener to hire-worker button (own Capital or fief with active economic building)
     const isOwnFief = cell.player_id === playerId.value;
     const hasMarket = isOwnFief && cell.fief_building &&
-      cell.fief_building.name === 'Mercado' && !cell.fief_building.is_under_construction;
+      cell.fief_building.type_name === 'economic' &&
+      !cell.fief_building.is_under_construction &&
+      (cell.fief_building.conservation ?? 100) > 20;
     if (isOwnFief && (cell.is_capital || hasMarket) && workerTypes.value.length > 0) {
       setTimeout(() => {
         const buyBtn = document.getElementById(`buy-worker-btn-${h3_index}`);
