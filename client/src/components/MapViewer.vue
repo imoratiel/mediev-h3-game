@@ -1869,8 +1869,10 @@ const initMap = () => {
   ]);
 
   // Tiles generados desde datos H3 propios (servidos por el backend)
+  // El parámetro _v fuerza revalidación sin caché del navegador
+  const tilesVersion = Date.now();
   const customTileLayer = L.tileLayer(
-    `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/tiles/{z}/{x}/{y}.png`,
+    `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/tiles/{z}/{x}/{y}.png?_v=${tilesVersion}`,
     {
       attribution: 'Hispania 210aC',
       maxNativeZoom: 9,

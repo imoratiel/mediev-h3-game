@@ -51,7 +51,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Serve generated H3 tiles
 app.use('/tiles', express.static(path.join(__dirname, 'tiles'), {
-  maxAge: '7d',
+  maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
   fallthrough: true,  // 404 silencioso si el tile no existe (área no generada)
 }));
 

@@ -89,7 +89,16 @@
       "WebFetch(domain:skills.sh)",
       "Bash(head -15 grep -n \"h3_index\\\\|h3-index\" d:/claude/mediev-h3-game/client/src/components/NavalPanel.vue)",
       "Bash(git remote:*)",
-      "Bash(.venv/Scripts/pip install:*)"
+      "Bash(.venv/Scripts/pip install:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(py -3.12 -c \":*)",
+      "Bash(where python:*)",
+      "Bash(conda info:*)",
+      "Read(//c/Users/Usuario/anaconda3/**)",
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" --version)",
+      "Bash(\"C:/ProgramData/miniconda3/python.exe\" --version)",
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" -c \":*)",
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" -m pip install Pillow --quiet)"
     ]
   }
 }

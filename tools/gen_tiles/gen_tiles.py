@@ -27,10 +27,10 @@ from dotenv import dotenv_values
 
 # Bounding box: Islas Baleares
 BBOX = {
-    'min_lat': 38.5,
-    'max_lat': 40.1,
-    'min_lon': 1.0,
-    'max_lon': 4.5,
+    'min_lat': 41.8,
+    'max_lat': 43.8,
+    'min_lon': -9.3,
+    'max_lon': -6.7,
 }
 
 ZOOM_LEVELS = [6, 7, 8, 9]
@@ -100,12 +100,76 @@ def hex_to_rgb(color: str) -> tuple[int, int, int]:
     c = color.lstrip('#')
     return int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
 
+# ── Símbolos cartográficos ────────────────────────────────────────────────────
+
+def draw_mountain(draw: ImageDraw.Draw, cx: int, cy: int, size: int) -> None:
+    """Dibuja un símbolo cartográfico de montaña (dos triángulos solapados)."""
+    h  = size
+    w  = int(h * 1.3)
+    # Pico trasero (más claro, más a la derecha)
+    p2 = [(cx + w // 4, cy - int(h * 0.75)),
+          (cx - w // 8, cy),
+          (cx + w * 3 // 4, cy)]
+    draw.polygon(p2, fill=(160, 140, 110, 200), outline=(90, 70, 50, 220))
+    # Pico delantero (más oscuro, centrado)
+    p1 = [(cx, cy - h),
+          (cx - w // 2, cy),
+          (cx + w // 2, cy)]
+    draw.polygon(p1, fill=(120, 100, 75, 220), outline=(70, 50, 30, 240))
+    # Nieve en la cima
+    snow_h = max(2, h // 4)
+    sp = [(cx, cy - h),
+          (cx - snow_h, cy - h + snow_h * 2),
+          (cx + snow_h, cy - h + snow_h * 2)]
+    draw.polygon(sp, fill=(240, 240, 240, 200))
+
+
+def draw_tree(draw: ImageDraw.Draw, cx: int, cy: int, size: int) -> None:
+    """Dibuja un árbol estilo mapa clásico (copa triangular + tronco)."""
+    trunk_h = max(2, size // 3)
+    crown_h = size
+    crown_w = int(size * 0.85)
+    # Tronco
+    draw.rectangle(
+        [cx - 1, cy - trunk_h, cx + 1, cy],
+        fill=(100, 65, 30, 220),
+    )
+    # Copa triangular
+    crown = [(cx, cy - trunk_h - crown_h),
+             (cx - crown_w // 2, cy - trunk_h),
+             (cx + crown_w // 2, cy - trunk_h)]
+    draw.polygon(crown, fill=(30, 90, 35, 220), outline=(20, 60, 25, 200))
+    # Segunda copa superpuesta (más pequeña, más arriba)
+    crown2 = [(cx, cy - trunk_h - crown_h - crown_h // 3),
+              (cx - crown_w // 3, cy - trunk_h - crown_h // 2),
+              (cx + crown_w // 3, cy - trunk_h - crown_h // 2)]
+    draw.polygon(crown2, fill=(40, 110, 45, 210))
+
+
+# Terrenos que tienen símbolo y a qué zoom mínimo se activan
+SYMBOL_MIN_ZOOM = 7
+SYMBOL_TERRAINS = {'Montana', 'Bosque'}
+
+# Tamaño base del símbolo por zoom
+SYMBOL_SIZE = {7: 2, 8: 3, 9: 5}
+
+
+def draw_symbol(draw: ImageDraw.Draw, terrain: str, cx: int, cy: int, zoom: int) -> None:
+    size = SYMBOL_SIZE.get(zoom, 0)
+    if size == 0:
+        return
+    if terrain == 'Montana':
+        draw_mountain(draw, cx, cy, size)
+    elif terrain == 'Bosque':
+        draw_tree(draw, cx, cy, size)
+
+
 # ── Renderizado ──────────────────────────────────────────────────────────────
 
 def render_tile(cells: list[dict], zoom: int, tx: int, ty: int) -> bool:
     """
     Renderiza un tile PNG. Devuelve True si se dibujó algo.
-    cells: lista de {'h3_index': str, 'color': str}
+    cells: lista de {'h3_index': str, 'color': str, 'terrain': str}
     """
     min_lat, min_lon, max_lat, max_lon = tile_bounds(tx, ty, zoom)
     padding = 0.05  # margen para celdas en el borde
@@ -113,6 +177,7 @@ def render_tile(cells: list[dict], zoom: int, tx: int, ty: int) -> bool:
     img  = Image.new('RGBA', (TILE_SIZE, TILE_SIZE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     drawn = 0
+    symbols = []  # acumular para dibujar encima de todos los polígonos
 
     for cell in cells:
         boundary = h3.h3_to_geo_boundary(cell['h3_index'])  # [(lat, lon), ...]
@@ -133,6 +198,19 @@ def render_tile(cells: list[dict], zoom: int, tx: int, ty: int) -> bool:
         r, g, b = hex_to_rgb(cell['color'])
         draw.polygon(pixels, fill=(r, g, b, 220), outline=(r, g, b, 160))
         drawn += 1
+
+        # Registrar símbolo si el terreno lo requiere y el zoom es suficiente
+        terrain = cell.get('terrain', '')
+        if zoom >= SYMBOL_MIN_ZOOM and terrain in SYMBOL_TERRAINS:
+            clat, clon = h3.h3_to_geo(cell['h3_index'])
+            # Solo si el centro está dentro del tile (sin padding extra)
+            if (min_lat <= clat <= max_lat) and (min_lon <= clon <= max_lon):
+                cx, cy = lat_lon_to_px(clat, clon, min_lat, min_lon, max_lat, max_lon, TILE_SIZE)
+                symbols.append((terrain, cx, cy))
+
+    # Dibujar símbolos encima de los polígonos
+    for terrain, cx, cy in symbols:
+        draw_symbol(draw, terrain, cx, cy, zoom)
 
     if drawn == 0:
         return False
@@ -219,6 +297,7 @@ def main() -> None:
     cells = [
         {
             'h3_index': h3_index,
+            'terrain': terrain_name,
             'color': terrain_color or TERRAIN_COLORS_FALLBACK.get(terrain_name, '#9e9e9e'),
         }
         for h3_index, terrain_name, terrain_color in rows
