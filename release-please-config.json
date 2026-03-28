@@ -1,6 +1,0 @@
-{
-  "packages": {
-    "server": { "release-type": "node" },
-    "client": { "release-type": "node" }
-  }
-}

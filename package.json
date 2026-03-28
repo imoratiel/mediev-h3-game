@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "changelog": "node tools/gen-changelog.js",
+    "changelog:major": "node tools/gen-changelog.js --new-major",
+    "changelog:init": "node tools/gen-changelog.js --init"
+  },
   "dependencies": {
     "kafkajs": "^2.2.4"
   }
