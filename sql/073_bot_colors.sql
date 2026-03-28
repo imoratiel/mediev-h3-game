@@ -9,3 +9,6 @@ UPDATE players SET color = '#BA4A00' WHERE player_id = 87; -- naranja oscuro
 UPDATE players SET color = '#2E4057' WHERE player_id = 88; -- azul pizarra
 UPDATE players SET color = '#6C3483' WHERE player_id = 89; -- violeta
 UPDATE players SET color = '#0E6655' WHERE player_id = 90; -- esmeralda
+
+INSERT INTO schema_migrations (script_name)
+VALUES ('073_bot_colors.sql') ON CONFLICT DO NOTHING;
