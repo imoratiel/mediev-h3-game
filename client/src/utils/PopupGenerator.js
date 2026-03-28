@@ -75,6 +75,11 @@ export function generateCellPopupContent(cell, config) {
     : '<span class="unclaimed-text">🌿 Sin reclamar</span>';
   popupContent += `<p class="popup-stat-row"><strong>Dueño:</strong> ${ownerText}</p>`;
 
+  // OWNER CULTURE (only when owned by another player)
+  if (cell.player_name && cell.player_culture_name) {
+    popupContent += `<p class="popup-stat-row"><strong>Cultura:</strong> ${cell.player_culture_name}</p>`;
+  }
+
   // TERRAIN TYPE
   popupContent += `<p class="popup-stat-row"><strong>Terreno:</strong> ${cell.terrain_type}</p>`;
 

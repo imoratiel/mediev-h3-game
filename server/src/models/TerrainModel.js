@@ -43,6 +43,7 @@ class TerrainModel {
                 p.display_name AS player_name,
                 p.color AS player_color,
                 p.capital_h3,
+                c.name AS player_culture_name,
                 s.name AS settlement_name,
                 s.type AS settlement_type,
                 td.*,
@@ -62,6 +63,7 @@ class TerrainModel {
             FROM h3_map m
             LEFT JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
             LEFT JOIN players p ON m.player_id = p.player_id
+            LEFT JOIN cultures c ON p.culture_id = c.id
             LEFT JOIN settlements s ON m.h3_index = s.h3_index
             LEFT JOIN territory_details td ON m.h3_index = td.h3_index
             LEFT JOIN political_divisions pd ON td.division_id = pd.id
