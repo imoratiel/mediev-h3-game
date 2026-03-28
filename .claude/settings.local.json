@@ -88,7 +88,8 @@
       "Bash(\"d:/claude/mediev-h3-game/.env.example\")",
       "WebFetch(domain:skills.sh)",
       "Bash(head -15 grep -n \"h3_index\\\\|h3-index\" d:/claude/mediev-h3-game/client/src/components/NavalPanel.vue)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(.venv/Scripts/pip install:*)"
     ]
   }
 }

@@ -25,6 +25,9 @@ Thumbs.db
 
 notes.txt
 
+# Tiles generados
+server/tiles/
+
 # Large Geospatial Data
 data/
 *.tif

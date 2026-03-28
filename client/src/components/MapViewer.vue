@@ -1868,6 +1868,18 @@ const initMap = () => {
     ),
   ]);
 
+  // Tiles generados desde datos H3 propios (servidos por el backend)
+  const customTileLayer = L.tileLayer(
+    `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/tiles/{z}/{x}/{y}.png`,
+    {
+      attribution: 'Hispania 210aC',
+      maxNativeZoom: 9,
+      maxZoom: 16,
+      opacity: 1.0,
+      errorTileUrl: '',   // tile transparente si no existe
+    }
+  );
+
   // Add Relief layer as default
   reliefLayer.addTo(map);
 
@@ -1876,6 +1888,7 @@ const initMap = () => {
     'Relieve': reliefLayer,
     'Físico': smoothLayer,
     'Referencia': referenceLayer,
+    'Mapa Propio': customTileLayer,
   };
   L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
 

@@ -49,6 +49,12 @@ app.use(cookieParser()); // Parse cookies for JWT extraction
 // Serve static files (map-inspector.html and other debug tools)
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve generated H3 tiles
+app.use('/tiles', express.static(path.join(__dirname, 'tiles'), {
+  maxAge: '7d',
+  fallthrough: true,  // 404 silencioso si el tile no existe (área no generada)
+}));
+
 // Routes
 const apiRoutes = require('./routes/api')();
 app.use('/api', apiRoutes);
