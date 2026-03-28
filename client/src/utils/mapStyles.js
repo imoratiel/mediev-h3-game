@@ -19,25 +19,21 @@ export function getHexagonFillStyle(hex, config) {
 
   // Base color: terrain if layer is active, otherwise neutral
   let fillColor = showTerrainLayer ? terrainColor : '#606060';
-  let fillOpacity = 1.0; // Opacidad completa para máxima claridad visual
+  let fillOpacity = 1.0;
 
-  // Override fill logic based on priorities
-  if (isPoliticalView && isCapital && isMyTerritory) {
-    fillColor = '#ff0000';
+  if (isMyTerritory && playerColor) {
+    // Own territory: full color, clearly solid
+    fillColor = playerColor;
     fillOpacity = 1.0;
-  } else if (isPoliticalView && isMyTerritory) {
-    fillColor = '#ff0000';
-    fillOpacity = 1.0;
-  } else if (isPoliticalView && hex.player_id) {
-    // Enemy territory: show player color if political view is active
-    if (playerColor && isPoliticalView) {
-      fillColor = playerColor;
-    }
-    fillOpacity = 0.6; // Enemy territory semitransparente para diferenciación
-  } else if (playerColor) {
-    fillOpacity = 0.6;
+  } else if (!isMyTerritory && hex.player_id && playerColor) {
+    // Enemy territory: their color but semi-transparent to distinguirlo del propio
+    fillColor = playerColor;
+    fillOpacity = 0.55;
+  } else if (!isMyTerritory && hex.player_id) {
+    // Enemy without color assigned: neutral tint
+    fillColor = showTerrainLayer ? terrainColor : '#606060';
+    fillOpacity = 0.55;
   } else if (!showTerrainLayer) {
-    // No terrain layer and no player: medium opacity
     fillOpacity = 0.7;
   }
 
@@ -59,25 +55,20 @@ export function getHexagonBorderStyle(hex, config) {
   const playerColor = hex.player_color || null;
   const terrainColor = hex.terrain_color || hex.color || '#9e9e9e';
 
-  // Default: color red, weight 3
-  let borderColor = '#d32f2f';
-  let borderWeight = 3;
+  let borderColor = terrainColor;
+  let borderWeight = isHighRes ? 1.0 : 1.5;
 
-  // Capital uses the same border style as any own territory (icon is enough distinction)
-  if (isPoliticalView && isMyTerritory) {
-    borderColor = '#d32f2f';
+  if (isMyTerritory && playerColor) {
+    // Own territory: bold border in own color
+    borderColor = playerColor;
     borderWeight = 3;
-  } else if (isPoliticalView && playerColor) {
-    borderColor = playerColor; // Enemy border color
-    borderWeight = 3;
+  } else if (!isMyTerritory && hex.player_id && playerColor) {
+    // Enemy territory: thinner border in their color
+    borderColor = playerColor;
+    borderWeight = 2;
   } else if (hasRoad) {
-    borderColor = '#d4af37'; // Gold road
-  } else {
-    // Neutral hexes use terrain color or minimal border
-    if (!hex.player_id && !hasRoad) {
-      borderColor = terrainColor;
-      borderWeight = isHighRes ? 1.0 : 1.5;
-    }
+    borderColor = '#d4af37';
+    borderWeight = 2;
   }
 
   return { borderColor, borderWeight };

@@ -50,7 +50,7 @@ const EXPANSIONIST = {
     GOLD_TO_EXPAND:          0,   // No gold threshold — always tries to expand
     GOLD_RESERVE:        3_000,   // Never go below this
     RECRUIT_QUANTITY:    100,     // Larger batches for aggression
-    COLORS: ['#8B0000','#B22222','#DC143C','#800000','#4A0E0E','#C0392B','#922B21','#641E16'],
+    COLORS: ['#C0392B','#1A5276','#1E8449','#7D3C98','#D4AC0D','#117A65','#BA4A00','#2E4057','#6C3483','#0E6655'],
     // Cell scoring weights for _loadCandidateHexes
     // High adjacency weight = aggressively fills gaps; low resource = not picky about terrain
     SCORE_WEIGHTS: { resource: 0.5, adjacency: 4.0 },
