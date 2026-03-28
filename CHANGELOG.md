@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.5.0...v0.5.1) (2026-03-28)
+
+
+### Correcciones
+
+* ampliar edificio requiere de un constructor ([8e58538](https://github.com/imoratiel/hipania210ac-game/commit/8e5853872890f972609cfa1ff1fc502afc553ba5))
+* changelog vacio ([4a65791](https://github.com/imoratiel/hipania210ac-game/commit/4a6579166096ecf64682f27a8bd18851ad7c50c6))
+* eliminada la posibilidad de cambiar el nombre ([22aa660](https://github.com/imoratiel/hipania210ac-game/commit/22aa6606dfd27123ef9748912161ce787412a2e4))
+
 ## [0.5.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.4.0...v0.5.0) (2026-03-27)
 
 
