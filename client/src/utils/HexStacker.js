@@ -81,7 +81,7 @@ const BUILDING_ICON_MAP = [
   [['cuartel', 'barrack', 'escuela', 'militar', 'military'],        '🏰'],
   [['iglesia', 'church', 'catedral', 'templo', 'santuario'],        '🏛️'],
   [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'],       '⚖️'],
-  [['fortaleza', 'fortress', 'castillo'],                           '🏰'],
+  [['castellum', 'fortaleza', 'fortress', 'castillo'],              '🏰'],
   [['astillero', 'shipyard', 'portus', 'cothon', 'emporio', 'embarcadero'], '⛵'],
   [['mina', 'mine'],                                                '⛏️'],
   [['aserradero', 'lumber', 'madera'],                              '🌲'],

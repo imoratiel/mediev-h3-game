@@ -13,7 +13,7 @@ function getBuildingIcon(name = '', typeName = '') {
   if (n.includes('iglesia') || n.includes('church') || n.includes('catedral'))                    return '⛪';
   if (n.includes('mercado') || n.includes('market') || n.includes('foro') ||
       n.includes('factor') || n.includes('lonja') || n.includes('feria'))                         return '⚖️';
-  if (n.includes('fortaleza') || n.includes('fortress') || n.includes('castillo'))                return '🏯';
+  if (n.includes('castellum') || n.includes('fortaleza') || n.includes('fortress') || n.includes('castillo')) return '🏰';
   if (n.includes('astillero') || n.includes('shipyard') ||
       n.includes('portus') || n.includes('cothon') ||
       n.includes('emporio') || n.includes('embarcadero') || t === 'maritime')                     return '⛵';
