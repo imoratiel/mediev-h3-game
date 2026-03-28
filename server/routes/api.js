@@ -457,10 +457,12 @@ module.exports = function () {
     // ============================================
     // CHANGELOG
     // ============================================
-    router.get('/changelog', authenticateToken, (req, res) => {
+    const { Logger } = require('../src/utils/logger.js');
+    router.get('/changelog', (_req, res) => {
         try {
-            const changelogPath = path.resolve(__dirname, '../../CHANGELOG.md');
+            const changelogPath = path.resolve(__dirname, '../CHANGELOG.md');
             if (!fs.existsSync(changelogPath)) {
+                Logger.error(new Error(`CHANGELOG.md no encontrado en: ${changelogPath}`), { endpoint: '/changelog' });
                 return res.json({ success: true, releases: [] });
             }
             const raw = fs.readFileSync(changelogPath, 'utf8');

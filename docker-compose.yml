@@ -16,6 +16,7 @@ services:
     volumes:
       - ./server:/app
       - /app/node_modules # Evita que los módulos locales sobrescriban los del contenedor
+      - ./CHANGELOG.md:/app/CHANGELOG.md:ro
     # Cargamos las contraseñas desde el archivo protegido
     env_file:
       - .env
