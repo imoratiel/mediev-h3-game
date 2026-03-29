@@ -98,7 +98,9 @@
       "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" --version)",
       "Bash(\"C:/ProgramData/miniconda3/python.exe\" --version)",
       "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" -c \":*)",
-      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" -m pip install Pillow --quiet)"
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" -m pip install Pillow --quiet)",
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" tools/gen_tiles/gen_tiles.py)",
+      "Bash(C:/Users/Usuario/miniconda3/python.exe -m pip list)"
     ]
   }
 }
