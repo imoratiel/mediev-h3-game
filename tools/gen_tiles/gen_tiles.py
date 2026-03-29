@@ -12,6 +12,7 @@ Uso:
   python tools/gen_tiles/gen_tiles.py
 """
 
+import argparse
 import math
 import time
 from pathlib import Path
@@ -158,18 +159,17 @@ def draw_forest_symbol(draw: ImageDraw.Draw, cx: int, cy: int, size: int) -> Non
 
 
 def draw_wave_symbol(draw: ImageDraw.Draw, cx: int, cy: int, size: int) -> None:
-    """Dos líneas de ola horizontales — estilo carta náutica."""
+    """Una línea de ola horizontal — estilo carta náutica."""
     half = max(3, size // 2)
-    for dy in (-size // 4, size // 4):
-        pts = []
-        steps = max(4, half)
-        for i in range(steps + 1):
-            t = i / steps
-            x = cx - half + int(t * half * 2)
-            y = cy + dy + int(math.sin(t * math.pi * 2) * max(1, size // 6))
-            pts.append((x, y))
-        if len(pts) >= 2:
-            draw.line(pts, fill=WAVE_COLOR, width=1)
+    pts = []
+    steps = max(4, half)
+    for i in range(steps + 1):
+        t = i / steps
+        x = cx - half + int(t * half * 2)
+        y = cy + int(math.sin(t * math.pi * 2) * max(1, size // 6))
+        pts.append((x, y))
+    if len(pts) >= 2:
+        draw.line(pts, fill=WAVE_COLOR, width=1)
 
 
 # ── Renderizado ──────────────────────────────────────────────────────────────
@@ -335,4 +335,15 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Genera tiles XYZ de terreno')
+    parser.add_argument('--min-zoom', type=int, default=ZOOM_LEVELS[0],
+                        help=f'Zoom mínimo (defecto: {ZOOM_LEVELS[0]})')
+    parser.add_argument('--max-zoom', type=int, default=ZOOM_LEVELS[-1],
+                        help=f'Zoom máximo (defecto: {ZOOM_LEVELS[-1]})')
+    args = parser.parse_args()
+
+    if args.min_zoom > args.max_zoom:
+        parser.error('--min-zoom no puede ser mayor que --max-zoom')
+
+    ZOOM_LEVELS[:] = list(range(args.min_zoom, args.max_zoom + 1))
     main()

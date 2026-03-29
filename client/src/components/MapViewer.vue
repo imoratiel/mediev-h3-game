@@ -1708,7 +1708,7 @@ const updateURLParams = () => {
  * Initialize Leaflet map
  * Priority: 1) Player capital, 2) URL params, 3) León default
  */
-const initMap = () => {
+const initMap = async () => {
   // Try to get player's capital from localStorage (set on login)
   const capitalH3 = localStorage.getItem('capitalH3');
   let center = LEON_CENTER;
@@ -1821,17 +1821,23 @@ const initMap = () => {
   // Inicializar visualizador de rutas (crea su propio pane routePane z-600)
   RouteVisualizer.init(map);
 
-  // Capa de terreno propia — tiles pre-generados desde datos H3, siempre activa
-  L.tileLayer(
-    `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/tiles/{z}/{x}/{y}.png`,
-    {
-      attribution: 'Hispania 210aC',
-      maxNativeZoom: 9,
-      maxZoom: 16,
-      opacity: 1.0,
-      errorTileUrl: '',
+  // Capa de terreno — zoom range dinámico según directorios existentes en /tiles
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  try {
+    const meta = await fetch(`${apiBase}/tiles/meta`).then(r => r.json());
+    if (meta.minZoom !== null) {
+      L.tileLayer(`${apiBase}/tiles/{z}/{x}/{y}.png`, {
+        attribution: 'Hispania 210aC',
+        minNativeZoom: meta.minZoom,
+        maxNativeZoom: meta.maxZoom,
+        maxZoom: 16,
+        opacity: 1.0,
+        errorTileUrl: '',
+      }).addTo(map);
     }
-  ).addTo(map);
+  } catch (e) {
+    console.warn('No se pudo cargar metadata de tiles:', e);
+  }
 
   // Create a layer group for hexagons with canvas renderer for better performance
   hexagonLayer = L.layerGroup({ renderer: L.canvas() }).addTo(map);
