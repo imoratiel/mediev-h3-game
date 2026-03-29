@@ -54,6 +54,13 @@
 - Error en exceptions.log: `"Ejército Flota de N no tiene unidades"` y `"Ejército Tridens no tiene unidades"` — ambos son flotas navales (×1515 en sesión 2026-03-25)
 - Patrón de velocidad naval: derivar `maxCells` de `MIN(st.speed)` sobre `fleet_ships JOIN ship_types`
 
+## Constraint `check_notification_type` — Tipos Válidos
+- Definido en `sql/025_cooldown.sql`: `CHECK (type IN ('Militar', 'Económico', 'Impuestos', 'General', 'Hambre'))`
+- `character_lifecycle.js` usa `'Dinastía'` → NO está en el constraint → viola la DB
+- Fix: cambiar todos los `'Dinastía'` en `character_lifecycle.js` por `'General'` (o ampliar el constraint con una migración SQL)
+- El error se produce en CADA nacimiento de personaje durante el procesado del turno mensual
+- NO bloquea el turno (hay SAVEPOINT + ROLLBACK alrededor de `processCharacterLifecycle`)
+
 ## Archivos Clave
 
 - Motor: `server/src/logic/turn_engine.js`
