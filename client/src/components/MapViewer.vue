@@ -1822,7 +1822,7 @@ const initMap = async () => {
   RouteVisualizer.init(map);
 
   // Capa de terreno — zoom range dinámico según directorios existentes en /tiles
-  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const apiBase = import.meta.env.VITE_API_URL || '';
   try {
     const meta = await fetch(`${apiBase}/tiles/meta`).then(r => r.json());
     if (meta.minZoom !== null) {
