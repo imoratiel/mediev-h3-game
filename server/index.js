@@ -6,7 +6,7 @@ const cookieParser = require('cookie-parser');
 const pool = require('./db');
 
 const { CONFIG, loadGameConfig } = require('./src/config');
-const { initializeLogger, logGameEvent } = require('./src/utils/logger');
+const { initializeLogger, logGameEvent, Logger } = require('./src/utils/logger');
 const { startTimeEngine } = require('./src/logic/turn_engine');
 const { loadGeoCultureCache } = require('./src/services/PlayerService');
 
@@ -57,15 +57,15 @@ app.get('/tiles/meta', (req, res) => {
   const fs = require('fs');
   try {
     const exists = fs.existsSync(tilesDir);
-    console.log(`[tiles/meta] tilesDir=${tilesDir} exists=${exists}`);
+    Logger.engine(`[tiles/meta] tilesDir=${tilesDir} exists=${exists}`);
     if (!exists) return res.json({ minZoom: null, maxZoom: null });
     const entries = fs.readdirSync(tilesDir);
-    console.log(`[tiles/meta] entries=${JSON.stringify(entries)}`);
+    Logger.engine(`[tiles/meta] entries=${JSON.stringify(entries)}`);
     const zooms = entries.map(d => parseInt(d)).filter(n => !isNaN(n)).sort((a, b) => a - b);
     if (!zooms.length) return res.json({ minZoom: null, maxZoom: null });
     res.json({ minZoom: zooms[0], maxZoom: zooms[zooms.length - 1] });
   } catch (err) {
-    console.error('[tiles/meta] ERROR:', err);
+    Logger.error(err, { endpoint: '/tiles/meta', method: 'GET' });
     res.status(500).json({ minZoom: null, maxZoom: null, error: err.message });
   }
 });
