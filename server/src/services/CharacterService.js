@@ -708,11 +708,7 @@ class CharacterService {
     async AttemptCapture(req, res) {
         const playerId    = req.user.player_id;
         const characterId = parseInt(req.params.id, 10);
-        const { attackerArmyId } = req.body;
-
-        if (!attackerArmyId) {
-            return res.status(400).json({ success: false, message: 'attackerArmyId es requerido.' });
-        }
+        const { attackerArmyId } = req.body ?? {};
 
         const client = await pool.connect();
         try {
@@ -753,17 +749,20 @@ class CharacterService {
                 return res.status(400).json({ success: false, message: `Debes esperar ${char.capture_cooldown} turno(s) antes de intentarlo de nuevo.` });
             }
 
-            // 3. Verificar ejército atacante en el mismo hex, sin movimiento activo
+            // 3. Verificar ejército atacante en el mismo hex, sin movimiento activo.
+            // Si el cliente envió attackerArmyId se filtra por ese; si no, se usa cualquiera del jugador.
             const armyResult = await client.query(
                 `SELECT a.army_id, pl.culture_id,
                         COALESCE(SUM(t.quantity), 0)::int AS troop_count
                  FROM armies a
                  JOIN players pl ON pl.player_id = a.player_id
                  LEFT JOIN troops t ON t.army_id = a.army_id
-                 WHERE a.army_id = $1 AND a.player_id = $2
-                   AND a.h3_index = $3 AND a.destination IS NULL
-                 GROUP BY a.army_id, pl.culture_id`,
-                [attackerArmyId, playerId, char.h3_index]
+                 WHERE a.player_id = $1
+                   AND a.h3_index = $2 AND a.destination IS NULL
+                   AND ($3::int IS NULL OR a.army_id = $3)
+                 GROUP BY a.army_id, pl.culture_id
+                 LIMIT 1`,
+                [playerId, char.h3_index, attackerArmyId ?? null]
             );
             if (!armyResult.rows[0]) {
                 await client.query('ROLLBACK');
