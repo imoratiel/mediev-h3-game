@@ -52,6 +52,7 @@ class CombatService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            await client.query("SET LOCAL lock_timeout = '8000ms'");
 
             // 1. Verificar que el ejército atacante pertenece al jugador
             const attackerResult = await client.query(
@@ -149,6 +150,7 @@ class CombatService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            await client.query("SET LOCAL lock_timeout = '8000ms'");
 
             // 1. Verificar que el atacante pertenece al jugador
             const attackerResult = await client.query(
@@ -283,7 +285,10 @@ class CombatService {
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
             Logger.error(error, { context: 'CombatService.attackSpecificArmy', player_id, attackerArmyId, targetArmyId });
-            return res.status(500).json({ success: false, message: 'Error al procesar el combate' });
+            const msg = error.code === '55P03'
+                ? 'El sistema está procesando este ejército. Intenta de nuevo en unos segundos.'
+                : 'Error al procesar el combate';
+            return res.status(500).json({ success: false, message: msg });
         } finally {
             client.release();
         }

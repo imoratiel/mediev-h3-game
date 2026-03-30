@@ -3520,7 +3520,8 @@ const renderHexagons = (hexagons) => {
   hexagons.forEach((hex, index) => {
     try {
       // Celdas sin propietario no se renderizan — el tile layer ya muestra el terreno
-      if (!hex.player_id) return;
+      // Excepción: puentes son dinámicos y deben pintarse siempre
+      if (!hex.player_id && !hex.is_bridge) return;
 
       // Get boundary coordinates for this H3 cell
       const boundary = cellToBoundary(hex.h3_index);
@@ -3539,6 +3540,9 @@ const renderHexagons = (hexagons) => {
 
       // Apply user's opacity slider on top of semantic opacity
       const effectiveFillOpacity = fillOpacity * (hexagonOpacity.value / 100);
+
+      // Puentes sin propietario: solo pintar el marcador (layers 1-3 requieren propietario)
+      if (hex.player_id) {
 
       // --- LAYER 1: FILL (territoryPane) ---
       // "A) El RELLENO: L.polygon con fill: true, fillColor: '#ff0000', fillOpacity: 0.3, stroke: false y pane: 'territoryPane'."
@@ -3644,6 +3648,8 @@ const renderHexagons = (hexagons) => {
           zIndexOffset: 1000,
         }).addTo(hexagonLayer);
       }
+
+      } // end if (hex.player_id)
 
       // --- LAYER 3b: BRIDGE MARKER (starPane) ---
       if (hex.is_bridge) {
