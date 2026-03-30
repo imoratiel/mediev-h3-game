@@ -11,7 +11,7 @@
  * Entity object shapes passed in ownEntities / enemyEntities arrays:
  *   { type: 'troops', count, isGarrisonOnly }
  *   { type: 'fleet',  count }
- *   { type: 'char',   id, name, is_main_character, is_heir }
+ *   { type: 'char',   id, name, is_main_character, is_heir, is_captive, is_imprisoned }
  *   { type: 'worker', h3_index, worker_count, worker_type }
  */
 
@@ -133,9 +133,24 @@ function _troopsBadge(entity, isEnemy, isConflict) {
 }
 
 function _charBadge(entity, isEnemy) {
-  const glyph  = isEnemy ? '🧑' : (entity.is_main_character ? '👑' : entity.is_heir ? '🤴' : '⭐');
-  const bg     = isEnemy ? '#7f1d1d' : '#14532d';
-  const border = isEnemy ? '#ef4444' : '#4ade80';
+  let glyph, bg, border;
+  if (entity.is_imprisoned) {
+    glyph  = '🔒';
+    bg     = '#1c1917';
+    border = '#78716c';
+  } else if (entity.is_captive) {
+    glyph  = '⛓️';
+    bg     = '#7f1d1d';
+    border = '#f97316';
+  } else if (isEnemy) {
+    glyph  = '🧑';
+    bg     = '#7f1d1d';
+    border = '#ef4444';
+  } else {
+    glyph  = entity.is_main_character ? '👑' : entity.is_heir ? '🤴' : '⭐';
+    bg     = '#14532d';
+    border = '#4ade80';
+  }
   return `<div class="hs-entity hs-char" data-char-id="${entity.id}" data-is-enemy="${isEnemy ? '1' : '0'}" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;">${glyph}</div>`;
 }
 

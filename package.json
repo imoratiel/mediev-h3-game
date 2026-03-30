@@ -1,4 +1,5 @@
 {
+  "version": "0.1.3",
   "dependencies": {
     "kafkajs": "^2.2.4"
   }

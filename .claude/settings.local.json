@@ -88,7 +88,21 @@
       "Bash(\"d:/claude/mediev-h3-game/.env.example\")",
       "WebFetch(domain:skills.sh)",
       "Bash(head -15 grep -n \"h3_index\\\\|h3-index\" d:/claude/mediev-h3-game/client/src/components/NavalPanel.vue)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(.venv/Scripts/pip install:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(py -3.12 -c \":*)",
+      "Bash(where python:*)",
+      "Bash(conda info:*)",
+      "Read(//c/Users/Usuario/anaconda3/**)",
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" --version)",
+      "Bash(\"C:/ProgramData/miniconda3/python.exe\" --version)",
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" -c \":*)",
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" -m pip install Pillow --quiet)",
+      "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" tools/gen_tiles/gen_tiles.py)",
+      "Bash(C:/Users/Usuario/miniconda3/python.exe -m pip list)",
+      "Bash(find d:/claude/mediev-h3-game -name mapApi.js -o -name *mapApi*)",
+      "Bash(find d:/claude/mediev-h3-game/server -name *route* -o -name *router*)"
     ]
   }
 }

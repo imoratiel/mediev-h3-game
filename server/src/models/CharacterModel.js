@@ -286,15 +286,17 @@ class CharacterModel {
     async getEnemyCharactersAtHexes(playerId, hexes) {
         if (hexes.length === 0) return [];
         const r = await pool.query(
-            `SELECT c.id, c.name, c.h3_index, c.is_main_character,
+            `SELECT c.id, c.name, c.h3_index, c.is_main_character, c.is_captive, c.is_imprisoned,
+                    c.personal_guard, c.level,
                     p.display_name AS player_name, p.color AS player_color
              FROM characters c
              JOIN players p ON p.player_id = c.player_id
              WHERE c.player_id != $1
                AND c.army_id IS NULL
-               AND c.is_captive = FALSE
                AND c.transported_by IS NULL
                AND c.h3_index IS NOT NULL
+               AND c.age >= 16
+               AND (c.is_captive = FALSE OR c.is_imprisoned = TRUE)
                AND c.h3_index = ANY($2::text[])`,
             [playerId, hexes]
         );
@@ -453,6 +455,60 @@ class CharacterModel {
             'UPDATE characters SET health = 0 WHERE id = $1',
             [characterId]
         );
+    }
+
+    /**
+     * Encarcela al personaje en un cuartel. Deja de moverse con el ejército.
+     */
+    async setImprisoned(client, characterId, h3Index) {
+        await (client || pool).query(
+            `UPDATE characters
+             SET is_imprisoned = TRUE, imprisoned_at_h3 = $1,
+                 army_id = NULL, destination = NULL
+             WHERE id = $2`,
+            [h3Index, characterId]
+        );
+    }
+
+    /**
+     * Libera al personaje del encarcelamiento (al pagar rescate o escapar).
+     */
+    async releaseFromPrison(client, characterId, capitalH3) {
+        await (client || pool).query(
+            `UPDATE characters
+             SET is_imprisoned = FALSE, imprisoned_at_h3 = NULL,
+                 is_captive = FALSE, captured_by_army_id = NULL,
+                 ransom_amount = NULL, ransom_turns_remaining = NULL,
+                 destination = $1
+             WHERE id = $2`,
+            [capitalH3, characterId]
+        );
+    }
+
+    /**
+     * Decrementa el cooldown de captura de todos los personajes en 1 turno.
+     */
+    async decrementCaptureCooldowns(client) {
+        await (client || pool).query(
+            `UPDATE characters SET capture_cooldown = capture_cooldown - 1
+             WHERE capture_cooldown > 0`
+        );
+    }
+
+    /**
+     * Devuelve todos los personajes cautivos (no encarcelados) para procesar escapes.
+     */
+    async getAllCaptives(client) {
+        const r = await (client || pool).query(
+            `SELECT c.id, c.name, c.player_id, c.captured_by_army_id, c.is_imprisoned,
+                    p.capital_h3,
+                    a.h3_index AS army_h3
+             FROM characters c
+             JOIN players p ON p.player_id = c.player_id
+             LEFT JOIN armies a ON a.army_id = c.captured_by_army_id
+             WHERE c.is_captive = TRUE AND c.is_imprisoned = FALSE`
+        );
+        return r.rows;
     }
 }
 

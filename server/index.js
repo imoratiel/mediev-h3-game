@@ -49,6 +49,25 @@ app.use(cookieParser()); // Parse cookies for JWT extraction
 // Serve static files (map-inspector.html and other debug tools)
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve generated H3 tiles
+const tilesDir = path.join(__dirname, 'tiles');
+app.use('/tiles', express.static(tilesDir, {
+  maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
+  fallthrough: true,
+}));
+
+// Metadata: zoom levels disponibles según directorios existentes
+app.get('/tiles/meta', (req, res) => {
+  const fs = require('fs');
+  if (!fs.existsSync(tilesDir)) return res.json({ minZoom: null, maxZoom: null });
+  const zooms = fs.readdirSync(tilesDir)
+    .map(d => parseInt(d))
+    .filter(n => !isNaN(n))
+    .sort((a, b) => a - b);
+  if (!zooms.length) return res.json({ minZoom: null, maxZoom: null });
+  res.json({ minZoom: zooms[0], maxZoom: zooms[zooms.length - 1] });
+});
+
 // Routes
 const apiRoutes = require('./routes/api')();
 app.use('/api', apiRoutes);

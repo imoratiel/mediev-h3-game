@@ -1,0 +1,9 @@
+#!/bin/sh
+# Hook pre-push: regenera el changelog antes de hacer push
+node tools/gen-changelog.js
+
+# Si el changelog fue modificado, hacer auto-commit
+if ! git diff --quiet CHANGELOG.md server/package.json client/package.json .version-config.json 2>/dev/null; then
+  git add CHANGELOG.md server/package.json client/package.json .version-config.json
+  git commit -m "chore: actualizar changelog y versión"
+fi

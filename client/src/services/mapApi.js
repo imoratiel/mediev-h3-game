@@ -781,6 +781,51 @@ export async function captureCharacter(id) {
   return response.data;
 }
 
+export async function attemptCaptureCharacter(id, attackerArmyId) {
+  const response = await axios.post(`${API_URL}/api/characters/${id}/attempt-capture`, { attackerArmyId });
+  return response.data;
+}
+
+export async function executeCharacter(id) {
+  const response = await axios.delete(`${API_URL}/api/characters/${id}/execute`);
+  return response.data;
+}
+
+export async function requestRansom(id, amount) {
+  const response = await axios.post(`${API_URL}/api/characters/${id}/ransom`, { amount });
+  return response.data;
+}
+
+export async function cancelRansom(id) {
+  const response = await axios.delete(`${API_URL}/api/characters/${id}/ransom`);
+  return response.data;
+}
+
+export async function imprisonCharacter(id) {
+  const response = await axios.post(`${API_URL}/api/characters/${id}/imprison`);
+  return response.data;
+}
+
+export async function getMyCaptives() {
+  const response = await axios.get(`${API_URL}/api/characters/captives`);
+  return response.data;
+}
+
+export async function getPendingRansomRequests() {
+  const response = await axios.get(`${API_URL}/api/ransom-requests/pending`);
+  return response.data;
+}
+
+export async function payRansom(ransomRequestId) {
+  const response = await axios.post(`${API_URL}/api/ransom-requests/${ransomRequestId}/pay`);
+  return response.data;
+}
+
+export async function rejectRansom(ransomRequestId) {
+  const response = await axios.post(`${API_URL}/api/ransom-requests/${ransomRequestId}/reject`);
+  return response.data;
+}
+
 export async function procreateCharacter(parentId, name) {
   const response = await axios.post(`${API_URL}/api/characters/${parentId}/procreate`, { name });
   return response.data;

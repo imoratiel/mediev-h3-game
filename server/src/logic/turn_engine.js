@@ -981,6 +981,62 @@ async function processWorkerConstructions(client, turn) {
 }
 
 /**
+ * Procesa intentos de escape de personajes cautivos (2% por turno)
+ * y decrementa el cooldown de captura.
+ */
+async function processCaptiveEscapes(client, turn) {
+    const NotificationService = require('../services/NotificationService');
+    const CharacterModel      = require('../models/CharacterModel');
+
+    try {
+        // Decrementar cooldowns de captura
+        await CharacterModel.decrementCaptureCooldowns(client);
+
+        // Obtener cautivos no encarcelados
+        const captives = await CharacterModel.getAllCaptives(client);
+        let escapedCount = 0;
+
+        for (const captive of captives) {
+            if (Math.random() > 0.02) continue; // 2% de escape
+
+            // Escape exitoso
+            await CharacterModel.flee(client, captive.id, captive.capital_h3);
+            escapedCount++;
+
+            Logger.engine(`[TURN ${turn}] Escape: ${captive.name} (id=${captive.id}) huye del cautiverio`);
+
+            await NotificationService.createSystemNotification(
+                captive.player_id, 'Captura',
+                `🏃 **${captive.name}** ha escapado del cautiverio y regresa a tu capital.`,
+                turn
+            );
+
+            // Notificar al captor (si el ejército aún existe y tiene jugador)
+            if (captive.captured_by_army_id) {
+                const captorResult = await client.query(
+                    'SELECT player_id FROM armies WHERE army_id = $1',
+                    [captive.captured_by_army_id]
+                );
+                const captorId = captorResult.rows[0]?.player_id;
+                if (captorId) {
+                    await NotificationService.createSystemNotification(
+                        captorId, 'Captura',
+                        `🏃 **${captive.name}** ha escapado de tu ejército.`,
+                        turn
+                    );
+                }
+            }
+        }
+
+        if (captives.length > 0) {
+            Logger.engine(`[TURN ${turn}] Captive escapes: ${escapedCount}/${captives.length} escaped`);
+        }
+    } catch (err) {
+        Logger.error(err, { context: 'turn_engine.processCaptiveEscapes', turn });
+    }
+}
+
+/**
  * Process passive stamina recovery for all armies
  * Also handles decrementing recovering counter and regenerating movement points
  * @param {Object} client - PostgreSQL client (within transaction)
@@ -1376,7 +1432,8 @@ async function processGameTurn(pool, config) {
         // Personal guard regeneration (+1/turno, máx 25) — fuera de transacción, usa pool propio
         await CharacterService.processGuardRegeneration();
 
-
+        // Captive escape attempts (2%/turno) y decremento de capture_cooldown
+        await processCaptiveEscapes(client, newTurn);
 
         // Military food consumption (every turn, after movements so no lock conflict)
         await processMilitaryConsumption(client, newTurn, config);

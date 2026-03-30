@@ -173,6 +173,87 @@
         </div>
       </div>
     </div>
+
+    <!-- ── RANSOM MODAL ───────────────────────────────────── -->
+    <div v-if="showRansomModal" class="char-modal-overlay" @click.self="showRansomModal = false">
+      <div class="char-modal">
+        <h3 class="char-modal-title">💰 Solicitar Rescate</h3>
+        <p class="char-modal-sub">Define la cantidad de oro que solicitas por <strong>{{ ransomTarget?.name }}</strong></p>
+        <input
+          v-model.number="ransomAmount"
+          type="number"
+          min="1"
+          placeholder="Cantidad de oro..."
+          class="char-modal-input"
+        />
+        <div v-if="ransomMsg" class="char-modal-msg" :class="ransomMsg.type">{{ ransomMsg.text }}</div>
+        <div class="char-modal-actions">
+          <button class="char-btn char-btn-secondary" @click="showRansomModal = false">Cancelar</button>
+          <button
+            class="char-btn char-btn-primary"
+            :disabled="submittingRansom || !ransomAmount"
+            @click="confirmRansom"
+          >
+            {{ submittingRansom ? 'Enviando...' : 'Solicitar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECCIÓN CAUTIVOS ─────────────────────────────── -->
+    <div v-if="captives.length > 0" class="captives-section">
+      <div class="captives-title">⛓️ Cautivos ({{ captives.length }})</div>
+      <div v-for="c in captives" :key="c.id" class="captive-card">
+        <div class="captive-info">
+          <span class="captive-name">{{ c.name }}</span>
+          <span class="captive-meta">{{ c.owner_name }} · Nv.{{ Math.floor((c.level ?? 1) / 10) }}</span>
+          <span v-if="c.is_imprisoned" class="captive-badge badge-imprisoned">🔒 Encarcelado</span>
+          <span v-else class="captive-badge badge-captive">⛓️ Cautivo</span>
+        </div>
+        <div class="captive-actions">
+          <button
+            v-if="!c.is_imprisoned"
+            class="char-btn char-btn-small char-btn-secondary"
+            @click="openRansomModal(c)"
+            :title="c.ransom_request_status === 'pending' ? 'Actualizar rescate' : 'Solicitar rescate'"
+          >
+            {{ c.ransom_request_status === 'pending' ? `💰 ${c.ransom_request_amount?.toLocaleString('es-ES')}` : '💰 Rescate' }}
+          </button>
+          <button
+            v-if="c.ransom_request_status === 'pending'"
+            class="char-btn char-btn-small char-btn-secondary"
+            @click="cancelCaptiveRansom(c)"
+            title="Cancelar solicitud de rescate"
+          >✕</button>
+          <button
+            v-if="!c.is_imprisoned"
+            class="char-btn char-btn-small char-btn-secondary"
+            @click="imprisonCaptive(c)"
+            title="Encarcelar (requiere cuartel en este feudo)"
+          >🔒 Encarcelar</button>
+          <button
+            class="char-btn char-btn-small char-btn-danger"
+            @click="executeCaptive(c)"
+            title="Ejecutar al personaje"
+          >☠️</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECCIÓN RESCATES RECIBIDOS ──────────────────── -->
+    <div v-if="ransomRequests.length > 0" class="captives-section">
+      <div class="captives-title">💰 Solicitudes de Rescate ({{ ransomRequests.length }})</div>
+      <div v-for="r in ransomRequests" :key="r.id" class="captive-card">
+        <div class="captive-info">
+          <span class="captive-name">{{ r.character_name }}</span>
+          <span class="captive-meta">De: {{ r.captor_name }} · {{ r.amount.toLocaleString('es-ES') }} oro</span>
+        </div>
+        <div class="captive-actions">
+          <button class="char-btn char-btn-small char-btn-primary" @click="payRansomRequest(r)">💰 Pagar</button>
+          <button class="char-btn char-btn-small char-btn-secondary" @click="rejectRansomRequest(r)">✕ Rechazar</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -184,6 +265,14 @@ import {
   assignArmyCommander,
   removeArmyCommander,
   adoptCharacter,
+  getMyCaptives,
+  getPendingRansomRequests,
+  executeCharacter,
+  requestRansom,
+  cancelRansom,
+  imprisonCharacter,
+  payRansom,
+  rejectRansom,
 } from '@/services/mapApi.js';
 
 const props = defineProps({
@@ -197,6 +286,15 @@ const characters  = ref([]);
 const loading     = ref(false);
 const error       = ref(null);
 const selectedId  = ref(null);
+
+// Cautivos y rescates
+const captives          = ref([]);
+const ransomRequests    = ref([]);
+const showRansomModal   = ref(false);
+const ransomTarget      = ref(null);
+const ransomAmount      = ref(null);
+const submittingRansom  = ref(false);
+const ransomMsg         = ref(null);
 
 const showAssignModal = ref(false);
 const assignChar      = ref(null);
@@ -258,9 +356,14 @@ const load = async () => {
   loading.value = true;
   error.value   = null;
   try {
-    const data = await getMyCharacters();
-    characters.value = data.characters ?? [];
-    // Deselect if character no longer exists
+    const [data, captivesData, ransomData] = await Promise.all([
+      getMyCharacters(),
+      getMyCaptives().catch(() => ({ captives: [] })),
+      getPendingRansomRequests().catch(() => ({ requests: [] })),
+    ]);
+    characters.value  = data.characters ?? [];
+    captives.value    = captivesData.captives ?? [];
+    ransomRequests.value = ransomData.requests ?? [];
     if (selectedId.value && !characters.value.find(c => c.id === selectedId.value)) {
       selectedId.value = null;
     }
@@ -335,6 +438,73 @@ const confirmAdopt = async () => {
   } finally {
     adopting.value = false;
   }
+};
+
+// ── Captive management ────────────────────────────────────
+const executeCaptive = async (c) => {
+  if (!confirm(`¿Ejecutar a ${c.name}? Esta acción es irreversible.`)) return;
+  try {
+    await executeCharacter(c.id);
+    await load();
+  } catch (e) {
+    alert(e?.response?.data?.message ?? 'Error al ejecutar el personaje');
+  }
+};
+
+const openRansomModal = (c) => {
+  ransomTarget.value  = c;
+  ransomAmount.value  = c.ransom_request_amount ?? null;
+  ransomMsg.value     = null;
+  showRansomModal.value = true;
+};
+
+const confirmRansom = async () => {
+  if (!ransomAmount.value || ransomAmount.value <= 0) return;
+  submittingRansom.value = true;
+  ransomMsg.value = null;
+  try {
+    await requestRansom(ransomTarget.value.id, ransomAmount.value);
+    ransomMsg.value = { type: 'success', text: 'Solicitud enviada.' };
+    await load();
+    setTimeout(() => { showRansomModal.value = false; }, 1000);
+  } catch (e) {
+    ransomMsg.value = { type: 'error', text: e?.response?.data?.message ?? 'Error al solicitar rescate' };
+  } finally {
+    submittingRansom.value = false;
+  }
+};
+
+const cancelCaptiveRansom = async (c) => {
+  try {
+    await cancelRansom(c.id);
+    await load();
+  } catch (e) { /* noop */ }
+};
+
+const imprisonCaptive = async (c) => {
+  try {
+    await imprisonCharacter(c.id);
+    await load();
+  } catch (e) {
+    alert(e?.response?.data?.message ?? 'Error al encarcelar el personaje');
+  }
+};
+
+const payRansomRequest = async (r) => {
+  if (!confirm(`¿Pagar ${r.amount.toLocaleString('es-ES')} oro por ${r.character_name}?`)) return;
+  try {
+    await payRansom(r.id);
+    await load();
+  } catch (e) {
+    alert(e?.response?.data?.message ?? 'Error al pagar el rescate');
+  }
+};
+
+const rejectRansomRequest = async (r) => {
+  try {
+    await rejectRansom(r.id);
+    await load();
+  } catch (e) { /* noop */ }
 };
 </script>
 
@@ -698,4 +868,74 @@ const confirmAdopt = async () => {
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
+
+/* ── Cautivos ─────────────────────────────────────────── */
+.captives-section {
+  margin-top: 1.2rem;
+  border-top: 1px solid rgba(197,160,89,0.25);
+  padding-top: 0.9rem;
+}
+
+.captives-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #c5a059;
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.captive-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(197,160,89,0.2);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  margin-bottom: 0.5rem;
+}
+
+.captive-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.captive-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #e8d5a3;
+}
+
+.captive-meta {
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+.captive-badge {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.badge-captive    { background: rgba(239,68,68,0.15); color: #f87171; }
+.badge-imprisoned { background: rgba(107,114,128,0.2); color: #9ca3af; }
+
+.captive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.char-btn-small { padding: 0.2rem 0.45rem; font-size: 0.7rem; }
+
+.char-btn-danger {
+  background: rgba(239,68,68,0.2);
+  color: #f87171;
+  border: 1px solid rgba(239,68,68,0.3);
+}
+.char-btn-danger:not(:disabled):hover { background: rgba(239,68,68,0.35); }
 </style>

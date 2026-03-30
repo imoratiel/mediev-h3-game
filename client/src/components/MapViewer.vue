@@ -292,18 +292,7 @@
           <!-- Visibility Controls -->
           <div class="visibility-section">
             <h4 class="section-title">👁️ Capas de Visualización</h4>
-            <div class="toggle-container">
-              <label class="toggle-label">
-                <input
-                  type="checkbox"
-                  v-model="showTerrainLayer"
-                  @change="toggleTerrainLayer"
-                  class="toggle-checkbox"
-                />
-                <span class="toggle-slider"></span>
-                <span class="toggle-text">🗺️ Capa Terreno</span>
-              </label>
-            </div>
+
             <div class="toggle-container">
               <label class="toggle-label">
                 <input
@@ -1252,7 +1241,7 @@ const currentZoom = ref(13);
 const currentResolution = ref(7); // H3 resolution
 const terrainTypes = ref([]);
 const showH3Layer = ref(true);
-const showTerrainLayer = ref(true); // Terrain layer visibility
+const showTerrainLayer = ref(false); // Terreno mostrado vía tile layer, no por hexágonos
 const isPoliticalView = ref(true); // Vista política para resaltar territorios de jugadores (activada por defecto)
 const mouseH3Index = ref(''); // H3 index under cursor
 
@@ -1714,16 +1703,12 @@ const updateURLParams = () => {
   window.history.replaceState({}, '', newURL);
 };
 
-// Base map layers
-let reliefLayer = null;
-let smoothLayer = null;
-let referenceLayer = null;
 
 /**
  * Initialize Leaflet map
  * Priority: 1) Player capital, 2) URL params, 3) León default
  */
-const initMap = () => {
+const initMap = async () => {
   // Try to get player's capital from localStorage (set on login)
   const capitalH3 = localStorage.getItem('capitalH3');
   let center = LEON_CENTER;
@@ -1836,48 +1821,23 @@ const initMap = () => {
   // Inicializar visualizador de rutas (crea su propio pane routePane z-600)
   RouteVisualizer.init(map);
 
-  // Esri World Shaded Relief — ideal para temática medieval (sin infraestructura moderna)
-  reliefLayer = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
-    {
-      attribution: 'Tiles © Esri',
-      maxZoom: 13,
+  // Capa de terreno — zoom range dinámico según directorios existentes en /tiles
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  try {
+    const meta = await fetch(`${apiBase}/tiles/meta`).then(r => r.json());
+    if (meta.minZoom !== null) {
+      L.tileLayer(`${apiBase}/tiles/{z}/{x}/{y}.png`, {
+        attribution: 'Hispania 210aC',
+        minNativeZoom: meta.minZoom,
+        maxNativeZoom: meta.maxZoom,
+        maxZoom: 16,
+        opacity: 1.0,
+        errorTileUrl: '',
+      }).addTo(map);
     }
-  );
-
-  // Esri World Physical Map — relieve físico mudo, sin etiquetas modernas
-  // maxNativeZoom=8 permite upscaling: encaja con filtro sepia como mapa antiguo
-  smoothLayer = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}',
-    {
-      attribution: '© Esri',
-      maxNativeZoom: 8,
-      maxZoom: 16,
-    }
-  );
-
-  // Referencia: satélite Esri + overlay de etiquetas/fronteras (para orientación)
-  referenceLayer = L.layerGroup([
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { attribution: '© Esri', maxZoom: 19 }
-    ),
-    L.tileLayer(
-      'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      { attribution: '', maxZoom: 19, opacity: 0.85 }
-    ),
-  ]);
-
-  // Add Relief layer as default
-  reliefLayer.addTo(map);
-
-  // Layer control
-  const baseMaps = {
-    'Relieve': reliefLayer,
-    'Físico': smoothLayer,
-    'Referencia': referenceLayer,
-  };
-  L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
+  } catch (e) {
+    console.warn('No se pudo cargar metadata de tiles:', e);
+  }
 
   // Create a layer group for hexagons with canvas renderer for better performance
   hexagonLayer = L.layerGroup({ renderer: L.canvas() }).addTo(map);
@@ -1905,6 +1865,27 @@ const initMap = () => {
   // Event listeners
   map.on('moveend', handleMapMove);
   map.on('zoomend', handleZoomChange);
+
+  // Click en el mapa (celdas sin polígono — terreno sin propietario)
+  // Los polígonos de territorio llaman stopPropagation, así que este solo llega
+  // cuando se hace click en una celda no reclamada.
+  map.on('click', async (e) => {
+    try {
+      const h3Index = latLngToCell(e.latlng.lat, e.latlng.lng, currentResolution.value);
+      const { lat, lng } = e.latlng;
+      MapInteractionController.handleMapClick(h3Index, {
+        onNormal: async (index) => {
+          await showCellDetailsPopup(index, [lat, lng]);
+        },
+        onSelectDestination: dispatchMovement,
+        onSelectWorkerDestination: async (workerId, fromH3, targetH3) => {
+          await processWorkerMovement(workerId, fromH3, targetH3);
+        },
+      });
+    } catch (err) {
+      console.error('Error en click del mapa:', err);
+    }
+  });
 
   // Track mouse position for H3 index telemetry
   map.on('mousemove', (e) => {
@@ -2529,17 +2510,20 @@ const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars
   }
 
   // Own chars by hex (skip chars travelling with armies / fleets / underage)
+  // Excepciones: cautivos propios (is_captive=TRUE) y prisioneros (is_imprisoned=TRUE) se muestran
   const ownCharsByHex = new Map();
   for (const c of (ownChars || [])) {
-    if (!c.h3_index || c.age < 16 || c.army_id || c.transported_by) continue;
+    if (!c.h3_index || c.age < 16 || c.transported_by) continue;
+    // Saltar si tiene army_id Y no es cautivo/prisionero (comandante en ejército → no se muestra suelto)
+    if (c.army_id && !c.is_captive && !c.is_imprisoned) continue;
     if (!ownCharsByHex.has(c.h3_index)) ownCharsByHex.set(c.h3_index, []);
     ownCharsByHex.get(c.h3_index).push(c);
   }
 
-  // Enemy chars by hex
+  // Enemy chars by hex (skip underage — no pueden ser capturados ni aparecen en mapa)
   const enemyCharsByHex = new Map();
   for (const c of (enemyChars || [])) {
-    if (!c.h3_index) continue;
+    if (!c.h3_index || c.age < 16) continue;
     if (!enemyCharsByHex.has(c.h3_index)) enemyCharsByHex.set(c.h3_index, []);
     enemyCharsByHex.get(c.h3_index).push(c);
   }
@@ -2881,19 +2865,28 @@ const openCharPopup = (charId, isEnemy, latlng) => {
 
   let popupHtml;
   if (isEnemy) {
-    const icon = char.is_main_character ? '👑' : '🧑';
+    const statusBadge = char.is_imprisoned
+      ? `<span style="background:rgba(120,113,108,0.3);color:#a8a29e;border-radius:4px;padding:1px 5px;font-size:10px;">🔒 Encarcelado</span>`
+      : char.is_captive
+        ? `<span style="background:rgba(239,68,68,0.15);color:#f87171;border-radius:4px;padding:1px 5px;font-size:10px;">⛓️ Cautivo</span>`
+        : '';
+    const icon = char.is_main_character ? '👑' : char.is_imprisoned ? '🔒' : char.is_captive ? '⛓️' : '🧑';
+    const guardInfo = char.personal_guard !== undefined ? `Guardia ${char.personal_guard}/25` : '';
+    const levelInfo = char.level !== undefined ? `Nv.${Math.floor((char.level ?? 1) / 10)}` : '';
+    const meta = [char.player_name, levelInfo, guardInfo].filter(Boolean).join(' · ');
+    const captureBtn = !char.is_captive && !char.is_imprisoned
+      ? `<button id="char-capture-${char.id}" class="army-action-icon army-action-disabled" title="Necesitas un ejército estacionado en este feudo para intentar la captura">⛓️</button>`
+      : '';
     popupHtml = `
       <div class="char-popup">
         <div class="char-popup-header">
           <span class="char-popup-icon">${icon}</span>
           <div>
-            <div class="char-popup-name">${char.name}</div>
-            <div class="char-popup-meta" style="color:#9ca3af">${char.player_name}</div>
+            <div class="char-popup-name">${char.name} ${statusBadge}</div>
+            <div class="char-popup-meta" style="color:#9ca3af">${meta}</div>
           </div>
         </div>
-        <div class="char-popup-actions">
-          <button id="char-capture-${char.id}" class="army-action-icon army-action-disabled" title="Necesitas un ejército en este feudo para capturar">⛓️</button>
-        </div>
+        ${captureBtn ? `<div class="char-popup-actions">${captureBtn}</div>` : ''}
       </div>`;
   } else {
     const isMain      = char.is_main_character;
@@ -3538,6 +3531,10 @@ const renderHexagons = (hexagons) => {
   // New Rendering Logic with Panes
   hexagons.forEach((hex, index) => {
     try {
+      // Celdas sin propietario no se renderizan — el tile layer ya muestra el terreno
+      // Excepción: puentes son dinámicos y deben pintarse siempre
+      if (!hex.player_id && !hex.is_bridge) return;
+
       // Get boundary coordinates for this H3 cell
       const boundary = cellToBoundary(hex.h3_index);
 
@@ -3555,6 +3552,9 @@ const renderHexagons = (hexagons) => {
 
       // Apply user's opacity slider on top of semantic opacity
       const effectiveFillOpacity = fillOpacity * (hexagonOpacity.value / 100);
+
+      // Puentes sin propietario: solo pintar el marcador (layers 1-3 requieren propietario)
+      if (hex.player_id) {
 
       // --- LAYER 1: FILL (territoryPane) ---
       // "A) El RELLENO: L.polygon con fill: true, fillColor: '#ff0000', fillOpacity: 0.3, stroke: false y pane: 'territoryPane'."
@@ -3586,7 +3586,8 @@ const renderHexagons = (hexagons) => {
 
       // Click interaction - Delegated to MapInteractionController
       const [lat, lng] = cellToLatLng(hex.h3_index);
-      fillPolygon.on('click', async function () {
+      fillPolygon.on('click', async function (e) {
+        L.DomEvent.stopPropagation(e); // evita que dispare también el click del mapa
         MapInteractionController.handleMapClick(hex.h3_index, {
           // Modo normal: abrir popup del hexágono
           onNormal: async (h3Index) => {
@@ -3659,6 +3660,8 @@ const renderHexagons = (hexagons) => {
           zIndexOffset: 1000,
         }).addTo(hexagonLayer);
       }
+
+      } // end if (hex.player_id)
 
       // --- LAYER 3b: BRIDGE MARKER (starPane) ---
       if (hex.is_bridge) {
@@ -4139,21 +4142,6 @@ const togglePoliticalView = () => {
   loadHexagonsIfZoomValid();
 };
 
-/**
- * Toggle terrain layer visibility
- */
-const toggleTerrainLayer = () => {
-  if (!map) return;
-
-  if (showTerrainLayer.value) {
-    console.log('✓ Capa de Terreno activada');
-  } else {
-    console.log('✓ Capa de Terreno desactivada');
-  }
-
-  // Redibujar el mapa con los nuevos estilos
-  loadHexagonsIfZoomValid();
-};
 
 /**
  * Get terrain capacity by name
@@ -4840,13 +4828,20 @@ const handleCharacterLeave = async (char) => {
 };
 
 const handleEnemyCharacterCapture = async (char) => {
+  // Buscar ejército propio estacionado en el mismo hex
+  const myArmy = armies.value.find(a => a.h3_index === char.h3_index && !a.destination && a.player_id === playerId.value);
+  if (!myArmy) {
+    showToast('Necesitas un ejército estacionado en este feudo', 'error');
+    return;
+  }
   try {
-    const result = await mapApi.captureCharacter(char.id);
+    const result = await mapApi.attemptCaptureCharacter(char.id, myArmy.army_id);
     map.closePopup();
-    showToast(`⛓️ ${result.message}`, 'success');
+    const toastType = result.result === 'captured' ? 'success' : result.result === 'dead' ? 'warning' : 'info';
+    showToast(result.message, toastType);
     await fetchAndRenderCharacters();
   } catch (err) {
-    showToast(`❌ ${err?.response?.data?.message || 'Error al capturar el personaje'}`, 'error');
+    showToast(`❌ ${err?.response?.data?.message || 'Error al intentar la captura'}`, 'error');
   }
 };
 

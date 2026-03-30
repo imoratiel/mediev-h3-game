@@ -54,6 +54,23 @@
 - Error en exceptions.log: `"Ejército Flota de N no tiene unidades"` y `"Ejército Tridens no tiene unidades"` — ambos son flotas navales (×1515 en sesión 2026-03-25)
 - Patrón de velocidad naval: derivar `maxCells` de `MIN(st.speed)` sobre `fleet_ships JOIN ship_types`
 
+## Constraint `check_notification_type` — Tipos Válidos
+- En DB actualmente (2026-03-30): `CHECK (type IN ('Militar', 'Económico', 'Impuestos', 'General', 'Hambre'))`
+- La migración `075_notification_dynasty_type.sql` que añade `'Dinastía'` NO está aplicada en la DB
+- `character_lifecycle.js` usa `'Dinastía'` → viola la DB → errores en exceptions.log en cada nacimiento de personaje
+- Fix: aplicar `075_notification_dynasty_type.sql` O cambiar `'Dinastía'` por `'General'` en `character_lifecycle.js`
+- NO bloquea el turno (hay SAVEPOINT + ROLLBACK alrededor de `processCharacterLifecycle`)
+
+## DEADLOCK: Combate manual bloqueado por transacción del motor de turnos (CRÍTICO)
+- **Síntoma**: Jugador ataca ejército enemigo, log muestra "Resultado preliminar: Victoria A" pero NUNCA aparece "BATTLE RESULT at...", sin error en exceptions.log, combate no tiene efecto, el ejército enemigo sigue con tropas intactas
+- **Causa raíz**: El motor de turnos deja una transacción en estado `idle in transaction` con un row-lock sobre filas de `troops`. El combate manual intenta `UPDATE troops SET quantity = $1 WHERE troop_id = $2` y queda bloqueado indefinidamente esperando ese lock.
+- **Evidencia DB**: `pg_stat_activity` muestra: PID con `state='active', wait_event='transactionid'` haciendo `UPDATE troops SET quantity`; otro PID con `state='idle in transaction'` haciendo `UPDATE troops SET morale ...` (motor).
+- **Cuándo ocurre**: El motor procesa recuperación de stamina/moral del ejército objetivo en un turno, y la transacción del motor queda abierta. El jugador ataca ese mismo ejército en paralelo. PostgreSQL sin `lock_timeout` espera indefinidamente.
+- **Por qué no aparece en logs**: pg_node no lanza excepción — la query simplemente espera. El browser/cliente HTTP termina por timeout propio antes de que el lock se resuelva. El catch del endpoint nunca se ejecuta.
+- **Fix urgente (alivio inmediato)**: `SELECT pg_terminate_backend(PID)` sobre el PID que está `idle in transaction`.
+- **Fix estructural**: Añadir `lock_timeout` en las queries de combate del endpoint, o usar transacciones más cortas en el motor (COMMIT por ejército en lugar de COMMIT global del turno).
+- **Archivos implicados**: `server/src/logic/turn_engine.js` (processArmyRecovery usa transacciones largas), `server/src/services/CombatService.js` (attackSpecificArmy no tiene lock_timeout).
+
 ## Archivos Clave
 
 - Motor: `server/src/logic/turn_engine.js`
