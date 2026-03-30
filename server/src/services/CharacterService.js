@@ -3,6 +3,7 @@ const CharacterModel = require('../models/CharacterModel');
 const ArmyModel = require('../models/ArmyModel');
 const WorkerModel = require('../models/WorkerModel');
 const DynastyService = require('./DynastyService');
+const NotificationService = require('./NotificationService');
 const GAME_CONFIG = require('../config/constants');
 const pool = require('../../db');
 const h3 = require('h3-js');
@@ -696,6 +697,605 @@ class CharacterService {
             res.status(500).json({ success: false, message: 'Error al capturar el personaje.' });
         } finally {
             client.release();
+        }
+    }
+
+    /**
+     * POST /api/characters/:id/attempt-capture
+     * Intento de captura con combate de guardia personal.
+     * Body: { attackerArmyId }
+     */
+    async AttemptCapture(req, res) {
+        const playerId    = req.user.player_id;
+        const characterId = parseInt(req.params.id, 10);
+        const { attackerArmyId } = req.body;
+
+        if (!attackerArmyId) {
+            return res.status(400).json({ success: false, message: 'attackerArmyId es requerido.' });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query("SET LOCAL lock_timeout = '8000ms'");
+
+            // 1. Cargar personaje objetivo
+            const charResult = await client.query(
+                `SELECT c.id, c.name, c.level, c.age, c.player_id, c.army_id,
+                        c.is_captive, c.is_imprisoned, c.h3_index, c.personal_guard,
+                        c.capture_cooldown, p.capital_h3
+                 FROM characters c
+                 JOIN players p ON p.player_id = c.player_id
+                 WHERE c.id = $1`,
+                [characterId]
+            );
+            if (!charResult.rows[0]) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Personaje no encontrado.' });
+            }
+            const char = charResult.rows[0];
+
+            // 2. Validaciones
+            if (char.player_id === playerId) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'No puedes capturar a tu propio personaje.' });
+            }
+            if (char.age < 16) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Los menores no pueden ser capturados.' });
+            }
+            if (char.is_captive || char.is_imprisoned) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Este personaje ya está cautivo o encarcelado.' });
+            }
+            if ((char.capture_cooldown ?? 0) > 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: `Debes esperar ${char.capture_cooldown} turno(s) antes de intentarlo de nuevo.` });
+            }
+
+            // 3. Verificar ejército atacante en el mismo hex, sin movimiento activo
+            const armyResult = await client.query(
+                `SELECT a.army_id, pl.culture_id,
+                        COALESCE(SUM(t.quantity), 0)::int AS troop_count
+                 FROM armies a
+                 JOIN players pl ON pl.player_id = a.player_id
+                 LEFT JOIN troops t ON t.army_id = a.army_id
+                 WHERE a.army_id = $1 AND a.player_id = $2
+                   AND a.h3_index = $3 AND a.destination IS NULL
+                 GROUP BY a.army_id, pl.culture_id`,
+                [attackerArmyId, playerId, char.h3_index]
+            );
+            if (!armyResult.rows[0]) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Necesitas un ejército estacionado en el mismo feudo.' });
+            }
+            const { troop_count, culture_id } = armyResult.rows[0];
+
+            // 4. Turno actual para notificaciones
+            const turnResult = await client.query(
+                `SELECT value FROM game_config WHERE "group" = 'game' AND key = 'current_turn'`
+            );
+            const currentTurn = parseInt(turnResult.rows[0]?.value ?? '0');
+
+            // 5. Roll de muerte (3%)
+            if (Math.random() < 0.03) {
+                await CharacterModel.killCharacter(client, char.id);
+                await NotificationService.createSystemNotification(
+                    char.player_id, 'Captura',
+                    `☠️ **${char.name}** ha muerto durante el intento de captura enemigo.`,
+                    currentTurn
+                );
+                await NotificationService.createSystemNotification(
+                    playerId, 'Captura',
+                    `☠️ **${char.name}** ha muerto durante el intento de captura.`,
+                    currentTurn
+                );
+                await client.query('COMMIT');
+                Logger.action(`[CAPTURA] ${char.name} murió en intento de captura por ejército ${attackerArmyId}`, playerId);
+                return res.json({ success: true, result: 'dead', message: `${char.name} ha muerto en el intento de captura.` });
+            }
+
+            // 6. Combate de guardia personal
+            const guard = char.personal_guard ?? 0;
+            if (guard > 0) {
+                // Obtener stats de la unidad de guardia de la cultura atacante
+                const unitResult = await client.query(
+                    `SELECT ut.attack FROM cultures c
+                     JOIN unit_types ut ON ut.unit_type_id = c.guard_unit_type_id
+                     WHERE c.id = $1`,
+                    [culture_id]
+                );
+                const attackPerUnit = unitResult.rows[0]?.attack ?? 15;
+
+                const attackerPower = troop_count * attackPerUnit;
+                const defenderPower = guard * 22; // Guardia personal: stats de élite
+
+                const guardDefeated = attackerPower > defenderPower;
+
+                if (!guardDefeated) {
+                    // Cooldown: debe esperar 1 turno
+                    await client.query(
+                        'UPDATE characters SET capture_cooldown = 1 WHERE id = $1',
+                        [char.id]
+                    );
+                    await client.query('COMMIT');
+                    return res.json({
+                        success: true, result: 'failed',
+                        message: `La guardia personal de ${char.name} ha resistido el ataque.`
+                    });
+                }
+
+                // Reducir guardia del personaje (bajas proporcionales)
+                const guardLoss = Math.max(1, Math.floor(guard * 0.5));
+                await client.query(
+                    'UPDATE characters SET personal_guard = GREATEST(0, personal_guard - $1) WHERE id = $2',
+                    [guardLoss, char.id]
+                );
+            }
+
+            // 7. Roll de captura (guardia derrotada o sin guardia)
+            let captureChance;
+            if (troop_count > 100) captureChance = 0.40;
+            else if (troop_count > 10) captureChance = 0.10;
+            else captureChance = 0;
+
+            if (captureChance === 0 || Math.random() > captureChance) {
+                await client.query(
+                    'UPDATE characters SET capture_cooldown = 1 WHERE id = $1',
+                    [char.id]
+                );
+                await client.query('COMMIT');
+                return res.json({
+                    success: true, result: 'failed',
+                    message: `${char.name} ha escapado temporalmente. Intenta de nuevo en 1 turno.`
+                });
+            }
+
+            // 8. Captura exitosa
+            await CharacterModel.setCaptive(client, char.id, attackerArmyId, char.level);
+            await NotificationService.createSystemNotification(
+                char.player_id, 'Captura',
+                `⛓️ **${char.name}** ha sido capturado por el enemigo.`,
+                currentTurn
+            );
+            await NotificationService.createSystemNotification(
+                playerId, 'Captura',
+                `⛓️ Has capturado a **${char.name}**.`,
+                currentTurn
+            );
+
+            await client.query('COMMIT');
+            Logger.action(`[CAPTURA] ${char.name} capturado por ejército ${attackerArmyId} del jugador ${playerId}`, playerId);
+            return res.json({ success: true, result: 'captured', message: `${char.name} ha sido capturado.` });
+
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            const msg = err.code === '55P03'
+                ? 'El sistema está ocupado. Intenta de nuevo en unos segundos.'
+                : 'Error al procesar el intento de captura.';
+            Logger.error(err, { endpoint: 'POST /characters/:id/attempt-capture', userId: playerId, characterId });
+            return res.status(500).json({ success: false, message: msg });
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * DELETE /api/characters/:id/execute
+     * El captor ejecuta al personaje cautivo.
+     */
+    async Execute(req, res) {
+        const playerId    = req.user.player_id;
+        const characterId = parseInt(req.params.id, 10);
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const charResult = await client.query(
+                `SELECT c.id, c.name, c.player_id, c.is_captive, c.captured_by_army_id,
+                        a.player_id AS captor_player_id
+                 FROM characters c
+                 LEFT JOIN armies a ON a.army_id = c.captured_by_army_id
+                 WHERE c.id = $1`,
+                [characterId]
+            );
+            const char = charResult.rows[0];
+            if (!char || !char.is_captive) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'El personaje no está cautivo.' });
+            }
+            if (char.captor_player_id !== playerId) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'No eres el captor de este personaje.' });
+            }
+
+            const turnResult = await client.query(
+                `SELECT value FROM game_config WHERE "group" = 'game' AND key = 'current_turn'`
+            );
+            const currentTurn = parseInt(turnResult.rows[0]?.value ?? '0');
+
+            await CharacterModel.killCharacter(client, char.id);
+            // Cancelar solicitudes de rescate pendientes
+            await client.query(
+                `UPDATE ransom_requests SET status = 'cancelled', resolved_at = NOW()
+                 WHERE character_id = $1 AND status = 'pending'`,
+                [char.id]
+            );
+
+            await NotificationService.createSystemNotification(
+                char.player_id, 'Captura',
+                `☠️ **${char.name}** ha sido ejecutado por el enemigo.`,
+                currentTurn
+            );
+
+            await client.query('COMMIT');
+            Logger.action(`[EJECUCION] ${char.name} ejecutado por jugador ${playerId}`, playerId);
+            return res.json({ success: true, message: `${char.name} ha sido ejecutado.` });
+
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: 'DELETE /characters/:id/execute', userId: playerId, characterId });
+            return res.status(500).json({ success: false, message: 'Error al ejecutar el personaje.' });
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * POST /api/characters/:id/ransom
+     * El captor solicita rescate (o actualiza la cantidad existente).
+     * Body: { amount }
+     */
+    async RequestRansom(req, res) {
+        const playerId    = req.user.player_id;
+        const characterId = parseInt(req.params.id, 10);
+        const amount      = parseInt(req.body.amount, 10);
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ success: false, message: 'El rescate debe ser mayor que 0.' });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const charResult = await client.query(
+                `SELECT c.id, c.name, c.player_id, c.is_captive, c.captured_by_army_id,
+                        a.player_id AS captor_player_id
+                 FROM characters c
+                 LEFT JOIN armies a ON a.army_id = c.captured_by_army_id
+                 WHERE c.id = $1`,
+                [characterId]
+            );
+            const char = charResult.rows[0];
+            if (!char || !char.is_captive) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'El personaje no está cautivo.' });
+            }
+            if (char.captor_player_id !== playerId) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'No eres el captor.' });
+            }
+
+            // Cancelar solicitudes previas del mismo personaje
+            await client.query(
+                `UPDATE ransom_requests SET status = 'cancelled', resolved_at = NOW()
+                 WHERE character_id = $1 AND status = 'pending'`,
+                [char.id]
+            );
+
+            // Crear nueva solicitud
+            const insertResult = await client.query(
+                `INSERT INTO ransom_requests (character_id, captor_player_id, owner_player_id, amount)
+                 VALUES ($1, $2, $3, $4) RETURNING id`,
+                [char.id, playerId, char.player_id, amount]
+            );
+
+            const turnResult = await client.query(
+                `SELECT value FROM game_config WHERE "group" = 'game' AND key = 'current_turn'`
+            );
+            const currentTurn = parseInt(turnResult.rows[0]?.value ?? '0');
+
+            await NotificationService.createSystemNotification(
+                char.player_id, 'Captura',
+                `💰 El enemigo solicita un rescate de **${amount.toLocaleString('es-ES')} oro** por **${char.name}**.`,
+                currentTurn
+            );
+
+            await client.query('COMMIT');
+            return res.json({ success: true, message: 'Solicitud de rescate enviada.', ransom_id: insertResult.rows[0].id });
+
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: 'POST /characters/:id/ransom', userId: playerId, characterId });
+            return res.status(500).json({ success: false, message: 'Error al solicitar rescate.' });
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * DELETE /api/characters/:id/ransom
+     * El captor cancela la solicitud de rescate activa.
+     */
+    async CancelRansom(req, res) {
+        const playerId    = req.user.player_id;
+        const characterId = parseInt(req.params.id, 10);
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const result = await client.query(
+                `UPDATE ransom_requests SET status = 'cancelled', resolved_at = NOW()
+                 WHERE character_id = $1 AND captor_player_id = $2 AND status = 'pending'
+                 RETURNING id`,
+                [characterId, playerId]
+            );
+
+            await client.query('COMMIT');
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'No hay solicitud de rescate activa para cancelar.' });
+            }
+            return res.json({ success: true, message: 'Solicitud de rescate cancelada.' });
+
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: 'DELETE /characters/:id/ransom', userId: playerId, characterId });
+            return res.status(500).json({ success: false, message: 'Error al cancelar el rescate.' });
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * POST /api/ransom-requests/:id/pay
+     * El propietario paga el rescate para liberar a su personaje.
+     */
+    async PayRansom(req, res) {
+        const playerId  = req.user.player_id;
+        const ransomId  = parseInt(req.params.id, 10);
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query("SET LOCAL lock_timeout = '8000ms'");
+
+            const rResult = await client.query(
+                `SELECT r.*, c.name AS char_name, c.player_id AS char_owner,
+                        p.capital_h3
+                 FROM ransom_requests r
+                 JOIN characters c ON c.id = r.character_id
+                 JOIN players p ON p.player_id = r.owner_player_id
+                 WHERE r.id = $1 AND r.status = 'pending'`,
+                [ransomId]
+            );
+            const ransom = rResult.rows[0];
+            if (!ransom) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Solicitud de rescate no encontrada o ya resuelta.' });
+            }
+            if (ransom.owner_player_id !== playerId) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'Esta solicitud no es para ti.' });
+            }
+
+            // Verificar oro suficiente
+            const goldResult = await client.query(
+                'SELECT gold FROM players WHERE player_id = $1 FOR UPDATE',
+                [playerId]
+            );
+            const gold = parseInt(goldResult.rows[0]?.gold ?? '0');
+            if (gold < ransom.amount) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: `Oro insuficiente. Necesitas ${ransom.amount.toLocaleString('es-ES')} oro.` });
+            }
+
+            const turnResult = await client.query(
+                `SELECT value FROM game_config WHERE "group" = 'game' AND key = 'current_turn'`
+            );
+            const currentTurn = parseInt(turnResult.rows[0]?.value ?? '0');
+
+            // Transferir oro
+            await client.query(
+                'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
+                [ransom.amount, playerId]
+            );
+            await client.query(
+                'UPDATE players SET gold = gold + $1 WHERE player_id = $2',
+                [ransom.amount, ransom.captor_player_id]
+            );
+
+            // Liberar personaje
+            await CharacterModel.flee(client, ransom.character_id, ransom.capital_h3);
+
+            // Resolver solicitud
+            await client.query(
+                `UPDATE ransom_requests SET status = 'accepted', resolved_at = NOW() WHERE id = $1`,
+                [ransomId]
+            );
+
+            await NotificationService.createSystemNotification(
+                ransom.captor_player_id, 'Captura',
+                `💰 **${ransom.char_name}** ha sido rescatado. Recibes ${ransom.amount.toLocaleString('es-ES')} oro.`,
+                currentTurn
+            );
+
+            await client.query('COMMIT');
+            Logger.action(`[RESCATE] ${ransom.char_name} liberado. Pagado por jugador ${playerId} al captor ${ransom.captor_player_id}`, playerId);
+            return res.json({ success: true, message: `${ransom.char_name} ha sido liberado.` });
+
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: 'POST /ransom-requests/:id/pay', userId: playerId, ransomId });
+            return res.status(500).json({ success: false, message: 'Error al pagar el rescate.' });
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * POST /api/ransom-requests/:id/reject
+     * El propietario rechaza la solicitud de rescate.
+     */
+    async RejectRansom(req, res) {
+        const playerId = req.user.player_id;
+        const ransomId = parseInt(req.params.id, 10);
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const result = await client.query(
+                `UPDATE ransom_requests SET status = 'rejected', resolved_at = NOW()
+                 WHERE id = $1 AND owner_player_id = $2 AND status = 'pending'
+                 RETURNING character_id`,
+                [ransomId, playerId]
+            );
+
+            await client.query('COMMIT');
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'Solicitud no encontrada.' });
+            }
+            return res.json({ success: true, message: 'Solicitud de rescate rechazada.' });
+
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: 'POST /ransom-requests/:id/reject', userId: playerId, ransomId });
+            return res.status(500).json({ success: false, message: 'Error al rechazar el rescate.' });
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * POST /api/characters/:id/imprison
+     * El captor encarcela al personaje en un cuartel del hex donde está el ejército.
+     */
+    async Imprison(req, res) {
+        const playerId    = req.user.player_id;
+        const characterId = parseInt(req.params.id, 10);
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const charResult = await client.query(
+                `SELECT c.id, c.name, c.player_id, c.is_captive, c.captured_by_army_id,
+                        a.player_id AS captor_player_id, a.h3_index AS army_h3
+                 FROM characters c
+                 LEFT JOIN armies a ON a.army_id = c.captured_by_army_id
+                 WHERE c.id = $1`,
+                [characterId]
+            );
+            const char = charResult.rows[0];
+            if (!char || !char.is_captive) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'El personaje no está cautivo.' });
+            }
+            if (char.captor_player_id !== playerId) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'No eres el captor.' });
+            }
+
+            // Verificar que hay un cuartel en el hex del ejército
+            const barracksResult = await client.query(
+                `SELECT fb.h3_index FROM fief_buildings fb
+                 JOIN buildings b ON b.id = fb.building_id
+                 JOIN building_types bt ON bt.id = b.type_id
+                 WHERE fb.h3_index = $1
+                   AND bt.name ILIKE '%militar%'
+                   AND fb.remaining_construction_turns = 0`,
+                [char.army_h3]
+            );
+            if (!barracksResult.rows[0]) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'Necesitas un edificio militar en este feudo para encarcelar al personaje.' });
+            }
+
+            const turnResult = await client.query(
+                `SELECT value FROM game_config WHERE "group" = 'game' AND key = 'current_turn'`
+            );
+            const currentTurn = parseInt(turnResult.rows[0]?.value ?? '0');
+
+            await CharacterModel.setImprisoned(client, char.id, char.army_h3);
+
+            await NotificationService.createSystemNotification(
+                char.player_id, 'Captura',
+                `🔒 **${char.name}** ha sido encarcelado en un cuartel enemigo.`,
+                currentTurn
+            );
+
+            await client.query('COMMIT');
+            Logger.action(`[ENCARCELAMIENTO] ${char.name} encarcelado en ${char.army_h3} por jugador ${playerId}`, playerId);
+            return res.json({ success: true, message: `${char.name} ha sido encarcelado.` });
+
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(err, { endpoint: 'POST /characters/:id/imprison', userId: playerId, characterId });
+            return res.status(500).json({ success: false, message: 'Error al encarcelar el personaje.' });
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * GET /api/characters/captives
+     * Devuelve los personajes cautivos capturados por el jugador actual.
+     */
+    async GetMyCaptives(req, res) {
+        const playerId = req.user.player_id;
+        try {
+            const result = await pool.query(
+                `SELECT c.id, c.name, c.level, c.age, c.player_id, c.is_imprisoned,
+                        c.imprisoned_at_h3, c.captured_by_army_id,
+                        c.ransom_amount, c.ransom_turns_remaining,
+                        p.display_name AS owner_name, p.color AS owner_color,
+                        a.h3_index AS army_h3,
+                        rr.id AS ransom_request_id, rr.amount AS ransom_request_amount,
+                        rr.status AS ransom_request_status
+                 FROM characters c
+                 JOIN players p ON p.player_id = c.player_id
+                 LEFT JOIN armies a ON a.army_id = c.captured_by_army_id
+                 LEFT JOIN ransom_requests rr ON rr.character_id = c.id AND rr.status = 'pending'
+                 WHERE c.is_captive = TRUE
+                   AND (a.player_id = $1 OR c.imprisoned_at_h3 IN (
+                       SELECT h3_index FROM h3_map WHERE player_id = $1
+                   ))`,
+                [playerId]
+            );
+            return res.json({ success: true, captives: result.rows });
+        } catch (err) {
+            Logger.error(err, { endpoint: 'GET /characters/captives', userId: playerId });
+            return res.status(500).json({ success: false, message: 'Error al obtener cautivos.' });
+        }
+    }
+
+    /**
+     * GET /api/ransom-requests/pending
+     * Solicitudes de rescate pendientes recibidas por el jugador (como propietario de cautivos).
+     */
+    async GetPendingRansomRequests(req, res) {
+        const playerId = req.user.player_id;
+        try {
+            const result = await pool.query(
+                `SELECT rr.id, rr.character_id, rr.captor_player_id, rr.amount, rr.created_at,
+                        c.name AS character_name, c.level AS character_level,
+                        p.display_name AS captor_name
+                 FROM ransom_requests rr
+                 JOIN characters c ON c.id = rr.character_id
+                 JOIN players p ON p.player_id = rr.captor_player_id
+                 WHERE rr.owner_player_id = $1 AND rr.status = 'pending'
+                 ORDER BY rr.created_at DESC`,
+                [playerId]
+            );
+            return res.json({ success: true, requests: result.rows });
+        } catch (err) {
+            Logger.error(err, { endpoint: 'GET /ransom-requests/pending', userId: playerId });
+            return res.status(500).json({ success: false, message: 'Error al obtener solicitudes de rescate.' });
         }
     }
 }

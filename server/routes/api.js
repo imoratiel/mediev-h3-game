@@ -443,16 +443,27 @@ module.exports = function () {
     // ============================================
     // PERSONAJES Y DINASTÍAS
     // ============================================
-    router.get('/characters',              authenticateToken, (req, res) => CharacterService.GetMyCharacters(req, res));
-    router.get('/characters/visible',      authenticateToken, (req, res) => CharacterService.GetVisibleCharacters(req, res));
-    router.get('/characters/:id',          authenticateToken, (req, res) => CharacterService.GetCharacter(req, res));
-    router.post('/characters/adopt',           authenticateToken, (req, res) => CharacterService.Adopt(req, res));
-    router.post('/characters/:id/procreate',   authenticateToken, (req, res) => CharacterService.Procreate(req, res));
-    router.patch('/characters/:id/heir',       authenticateToken, (req, res) => CharacterService.SetHeir(req, res));
-    router.put('/characters/:id/move',     authenticateToken, (req, res) => CharacterService.MoveCharacter(req, res));
-    router.delete('/characters/:id/move',  authenticateToken, (req, res) => CharacterService.StopCharacter(req, res));
-    router.post('/characters/:id/capture', authenticateToken, (req, res) => CharacterService.CaptureCharacter(req, res));
-    router.put('/armies/:id/commander',    authenticateToken, (req, res) => CharacterService.AssignCommander(req, res));
+    // Rutas estáticas ANTES de las rutas con :id para evitar conflictos
+    router.get('/characters',                      authenticateToken, (req, res) => CharacterService.GetMyCharacters(req, res));
+    router.get('/characters/visible',              authenticateToken, (req, res) => CharacterService.GetVisibleCharacters(req, res));
+    router.get('/characters/captives',             authenticateToken, (req, res) => CharacterService.GetMyCaptives(req, res));
+    router.post('/characters/adopt',               authenticateToken, (req, res) => CharacterService.Adopt(req, res));
+    router.get('/ransom-requests/pending',         authenticateToken, (req, res) => CharacterService.GetPendingRansomRequests(req, res));
+    router.post('/ransom-requests/:id/pay',        authenticateToken, (req, res) => CharacterService.PayRansom(req, res));
+    router.post('/ransom-requests/:id/reject',     authenticateToken, (req, res) => CharacterService.RejectRansom(req, res));
+    // Rutas con parámetro :id
+    router.get('/characters/:id',                  authenticateToken, (req, res) => CharacterService.GetCharacter(req, res));
+    router.post('/characters/:id/procreate',       authenticateToken, (req, res) => CharacterService.Procreate(req, res));
+    router.patch('/characters/:id/heir',           authenticateToken, (req, res) => CharacterService.SetHeir(req, res));
+    router.put('/characters/:id/move',             authenticateToken, (req, res) => CharacterService.MoveCharacter(req, res));
+    router.delete('/characters/:id/move',          authenticateToken, (req, res) => CharacterService.StopCharacter(req, res));
+    router.post('/characters/:id/capture',         authenticateToken, (req, res) => CharacterService.CaptureCharacter(req, res));
+    router.post('/characters/:id/attempt-capture', authenticateToken, (req, res) => CharacterService.AttemptCapture(req, res));
+    router.delete('/characters/:id/execute',       authenticateToken, (req, res) => CharacterService.Execute(req, res));
+    router.post('/characters/:id/ransom',          authenticateToken, (req, res) => CharacterService.RequestRansom(req, res));
+    router.delete('/characters/:id/ransom',        authenticateToken, (req, res) => CharacterService.CancelRansom(req, res));
+    router.post('/characters/:id/imprison',        authenticateToken, (req, res) => CharacterService.Imprison(req, res));
+    router.put('/armies/:id/commander',            authenticateToken, (req, res) => CharacterService.AssignCommander(req, res));
 
     // ============================================
     // CHANGELOG

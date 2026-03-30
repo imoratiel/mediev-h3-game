@@ -107,8 +107,14 @@ async function _processPlayerCharacters(client, player, currentTurn, currentMont
         await CharacterModel.incrementAge(client, char.id);
         const newAge = char.age + 1;
 
-        // 2. Mayoría de edad: notificar al llegar a 16
+        // 2. Mayoría de edad: posicionar en capital y notificar al llegar a 16
         if (newAge === 16) {
+            if (player.capital_h3) {
+                await client.query(
+                    'UPDATE characters SET h3_index = $1 WHERE id = $2',
+                    [player.capital_h3, char.id]
+                );
+            }
             await NotificationService.createSystemNotification(
                 player_id, 'Dinastía',
                 `👑 **${char.name}** ha alcanzado la mayoría de edad y puede comandar ejércitos.`,

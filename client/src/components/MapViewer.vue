@@ -2510,17 +2510,20 @@ const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars
   }
 
   // Own chars by hex (skip chars travelling with armies / fleets / underage)
+  // Excepciones: cautivos propios (is_captive=TRUE) y prisioneros (is_imprisoned=TRUE) se muestran
   const ownCharsByHex = new Map();
   for (const c of (ownChars || [])) {
-    if (!c.h3_index || c.age < 16 || c.army_id || c.transported_by) continue;
+    if (!c.h3_index || c.age < 16 || c.transported_by) continue;
+    // Saltar si tiene army_id Y no es cautivo/prisionero (comandante en ejército → no se muestra suelto)
+    if (c.army_id && !c.is_captive && !c.is_imprisoned) continue;
     if (!ownCharsByHex.has(c.h3_index)) ownCharsByHex.set(c.h3_index, []);
     ownCharsByHex.get(c.h3_index).push(c);
   }
 
-  // Enemy chars by hex
+  // Enemy chars by hex (skip underage — no pueden ser capturados ni aparecen en mapa)
   const enemyCharsByHex = new Map();
   for (const c of (enemyChars || [])) {
-    if (!c.h3_index) continue;
+    if (!c.h3_index || c.age < 16) continue;
     if (!enemyCharsByHex.has(c.h3_index)) enemyCharsByHex.set(c.h3_index, []);
     enemyCharsByHex.get(c.h3_index).push(c);
   }
@@ -2862,19 +2865,28 @@ const openCharPopup = (charId, isEnemy, latlng) => {
 
   let popupHtml;
   if (isEnemy) {
-    const icon = char.is_main_character ? '👑' : '🧑';
+    const statusBadge = char.is_imprisoned
+      ? `<span style="background:rgba(120,113,108,0.3);color:#a8a29e;border-radius:4px;padding:1px 5px;font-size:10px;">🔒 Encarcelado</span>`
+      : char.is_captive
+        ? `<span style="background:rgba(239,68,68,0.15);color:#f87171;border-radius:4px;padding:1px 5px;font-size:10px;">⛓️ Cautivo</span>`
+        : '';
+    const icon = char.is_main_character ? '👑' : char.is_imprisoned ? '🔒' : char.is_captive ? '⛓️' : '🧑';
+    const guardInfo = char.personal_guard !== undefined ? `Guardia ${char.personal_guard}/25` : '';
+    const levelInfo = char.level !== undefined ? `Nv.${Math.floor((char.level ?? 1) / 10)}` : '';
+    const meta = [char.player_name, levelInfo, guardInfo].filter(Boolean).join(' · ');
+    const captureBtn = !char.is_captive && !char.is_imprisoned
+      ? `<button id="char-capture-${char.id}" class="army-action-icon army-action-disabled" title="Necesitas un ejército estacionado en este feudo para intentar la captura">⛓️</button>`
+      : '';
     popupHtml = `
       <div class="char-popup">
         <div class="char-popup-header">
           <span class="char-popup-icon">${icon}</span>
           <div>
-            <div class="char-popup-name">${char.name}</div>
-            <div class="char-popup-meta" style="color:#9ca3af">${char.player_name}</div>
+            <div class="char-popup-name">${char.name} ${statusBadge}</div>
+            <div class="char-popup-meta" style="color:#9ca3af">${meta}</div>
           </div>
         </div>
-        <div class="char-popup-actions">
-          <button id="char-capture-${char.id}" class="army-action-icon army-action-disabled" title="Necesitas un ejército en este feudo para capturar">⛓️</button>
-        </div>
+        ${captureBtn ? `<div class="char-popup-actions">${captureBtn}</div>` : ''}
       </div>`;
   } else {
     const isMain      = char.is_main_character;
@@ -4816,13 +4828,20 @@ const handleCharacterLeave = async (char) => {
 };
 
 const handleEnemyCharacterCapture = async (char) => {
+  // Buscar ejército propio estacionado en el mismo hex
+  const myArmy = armies.value.find(a => a.h3_index === char.h3_index && !a.destination && a.player_id === playerId.value);
+  if (!myArmy) {
+    showToast('Necesitas un ejército estacionado en este feudo', 'error');
+    return;
+  }
   try {
-    const result = await mapApi.captureCharacter(char.id);
+    const result = await mapApi.attemptCaptureCharacter(char.id, myArmy.army_id);
     map.closePopup();
-    showToast(`⛓️ ${result.message}`, 'success');
+    const toastType = result.result === 'captured' ? 'success' : result.result === 'dead' ? 'warning' : 'info';
+    showToast(result.message, toastType);
     await fetchAndRenderCharacters();
   } catch (err) {
-    showToast(`❌ ${err?.response?.data?.message || 'Error al capturar el personaje'}`, 'error');
+    showToast(`❌ ${err?.response?.data?.message || 'Error al intentar la captura'}`, 'error');
   }
 };
 
