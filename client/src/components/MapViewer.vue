@@ -1914,6 +1914,7 @@ const initMap = async () => {
   loadHexagonsIfZoomValid();
   fetchPlayerData();
   fetchAndRenderCharacters();
+  fetchDivisionBoundaries(); // Layer exists at this point
 };
 
 /**
@@ -6927,7 +6928,6 @@ onMounted(() => {
   loadMessages(); // Load initial messages
   startSync(); // Start server synchronization (polls every 30 seconds)
   startNotifPolling(); // Start background notification polling (every 45 seconds)
-  fetchDivisionBoundaries(); // Load political division borders
   fetchMyWorkers();          // Draw worker movement routes on startup
   // Pre-fetch capital so the "Fundar Capital" button condition is reliable from the first click
   mapApi.getCapital().then(r => {

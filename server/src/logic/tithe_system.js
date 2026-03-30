@@ -57,11 +57,13 @@ async function processTithe(client, turn, gameDate) {
             try {
                 const playerCapital = player.capital_h3;
 
-                // Fetch all non-capital fiefs with their señorío capital (if any)
+                // Fetch all non-capital fiefs with their señorío capital (if any).
+                // Solo se usa la capital del pagus si el pagus sigue perteneciendo
+                // a este jugador; si fue conquistado, el diezmo va a la capital propia.
                 const fiefsResult = await client.query(`
                     SELECT td.h3_index,
                            td.food_stored,
-                           pd.capital_h3 AS division_capital
+                           CASE WHEN pd.player_id = $1 THEN pd.capital_h3 ELSE NULL END AS division_capital
                     FROM territory_details td
                     JOIN h3_map m ON td.h3_index = m.h3_index
                     LEFT JOIN political_divisions pd ON td.division_id = pd.id

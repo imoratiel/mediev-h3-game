@@ -6,3 +6,5 @@ npm-debug.log
 tests/
 coverage/
 Dockerfile
+tiles/
+logs/

@@ -666,7 +666,7 @@ class KingdomService {
                 army_destroyed: armyDestroyed,
                 loot: lootResult,
                 message: isCapital
-                    ? `🏚️ ¡Capital conquistada! ${cascadedFiefs.length} feudos colapsaron automáticamente.`
+                    ? `🏚️ ¡Capital conquistada! Y sus ${cascadedFiefs.length} territorios asociados.`
                     : result === 'victory' ? '🏴 ¡Territorio conquistado!' : '🏴 El territorio cambia de manos por desgaste.'
             });
 
@@ -918,7 +918,7 @@ class KingdomService {
                 army_destroyed: armyDestroyed,
                 loot: lootResult,
                 message: isCapital && result !== 'defeat'
-                    ? `🏚️ ¡Capital conquistada! ${cascadedFiefs.length} feudos colapsaron automáticamente.`
+                    ? `🏚️ ¡Capital conquistada! Y sus ${cascadedFiefs.length} territorios asociados.`
                     : result === 'victory' ? 'El feudo ahora es tuyo.'
                     : result === 'draw'    ? 'El feudo cambia de manos por desgaste.'
                     : armyDestroyed        ? '⚔️ ¡Tu ejército fue aniquilado por la resistencia!'

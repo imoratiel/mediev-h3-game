@@ -120,39 +120,12 @@ async function processCapitalCollapse(client, capitalH3, newOwnerId, defeatedPla
     );
 
     // ── Transferir señoríos al conquistador ────────────────────────────────
-    // Todos los hexes conquistados en esta operación (capital + cascada)
-    const allConqueredHexes = [capitalH3, ...toConquer];
-
-    // 1. Señoríos cuya capital fue conquistada → pasan al nuevo dueño
+    // Todos los señoríos del derrotado pasan al conquistador.
+    // Los feudos mantienen su division_id: el pagus sobrevive intacto.
     await client.query(`
         UPDATE political_divisions
         SET player_id = $1
         WHERE player_id = $2
-          AND capital_h3 = ANY($3::text[])
-    `, [newOwnerId, defeatedPlayerId, allConqueredHexes]);
-
-    // 2. Feudos conquistados que pertenecen a señoríos del derrotado cuya capital
-    //    NO fue tomada → sacarlos del señorío (quedan libres de asignación)
-    await client.query(`
-        UPDATE territory_details td
-        SET division_id = NULL
-        FROM political_divisions pd
-        WHERE td.division_id = pd.id
-          AND pd.player_id = $1
-          AND td.h3_index = ANY($2::text[])
-    `, [defeatedPlayerId, allConqueredHexes]);
-
-    // 3. Si algún señorío fue transferido al conquistador pero le quedan feudos
-    //    del derrotado dentro (borde de la cascada) → sacar esos feudos del señorío
-    await client.query(`
-        UPDATE territory_details td
-        SET division_id = NULL
-        FROM political_divisions pd,
-             h3_map m
-        WHERE td.division_id = pd.id
-          AND m.h3_index = td.h3_index
-          AND pd.player_id = $1
-          AND m.player_id = $2
     `, [newOwnerId, defeatedPlayerId]);
 
     Logger.engine(`[TURN ${turn}] Capital collapse: ${toConquer.length} fiefs cascade-conquered from ${capitalH3} (defeated player ${defeatedPlayerId})`);
