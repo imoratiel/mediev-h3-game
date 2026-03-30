@@ -51,22 +51,29 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Serve generated H3 tiles
 const tilesDir = path.join(__dirname, 'tiles');
+
+// Metadata ANTES del static para evitar que express.static intercepte /tiles/meta
+app.get('/tiles/meta', (req, res) => {
+  const fs = require('fs');
+  try {
+    const exists = fs.existsSync(tilesDir);
+    console.log(`[tiles/meta] tilesDir=${tilesDir} exists=${exists}`);
+    if (!exists) return res.json({ minZoom: null, maxZoom: null });
+    const entries = fs.readdirSync(tilesDir);
+    console.log(`[tiles/meta] entries=${JSON.stringify(entries)}`);
+    const zooms = entries.map(d => parseInt(d)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    if (!zooms.length) return res.json({ minZoom: null, maxZoom: null });
+    res.json({ minZoom: zooms[0], maxZoom: zooms[zooms.length - 1] });
+  } catch (err) {
+    console.error('[tiles/meta] ERROR:', err);
+    res.status(500).json({ minZoom: null, maxZoom: null, error: err.message });
+  }
+});
+
 app.use('/tiles', express.static(tilesDir, {
   maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
   fallthrough: true,
 }));
-
-// Metadata: zoom levels disponibles según directorios existentes
-app.get('/tiles/meta', (req, res) => {
-  const fs = require('fs');
-  if (!fs.existsSync(tilesDir)) return res.json({ minZoom: null, maxZoom: null });
-  const zooms = fs.readdirSync(tilesDir)
-    .map(d => parseInt(d))
-    .filter(n => !isNaN(n))
-    .sort((a, b) => a - b);
-  if (!zooms.length) return res.json({ minZoom: null, maxZoom: null });
-  res.json({ minZoom: zooms[0], maxZoom: zooms[zooms.length - 1] });
-});
 
 // Routes
 const apiRoutes = require('./routes/api')();
