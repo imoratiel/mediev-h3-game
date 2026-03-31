@@ -1026,6 +1026,8 @@ class CombatService {
             [retreatHex, armyId]
         );
         await client.query('DELETE FROM army_routes WHERE army_id = $1', [armyId]);
+        // Los cautivos se mueven con el ejército en retirada
+        await client.query('UPDATE characters SET h3_index = $1 WHERE captured_by_army_id = $2', [retreatHex, armyId]);
 
         Logger.engine(`[COMBAT] Army ${armyId} retreated from ${fromH3} to ${retreatHex} (capital: ${capitalH3})`);
         return { retreated: true, destroyed: false, newHex: retreatHex };

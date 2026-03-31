@@ -1005,7 +1005,7 @@ class KingdomService {
             return res.status(400).json({ success: false, message: 'Ese nombre no está permitido.' });
         }
 
-        console.log(`[Init] player=${player_id} culture_id=${forceCultureId} random_bonus=${randomBonus} linaje=${linaje} | query:`, req.query);
+        Logger.action(`[Init] player=${player_id} culture_id=${forceCultureId} random_bonus=${randomBonus} linaje=${linaje}`, player_id);
         try {
             const result = await initializePlayer(player_id, { forceCultureId, randomBonus, linaje });
             if (result.alreadyInitialized) {
