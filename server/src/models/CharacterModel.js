@@ -152,13 +152,40 @@ class CharacterModel {
     }
 
     /**
-     * Regenera +GUARD_REGEN_PER_TURN a todos los personajes hasta el máximo.
+     * Regenera +GUARD_REGEN_PER_TURN a los personajes que cumplen:
+     *   1. Están en un feudo propio (h3_map.player_id = characters.player_id)
+     *   2. No hay tropas enemigas en ese feudo, O bien hay un edificio militar
+     *      con conservation > 20% en el feudo (que actúa de protección).
      */
     async regenerateAllGuards(regen = 1, max = 25) {
         await pool.query(`
-            UPDATE characters
+            UPDATE characters c
             SET personal_guard = LEAST($1, personal_guard + $2)
-            WHERE personal_guard < $1
+            WHERE c.personal_guard < $1
+              AND c.h3_index IS NOT NULL
+              -- Condición 1: el feudo pertenece al mismo jugador
+              AND EXISTS (
+                  SELECT 1 FROM h3_map m
+                  WHERE m.h3_index = c.h3_index
+                    AND m.player_id = c.player_id
+              )
+              -- Condición 2: sin tropas enemigas, salvo que haya edificio militar con conservation > 20
+              AND (
+                  NOT EXISTS (
+                      SELECT 1 FROM armies a
+                      WHERE a.h3_index = c.h3_index
+                        AND a.player_id != c.player_id
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM fief_buildings fb
+                      JOIN buildings b ON b.id = fb.building_id
+                      JOIN building_types bt ON bt.building_type_id = b.type_id
+                      WHERE fb.h3_index = c.h3_index
+                        AND bt.name = 'military'
+                        AND fb.is_under_construction = FALSE
+                        AND fb.conservation > 20
+                  )
+              )
         `, [max, regen]);
     }
 

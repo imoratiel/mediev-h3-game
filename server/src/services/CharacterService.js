@@ -846,7 +846,7 @@ class CharacterService {
                 await client.query('COMMIT');
                 return res.json({
                     success: true, result: 'failed',
-                    message: `${char.name} ha escapado temporalmente. Intenta de nuevo en 1 turno.`
+                    message: `${char.name} ha conseguido evitar la captura.`
                 });
             }
 

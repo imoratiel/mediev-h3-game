@@ -225,10 +225,10 @@ class ArmySimulationService {
         const newStamina = Math.min(MAX_STAMINA, currentStamina + RECOVERY_RATE);
         const shouldRelease = troop.force_rest && newStamina >= RELEASE_THRESHOLD;
 
-        Logger.army(armyId, 'STAMINA_TICK',
+        /*Logger.army(armyId, 'STAMINA_TICK',
           `Troop ${troop.troop_id} | Actual: ${currentStamina} | Nueva: ${newStamina} | ForceRest: ${troop.force_rest} | Liberar: ${shouldRelease}`,
           { troop_id: troop.troop_id, stamina_before: currentStamina, stamina_after: newStamina, force_rest: troop.force_rest, will_release: shouldRelease }
-        );
+        );*/
 
         await client.query(
           `UPDATE troops
@@ -263,7 +263,7 @@ class ArmySimulationService {
       await client.query('COMMIT');
 
       const recoveryLabel = turnsLeft > 0 ? `rápida (batalla, ${turnsLeft} turnos restantes)` : 'normal';
-      Logger.army(armyId, 'STAMINA_RECOVERY',
+      /*Logger.army(armyId, 'STAMINA_RECOVERY',
         `+${RECOVERY_RATE} pts (${recoveryLabel}). Stamina mínima: ${minStaminaBefore} → ${minStaminaAfter}. Force_rest: ${unitsInForceRest - releasedCount}/${unitsInForceRest} unidades`,
         {
           army_name: armyName,
@@ -273,7 +273,7 @@ class ArmySimulationService {
           min_stamina_after: minStaminaAfter,
           units_released: releasedCount,
         }
-      );
+      );*/
 
       return {
         success: true,
