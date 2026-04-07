@@ -46,10 +46,21 @@ class ArmyModel {
                     'level',           c.level,
                     'personal_guard',  c.personal_guard,
                     'combat_buff_pct', $2 + (c.level - 1) * $3
-                ) ELSE NULL END AS commander
+                ) ELSE NULL END AS commander,
+                COALESCE((
+                    SELECT json_agg(json_build_object(
+                        'id',          cap.id,
+                        'name',        cap.name,
+                        'player_name', op.display_name
+                    ))
+                    FROM characters cap
+                    JOIN players op ON op.player_id = cap.player_id
+                    WHERE cap.captured_by_army_id = a.army_id
+                      AND cap.is_captive = TRUE
+                ), '[]'::json) AS captives
             FROM armies a
             JOIN players p  ON a.player_id = p.player_id
-            LEFT JOIN characters c  ON c.army_id = a.army_id
+            LEFT JOIN characters c  ON c.army_id = a.army_id AND c.is_captive = FALSE
             LEFT JOIN players p2    ON p2.player_id = c.player_id
             LEFT JOIN noble_ranks nr ON nr.id = p2.noble_rank_id
             WHERE a.h3_index = $1
@@ -510,9 +521,20 @@ class ArmyModel {
                     'level',           c.level,
                     'personal_guard',  c.personal_guard,
                     'combat_buff_pct', $3 + (c.level - 1) * $4
-                ) ELSE NULL END AS commander
+                ) ELSE NULL END AS commander,
+                COALESCE((
+                    SELECT json_agg(json_build_object(
+                        'id',          cap.id,
+                        'name',        cap.name,
+                        'player_name', op.display_name
+                    ))
+                    FROM characters cap
+                    JOIN players op ON op.player_id = cap.player_id
+                    WHERE cap.captured_by_army_id = a.army_id
+                      AND cap.is_captive = TRUE
+                ), '[]'::json) AS captives
              FROM armies a
-             LEFT JOIN characters c ON c.army_id = a.army_id
+             LEFT JOIN characters c ON c.army_id = a.army_id AND c.is_captive = FALSE
              LEFT JOIN players p    ON p.player_id = a.player_id
              LEFT JOIN noble_ranks nr ON nr.id = p.noble_rank_id
              WHERE a.h3_index = $1 AND a.player_id = $2 AND a.destination IS NULL

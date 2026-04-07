@@ -436,6 +436,20 @@ export function generateArmyPopup(armyData, config) {
       else popupContent += `<p class="status-text">📍 Estacionado</p>`;
       popupContent += '</div>';
 
+      // ── CAPTIVES ─────────────────────────────────────────────────────────
+      if (army.captives && army.captives.length > 0) {
+        popupContent += '<div class="army-troops-section" style="margin-top:6px;">';
+        popupContent += '<p class="army-section-title">⛓️ Cautivos</p>';
+        popupContent += '<div class="army-troops-list">';
+        for (const cap of army.captives) {
+          popupContent += `<div class="army-troop-item">`;
+          popupContent += `<span class="troop-icon">⛓️</span>`;
+          popupContent += `<span class="troop-name" style="flex:1;">${cap.name}</span>`;
+          popupContent += `<span class="troop-quantity" style="color:#9ca3af;font-size:0.7rem;">${cap.player_name}</span>`;
+          popupContent += `</div>`;
+        }
+        popupContent += '</div></div>';
+      }
 
       // ── ACTIONS (own army only) ──────────────────────────────────────────
       popupContent += '<div class="army-actions-compact">';

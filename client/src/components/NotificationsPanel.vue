@@ -50,7 +50,15 @@
         >
           <div class="notif-meta">
             <span class="notif-turn">{{ turnToGameDate(notif.turn_number) }}</span>
-            <span v-if="!notif.is_read" class="notif-unread-dot"></span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button
+                v-if="extractH3(notif.content)"
+                class="notif-goto-btn"
+                @click.stop="emit('focusHex', extractH3(notif.content))"
+                title="Ir a la celda"
+              >📍 Ir</button>
+              <span v-if="!notif.is_read" class="notif-unread-dot"></span>
+            </div>
           </div>
           <p class="notif-content">{{ notif.content }}</p>
         </article>
@@ -110,7 +118,14 @@ const turnToGameDate = (n) => {
   return `${result.day} ${MONTHS[result.month - 1]}, anno ${toRoman(auc)} AUC (${result.year} ${suffix})`;
 };
 
-const emit = defineEmits(['readTab']);
+const emit = defineEmits(['readTab', 'focusHex']);
+
+// Extrae el primer índice H3 válido del texto de una notificación
+const H3_RE = /\b(8[0-9a-f]{14})\b/i;
+const extractH3 = (content) => {
+  const m = content?.match(H3_RE);
+  return m ? m[1] : null;
+};
 
 const activeTab = ref('Militar');
 
@@ -318,5 +333,20 @@ onMounted(() => {
   color: #d0c0a0;
   white-space: pre-line;
   line-height: 1.55;
+}
+
+.notif-goto-btn {
+  padding: 1px 7px;
+  border: 1px solid rgba(197, 160, 89, 0.35);
+  border-radius: 3px;
+  background: rgba(197, 160, 89, 0.1);
+  color: #c5a059;
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.notif-goto-btn:hover {
+  background: rgba(197, 160, 89, 0.25);
 }
 </style>

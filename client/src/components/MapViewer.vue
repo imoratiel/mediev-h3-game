@@ -606,6 +606,7 @@
             :gameDate="gameDate"
             @read="handleNotificationRead"
             @readTab="handleNotificationsReadTab"
+            @focusHex="focusAndHighlightHex"
           />
         </div>
 
@@ -1627,6 +1628,7 @@ const toasts = ref([]);
 let toastIdCounter = 0;
 
 let map = null;
+let _highlightLayer = null; // Polígono de resalte de notificación
 let hexagonLayer = null;
 let settlementMarkersLayer = null;
 let settlementMarkersMap = {}; // Map: settlement name -> marker
@@ -1914,6 +1916,7 @@ const initMap = async () => {
   loadHexagonsIfZoomValid();
   fetchPlayerData();
   fetchAndRenderCharacters();
+  fetchDivisionBoundaries(); // Layer exists at this point
 };
 
 /**
@@ -2875,7 +2878,7 @@ const openCharPopup = (charId, isEnemy, latlng) => {
     const levelInfo = char.level !== undefined ? `Nv.${Math.floor((char.level ?? 1) / 10)}` : '';
     const meta = [char.player_name, levelInfo, guardInfo].filter(Boolean).join(' · ');
     const captureBtn = !char.is_captive && !char.is_imprisoned
-      ? `<button id="char-capture-${char.id}" class="army-action-icon army-action-disabled" title="Necesitas un ejército estacionado en este feudo para intentar la captura">⛓️</button>`
+      ? `<button id="char-capture-${char.id}" class="army-action-icon" title="Capturar">⛓️</button>`
       : '';
     popupHtml = `
       <div class="char-popup">
@@ -2923,13 +2926,7 @@ const openCharPopup = (charId, isEnemy, latlng) => {
   setTimeout(() => {
     if (isEnemy) {
       const btn = document.getElementById(`char-capture-${char.id}`);
-      if (!btn) return;
-      const hasArmyHere = armies.value.some(a => a.h3_index === char.h3_index && !a.destination);
-      if (hasArmyHere) {
-        btn.classList.remove('army-action-disabled');
-        btn.title = 'Capturar';
-        btn.addEventListener('click', () => handleEnemyCharacterCapture(char));
-      }
+      if (btn) btn.addEventListener('click', () => handleEnemyCharacterCapture(char));
     } else {
       const moveBtn  = document.getElementById(`char-move-${char.id}`);
       const stopBtn  = document.getElementById(`char-stop-${char.id}`);
@@ -3333,6 +3330,40 @@ const focusOnFief = (h3_index) => {
   } catch (err) {
     console.error('[Fiefs] Error focusing on fief:', err);
     showToast('Error al enfocar el feudo', 'error');
+  }
+};
+
+/**
+ * Centra el mapa en un hex y lo resalta con un polígono hasta que el usuario
+ * haga click en otro lugar.
+ */
+const focusAndHighlightHex = (h3_index) => {
+  if (!map || !h3_index) return;
+  try {
+    // Eliminar resalte previo
+    if (_highlightLayer) { _highlightLayer.remove(); _highlightLayer = null; }
+
+    const [lat, lng] = cellToLatLng(h3_index);
+    map.flyTo([lat, lng], 11, { duration: 1.0 });
+
+    // Construir polígono con los vértices del hex
+    const boundary = cellToBoundary(h3_index); // [[lat,lng], ...]
+    _highlightLayer = L.polygon(boundary, {
+      color:       '#ffe066',
+      weight:      3,
+      opacity:     1,
+      fillColor:   '#ffe066',
+      fillOpacity: 0.22,
+      dashArray:   '6 4',
+      interactive: false,
+    }).addTo(map);
+
+    // Borrar al primer click en el mapa
+    map.once('click', () => {
+      if (_highlightLayer) { _highlightLayer.remove(); _highlightLayer = null; }
+    });
+  } catch (err) {
+    console.error('[Notification] Error focusing hex:', err);
   }
 };
 
@@ -4828,14 +4859,8 @@ const handleCharacterLeave = async (char) => {
 };
 
 const handleEnemyCharacterCapture = async (char) => {
-  // Buscar ejército propio estacionado en el mismo hex
-  const myArmy = armies.value.find(a => a.h3_index === char.h3_index && !a.destination && a.player_id === playerId.value);
-  if (!myArmy) {
-    showToast('Necesitas un ejército estacionado en este feudo', 'error');
-    return;
-  }
   try {
-    const result = await mapApi.attemptCaptureCharacter(char.id, myArmy.army_id);
+    const result = await mapApi.attemptCaptureCharacter(char.id);
     map.closePopup();
     const toastType = result.result === 'captured' ? 'success' : result.result === 'dead' ? 'warning' : 'info';
     showToast(result.message, toastType);
@@ -6927,7 +6952,6 @@ onMounted(() => {
   loadMessages(); // Load initial messages
   startSync(); // Start server synchronization (polls every 30 seconds)
   startNotifPolling(); // Start background notification polling (every 45 seconds)
-  fetchDivisionBoundaries(); // Load political division borders
   fetchMyWorkers();          // Draw worker movement routes on startup
   // Pre-fetch capital so the "Fundar Capital" button condition is reliable from the first click
   mapApi.getCapital().then(r => {

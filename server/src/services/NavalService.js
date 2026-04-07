@@ -553,6 +553,7 @@ class NavalService {
 
             await NavalModel.DisembarkArmy(client, army_id);
             await client.query('UPDATE armies SET h3_index = $1 WHERE army_id = $2', [land_hex, army_id]);
+            await client.query('UPDATE characters SET h3_index = $1 WHERE captured_by_army_id = $2', [land_hex, army_id]);
 
             if (fleet_id) {
                 await NavalModel.DisembarkWorkers(client, fleet_id, land_hex);

@@ -3,6 +3,29 @@
  * Funciones y constantes para los estilos visuales del mapa
  */
 
+// Color del jugador conectado
+const OWN_COLOR = '#00e6ff';
+
+// Rampa de colores para jugadores enemigos (se asignan por player_id)
+const ENEMY_PALETTE = [
+  '#ff4438', // Rojo Coral
+  '#c40233', // Carmín Intenso
+  '#8a0707', // Rojo Sangre
+  '#5e0000', // Granate Profundo
+  '#d45b6a', // Frambuesa Claro
+  '#9b4e42', // Rojo Óxido
+  '#3d0c0c', // Burdeos Muy Oscuro
+];
+
+/**
+ * Asigna un color de la paleta enemiga de forma determinista según player_id.
+ * El mismo player_id siempre recibe el mismo color en cualquier sesión.
+ */
+function getEnemyColor(playerId) {
+  const idx = Math.abs(playerId * 2654435761 >>> 0) % ENEMY_PALETTE.length;
+  return ENEMY_PALETTE[idx];
+}
+
 /**
  * Calcula los estilos de relleno para un hexágono
  * @param {Object} hex - Datos del hexágono desde la API
@@ -10,28 +33,19 @@
  * @returns {Object} { fillColor, fillOpacity }
  */
 export function getHexagonFillStyle(hex, config) {
-  const { playerId, showTerrainLayer, isPoliticalView } = config;
+  const { playerId, showTerrainLayer } = config;
 
-  const isCapital = hex.is_capital === true;
   const isMyTerritory = hex.player_id === playerId;
-  const playerColor = hex.player_color || null;
   const terrainColor = hex.terrain_color || hex.color || '#9e9e9e';
 
-  // Base color: terrain if layer is active, otherwise neutral
   let fillColor = showTerrainLayer ? terrainColor : '#606060';
   let fillOpacity = 1.0;
 
-  if (isMyTerritory && playerColor) {
-    // Own territory: full color, clearly solid
-    fillColor = playerColor;
+  if (isMyTerritory) {
+    fillColor = OWN_COLOR;
     fillOpacity = 1.0;
-  } else if (!isMyTerritory && hex.player_id && playerColor) {
-    // Enemy territory: their color but semi-transparent to distinguirlo del propio
-    fillColor = playerColor;
-    fillOpacity = 0.55;
-  } else if (!isMyTerritory && hex.player_id) {
-    // Enemy without color assigned: neutral tint
-    fillColor = showTerrainLayer ? terrainColor : '#606060';
+  } else if (hex.player_id) {
+    fillColor = getEnemyColor(hex.player_id);
     fillOpacity = 0.55;
   } else if (!showTerrainLayer) {
     fillOpacity = 0.7;
@@ -47,24 +61,20 @@ export function getHexagonFillStyle(hex, config) {
  * @returns {Object} { borderColor, borderWeight }
  */
 export function getHexagonBorderStyle(hex, config) {
-  const { playerId, isPoliticalView, isHighRes } = config;
+  const { playerId, isHighRes } = config;
 
   const hasRoad = hex.has_road || false;
-  const isCapital = hex.is_capital === true;
   const isMyTerritory = hex.player_id === playerId;
-  const playerColor = hex.player_color || null;
   const terrainColor = hex.terrain_color || hex.color || '#9e9e9e';
 
   let borderColor = terrainColor;
   let borderWeight = isHighRes ? 1.0 : 1.5;
 
-  if (isMyTerritory && playerColor) {
-    // Own territory: bold border in own color
-    borderColor = playerColor;
+  if (isMyTerritory) {
+    borderColor = OWN_COLOR;
     borderWeight = 3;
-  } else if (!isMyTerritory && hex.player_id && playerColor) {
-    // Enemy territory: thinner border in their color
-    borderColor = playerColor;
+  } else if (hex.player_id) {
+    borderColor = getEnemyColor(hex.player_id);
     borderWeight = 2;
   } else if (hasRoad) {
     borderColor = '#d4af37';

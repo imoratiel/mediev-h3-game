@@ -634,12 +634,25 @@ class KingdomService {
                 cascadedFiefs = await processCapitalCollapse(client, h3_index, player_id, currentOwner, turn);
             } else if (currentOwner !== null) {
                 // Si no era la capital del jugador pero sí la capital de algún señorío,
-                // transferir ese señorío al conquistador
-                await client.query(`
-                    UPDATE political_divisions
-                    SET player_id = $1
-                    WHERE player_id = $2 AND capital_h3 = $3
-                `, [player_id, currentOwner, h3_index]);
+                // transferir el señorío y todos sus feudos al conquistador
+                const divRes = await client.query(
+                    `SELECT id FROM political_divisions WHERE player_id = $1 AND capital_h3 = $2`,
+                    [currentOwner, h3_index]
+                );
+                if (divRes.rows.length > 0) {
+                    const divId = divRes.rows[0].id;
+                    await client.query(
+                        `UPDATE political_divisions SET player_id = $1 WHERE id = $2`,
+                        [player_id, divId]
+                    );
+                    // Transferir todos los feudos del señorío al conquistador
+                    await client.query(`
+                        UPDATE h3_map SET player_id = $1
+                        WHERE h3_index IN (
+                            SELECT h3_index FROM territory_details WHERE division_id = $2
+                        ) AND player_id = $3
+                    `, [player_id, divId, currentOwner]);
+                }
             }
 
             // 11. Saqueo (solo si el ejército sobrevivió)
@@ -666,7 +679,7 @@ class KingdomService {
                 army_destroyed: armyDestroyed,
                 loot: lootResult,
                 message: isCapital
-                    ? `🏚️ ¡Capital conquistada! ${cascadedFiefs.length} feudos colapsaron automáticamente.`
+                    ? `🏚️ ¡Capital conquistada! Y sus ${cascadedFiefs.length} territorios asociados.`
                     : result === 'victory' ? '🏴 ¡Territorio conquistado!' : '🏴 El territorio cambia de manos por desgaste.'
             });
 
@@ -918,7 +931,7 @@ class KingdomService {
                 army_destroyed: armyDestroyed,
                 loot: lootResult,
                 message: isCapital && result !== 'defeat'
-                    ? `🏚️ ¡Capital conquistada! ${cascadedFiefs.length} feudos colapsaron automáticamente.`
+                    ? `🏚️ ¡Capital conquistada! Y sus ${cascadedFiefs.length} territorios asociados.`
                     : result === 'victory' ? 'El feudo ahora es tuyo.'
                     : result === 'draw'    ? 'El feudo cambia de manos por desgaste.'
                     : armyDestroyed        ? '⚔️ ¡Tu ejército fue aniquilado por la resistencia!'
@@ -1005,7 +1018,7 @@ class KingdomService {
             return res.status(400).json({ success: false, message: 'Ese nombre no está permitido.' });
         }
 
-        console.log(`[Init] player=${player_id} culture_id=${forceCultureId} random_bonus=${randomBonus} linaje=${linaje} | query:`, req.query);
+        Logger.action(`[Init] player=${player_id} culture_id=${forceCultureId} random_bonus=${randomBonus} linaje=${linaje}`, player_id);
         try {
             const result = await initializePlayer(player_id, { forceCultureId, randomBonus, linaje });
             if (result.alreadyInitialized) {

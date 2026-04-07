@@ -781,8 +781,8 @@ export async function captureCharacter(id) {
   return response.data;
 }
 
-export async function attemptCaptureCharacter(id, attackerArmyId) {
-  const response = await axios.post(`${API_URL}/api/characters/${id}/attempt-capture`, { attackerArmyId });
+export async function attemptCaptureCharacter(id) {
+  const response = await axios.post(`${API_URL}/api/characters/${id}/attempt-capture`);
   return response.data;
 }
 

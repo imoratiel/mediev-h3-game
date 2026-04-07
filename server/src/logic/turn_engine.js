@@ -1006,7 +1006,7 @@ async function processCaptiveEscapes(client, turn) {
             Logger.engine(`[TURN ${turn}] Escape: ${captive.name} (id=${captive.id}) huye del cautiverio`);
 
             await NotificationService.createSystemNotification(
-                captive.player_id, 'Captura',
+                captive.player_id, 'Militar',
                 `🏃 **${captive.name}** ha escapado del cautiverio y regresa a tu capital.`,
                 turn
             );
@@ -1020,7 +1020,7 @@ async function processCaptiveEscapes(client, turn) {
                 const captorId = captorResult.rows[0]?.player_id;
                 if (captorId) {
                     await NotificationService.createSystemNotification(
-                        captorId, 'Captura',
+                        captorId, 'Militar',
                         `🏃 **${captive.name}** ha escapado de tu ejército.`,
                         turn
                     );
