@@ -213,6 +213,7 @@
           title="Editar perfil"
         >
           <span class="username">{{ currentUser.culture_id === 1 ? 'Gens' : 'Casa' }} {{ currentUser.display_name || currentUser.username }}</span>
+          <span v-if="currentUser.noble_title" class="noble-title-badge">{{ currentUser.noble_title }}</span>
           <span v-if="currentUser.culture_name" class="culture-badge">{{ currentUser.culture_name }}</span>
         </button>
         <div v-if="currentUser" class="footer-actions">
@@ -7374,6 +7375,17 @@ onBeforeUnmount(() => {
 .username {
   font-family: var(--font-sans);
   font-size: 0.75rem;
+}
+
+.noble-title-badge {
+  display: block;
+  font-size: 0.68rem;
+  font-family: var(--font-serif, serif);
+  color: #e8d5a0;
+  letter-spacing: 0.03em;
+  font-style: italic;
+  opacity: 0.9;
+  margin-top: 1px;
 }
 
 .culture-badge {

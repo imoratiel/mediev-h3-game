@@ -187,18 +187,18 @@ async function executeRecruitment(client, playerId, { h3_index, unit_type_id, qu
     await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, quantity);
 
     // ── 7. Find or create army ────────────────────────────────────────────────
-    // ARMY_RATIO: no player (human or bot) may have more armies than floor(fiefs / RATIO).
-    // The check only fires when a *new* army would be created; reinforcing an existing one is free.
+    // El límite de ejércitos viene del rango noble del jugador.
+    // El check solo aplica cuando se crea un ejército nuevo; reforzar uno existente es libre.
     const finalArmyName = army_name || `Ejército de ${playerId}`;
     const existingArmy  = await ArmyModel.FindArmy(client, h3_index, finalArmyName, playerId);
     let army_id;
     if (existingArmy.rows.length === 0) {
         const capacity  = await ArmyModel.GetPlayerArmyCapacity(client, playerId);
-        const armyLimit = getArmyLimit(capacity.fief_count);
+        const armyLimit = capacity.army_limit;
         if (capacity.army_count >= armyLimit) {
             throw new GameActionError(
                 `Límite de ejércitos alcanzado (${capacity.army_count}/${armyLimit}). ` +
-                `Se necesita 1 feudo adicional por cada ${GAME_CONFIG.ARMY_LIMITS.RATIO} feudos para comandar más ejércitos.`,
+                `Sube de rango para comandar más ejércitos.`,
                 'ARMY_LIMIT_REACHED'
             );
         }
