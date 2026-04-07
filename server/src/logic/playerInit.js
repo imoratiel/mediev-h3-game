@@ -419,11 +419,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
                     divisionId  = division.id;
                     senorioName = divisionName;
                     await DivisionModel.AssignFiefsToDivision(client, division.id, allHexes);
-                    // Promote player to Señor rank
-                    await client.query(
-                        'UPDATE players SET noble_rank_id = $1 WHERE player_id = $2',
-                        [senorioRank.id, player_id]
-                    );
+                    // Rango calculado mensualmente por noble_rank_system.js según pagus count
                 }
             }
         }
