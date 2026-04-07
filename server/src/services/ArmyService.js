@@ -358,12 +358,12 @@ class ArmyService {
             // ── Field army mode ───────────────────────────────────────────────────
             // Army limit check (server-side, cannot be bypassed from client)
             const capacity = await ArmyModel.GetPlayerArmyCapacity(client, player_id);
-            const armyLimit = getArmyLimit(capacity.fief_count);
+            const armyLimit = capacity.army_limit;
             if (capacity.army_count >= armyLimit) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({
                     success: false,
-                    message: `Has alcanzado el límite de ejércitos (${capacity.army_count}/${armyLimit}). Necesitas más feudos para comandar más ejércitos.`
+                    message: `Has alcanzado el límite de ejércitos (${capacity.army_count}/${armyLimit}). Sube de rango para comandar más ejércitos.`
                 });
             }
 
@@ -395,12 +395,11 @@ class ArmyService {
         try {
             const player_id = req.user.player_id;
             const capacity = await ArmyModel.GetPlayerArmyCapacity(client, player_id);
-            const army_limit = getArmyLimit(capacity.fief_count);
             res.json({
                 success: true,
                 army_count: capacity.army_count,
                 fief_count: capacity.fief_count,
-                army_limit,
+                army_limit: capacity.army_limit,
             });
         } catch (error) {
             Logger.error(error, { endpoint: '/military/capacity', method: 'GET', userId: req.user?.player_id });

@@ -133,8 +133,7 @@ class NavalService {
         const client = await pool.connect();
         try {
             const cap = await NavalModel.GetPlayerFleetCapacity(client, req.user.player_id);
-            const fleet_limit = getFleetLimit(cap.fief_count);
-            res.json({ success: true, fleet_count: cap.fleet_count, fief_count: cap.fief_count, fleet_limit });
+            res.json({ success: true, fleet_count: cap.fleet_count, fief_count: cap.fief_count, fleet_limit: cap.fleet_limit });
         } catch (err) {
             Logger.error(err, { endpoint: '/naval/capacity', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al obtener capacidad naval.' });
@@ -185,12 +184,12 @@ class NavalService {
 
             // Fleet limit check (same cap as armies, separate count)
             const cap = await NavalModel.GetPlayerFleetCapacity(client, player_id);
-            const fleet_limit = getFleetLimit(cap.fief_count);
+            const fleet_limit = cap.fleet_limit;
             if (cap.fleet_count >= fleet_limit) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({
                     success: false,
-                    message: `Has alcanzado el límite de flotas (${cap.fleet_count}/${fleet_limit}). Necesitas más feudos para comandar más flotas.`,
+                    message: `Has alcanzado el límite de flotas (${cap.fleet_count}/${fleet_limit}). Sube de rango para comandar más flotas.`,
                 });
             }
 

@@ -487,7 +487,12 @@ class ArmyModel {
             SELECT
                 (SELECT COUNT(*) FROM armies WHERE player_id = $1 AND NOT is_garrison AND NOT is_naval)::int AS army_count,
                 (SELECT COUNT(*) FROM armies WHERE player_id = $1 AND is_naval = TRUE)::int                  AS fleet_count,
-                (SELECT COUNT(*) FROM h3_map  WHERE player_id = $1)::int                                     AS fief_count
+                (SELECT COUNT(*) FROM h3_map  WHERE player_id = $1)::int                                     AS fief_count,
+                COALESCE(nr.army_limit,  2) AS army_limit,
+                COALESCE(nr.fleet_limit, 2) AS fleet_limit
+            FROM players p
+            LEFT JOIN noble_ranks nr ON nr.id = p.noble_rank_id
+            WHERE p.player_id = $1
         `, [player_id]);
         return result.rows[0];
     }
