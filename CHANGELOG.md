@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.6.0...v0.7.0) (2026-04-07)
+
+
+### Nuevas funcionalidades
+
+* boton Ir en las notificaciones ([38074bb](https://github.com/imoratiel/hipania210ac-game/commit/38074bb249a28a123b34104a7c686d267d153398))
+* nuevos colores de terreno en la leyenda ([392d06b](https://github.com/imoratiel/hipania210ac-game/commit/392d06b6f4ab6b5b6b40b30854ce5544bb1ad409))
+* nuevos estilos para pintado de celdas ([1ed4c9f](https://github.com/imoratiel/hipania210ac-game/commit/1ed4c9f6ab48727f36d1e8df0dbda9c457deb997))
+
+
+### Correcciones
+
+* /meta fallando en Staging ([3689a75](https://github.com/imoratiel/hipania210ac-game/commit/3689a757f473ecca10e2a23aec26755055dde554))
+* arreglo de /meta ([0405413](https://github.com/imoratiel/hipania210ac-game/commit/04054138fe8fba68932c5be8b09ddb47bbe1c726))
+* arreglos de captura de jugadores ([53c36fd](https://github.com/imoratiel/hipania210ac-game/commit/53c36fdd8a3bbf4e4a4f98be132fa259fc2ba13e))
+* captura de personajes arreglado ([ac53800](https://github.com/imoratiel/hipania210ac-game/commit/ac53800b562a0b7c52fce4947d3f0eb1bf2842a1))
+* conquista de la capital del pagus provoca que se conquisten todos las casillas ([6effcc2](https://github.com/imoratiel/hipania210ac-game/commit/6effcc2115fe2c307ec3c72fac3ec83b0c7ae288))
+* error al capturar ([96d9e6a](https://github.com/imoratiel/hipania210ac-game/commit/96d9e6a9bfb864efe09a2682114070c2b06e7e55))
+* error localhost en stg ([b9eed73](https://github.com/imoratiel/hipania210ac-game/commit/b9eed731857b8691c2feebd11479ae6eb4fefc0e))
+* errores al capturar tropas ([6dcb104](https://github.com/imoratiel/hipania210ac-game/commit/6dcb10460f177aa0d4676b569b16795cee21568b))
+
 ## [0.6.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.5.1...v0.6.0) (2026-03-30)
 
 
