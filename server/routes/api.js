@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { authenticateToken, requireAdmin, generateToken } = require('../src/middleware/auth');
+const { requireTurnUnlocked } = require('../src/middleware/turnLock');
 
 // This file will contain all the endpoints moved from index.js
 // It expects to be passed the pool, config, and logic modules if needed
@@ -27,6 +28,16 @@ module.exports = function () {
     const CharacterService = require('../src/services/CharacterService.js');
     const OAuthService = require('../src/services/OAuthService.js');
     const NavalService = require('../src/services/NavalService.js');
+
+    // ── Turn lock: bloquea escrituras durante el procesamiento de turno ──────────
+    // Excluye: auth (login/logout), rutas de solo lectura (GET) y admin (fuerza turno manual).
+    const TURN_LOCK_EXEMPT = new Set(['/auth/login', '/auth/logout', '/auth/google', '/auth/google/callback']);
+    router.use((req, res, next) => {
+        if (req.method === 'GET' || req.method === 'HEAD') return next();
+        if (TURN_LOCK_EXEMPT.has(req.path)) return next();
+        if (req.path.startsWith('/admin/')) return next(); // admin siempre puede actuar
+        requireTurnUnlocked(req, res, next);
+    });
 
     // ============================================
     // AUTHENTICATION ENDPOINTS

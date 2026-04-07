@@ -26,6 +26,10 @@ axios.interceptors.response.use(
       localStorage.removeItem('user');
       window.location.replace('/login.html');
     }
+    if (err.response?.status === 503 && err.response?.data?.turn_processing) {
+      // Propagar el error con flag especial para que la UI muestre mensaje amigable
+      err.turnProcessing = true;
+    }
     return Promise.reject(err);
   }
 );

@@ -236,120 +236,74 @@ ${territories.rows.length > 0 ? `Territorios productivos: ${territories.rows.len
  * @param {Object} config - Game configuration
  */
 async function processMilitaryConsumption(client, turn, config) {
-
-    //Logger.engine(`FORZADO PARA EVITAR EL CONSUMO DE EL EJERCITO POR AHORA - DESHABILITADO TEMPORALMENTE`);
-    //return;
-
-
     try {
         Logger.engine(`[TURN ${turn}] Processing military food consumption...`);
 
-        // Get all armies with their troops and stationed location
-        const armiesResult = await client.query(`
+        // ── PASO 1: Descontar de provisions del ejército ──────────────────────
+        // Una sola query bulk: calcula consumo de cada ejército y descuenta de provisions.
+        // Devuelve los ejércitos con déficit (consumo > provisions disponibles).
+        const armyUpdateResult = await client.query(`
+            WITH consumption AS (
+                SELECT
+                    a.army_id,
+                    a.player_id,
+                    a.h3_index,
+                    a.food_provisions,
+                    COALESCE(SUM(t.quantity * ut.food_consumption * 0.001), 0) AS total_consumption
+                FROM armies a
+                LEFT JOIN troops t       ON t.army_id        = a.army_id
+                LEFT JOIN unit_types ut  ON ut.unit_type_id  = t.unit_type_id
+                WHERE a.h3_index IS NOT NULL
+                GROUP BY a.army_id, a.player_id, a.h3_index, a.food_provisions
+                HAVING COALESCE(SUM(t.quantity * ut.food_consumption * 0.001), 0) > 0
+            ),
+            updated AS (
+                UPDATE armies a
+                SET food_provisions = GREATEST(0, a.food_provisions - c.total_consumption)
+                FROM consumption c
+                WHERE a.army_id = c.army_id
+                RETURNING c.army_id, c.player_id, c.h3_index, c.total_consumption, c.food_provisions
+            )
             SELECT
-                a.army_id,
-                a.player_id,
-                a.name,
-                a.h3_index,
-                a.food_provisions,
-                p.username
-            FROM armies a
-            JOIN players p ON a.player_id = p.player_id
-            WHERE a.h3_index IS NOT NULL
+                army_id,
+                player_id,
+                h3_index,
+                total_consumption,
+                food_provisions,
+                GREATEST(0, total_consumption - food_provisions) AS fief_deficit
+            FROM updated
         `);
 
-        for (const army of armiesResult.rows) {
-            try {
-                // Calculate total food consumption for this army
-                const consumptionResult = await client.query(`
-                    SELECT COALESCE(SUM(t.quantity * ut.food_consumption * 0.001), 0) as total_consumption
-                    FROM troops t
-                    JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
-                    WHERE t.army_id = $1
-                `, [army.army_id]);
+        const totalArmies = armyUpdateResult.rows.length;
+        const withDeficit  = armyUpdateResult.rows.filter(r => parseFloat(r.fief_deficit) > 0);
 
-                const totalConsumption = parseFloat(consumptionResult.rows[0]?.total_consumption || 0);
+        // ── PASO 2: Descontar déficit del feudo (solo si el feudo pertenece al jugador) ──
+        // Una sola query: unnest hex+player+deficit, JOIN con h3_map para validar ownership.
+        if (withDeficit.length > 0) {
+            const hexes     = withDeficit.map(r => r.h3_index);
+            const playerIds = withDeficit.map(r => r.player_id);
+            const deficits  = withDeficit.map(r => parseFloat(r.fief_deficit));
 
-                if (totalConsumption === 0) {
-                    continue; // No troops = no consumption
-                }
-
-                let remainingConsumption = totalConsumption;
-                let consumedFromArmy = 0;
-                let consumedFromFief = 0;
-                let source = '';
-
-                // STEP 1: Consume from army provisions first
-                const armyProvisions = parseFloat(army.food_provisions || 0);
-                if (armyProvisions > 0) {
-                    consumedFromArmy = Math.min(armyProvisions, remainingConsumption);
-                    remainingConsumption -= consumedFromArmy;
-
-                    await client.query(`
-                        UPDATE armies
-                        SET food_provisions = GREATEST(0, food_provisions - $1)
-                        WHERE army_id = $2
-                    `, [consumedFromArmy, army.army_id]);
-                }
-
-                // STEP 2: If army provisions depleted, consume from fief (overflow)
-                if (remainingConsumption > 0 && army.h3_index) {
-                    // Verify fief belongs to same player (can't eat from enemy fief)
-                    const fiefCheck = await client.query(`
-                        SELECT m.player_id, td.food_stored
-                        FROM h3_map m
-                        JOIN territory_details td ON m.h3_index = td.h3_index
-                        WHERE m.h3_index = $1
-                    `, [army.h3_index]);
-
-                    if (fiefCheck.rows.length > 0) {
-                        const fief = fiefCheck.rows[0];
-
-                        if (fief.player_id === army.player_id) {
-                            const fiefFood = parseFloat(fief.food_stored || 0);
-                            consumedFromFief = Math.min(fiefFood, remainingConsumption);
-                            remainingConsumption -= consumedFromFief;
-
-                            await client.query(`
-                                UPDATE territory_details
-                                SET food_stored = GREATEST(0, food_stored - $1)
-                                WHERE h3_index = $2
-                            `, [consumedFromFief, army.h3_index]);
-
-                            // Mensaje eliminado: No se envían alertas de suministros agotados
-                        }
-                    }
-                }
-
-                // STEP 3: Determine source and log
-                if (consumedFromArmy > 0 && consumedFromFief > 0) {
-                    source = 'Ejército+Feudo';
-                } else if (consumedFromArmy > 0) {
-                    source = 'Ejército';
-                } else if (consumedFromFief > 0) {
-                    source = 'Feudo';
-                }
-
-                // STEP 4: Check for starvation (deficit remains)
-                if (remainingConsumption > 0) {
-                    Logger.engine(`[TURN ${turn}] ⚠️ HAMBRUNA - Ejército ${army.army_id} (${army.name}) de player ${army.player_id}: Deficit de ${remainingConsumption.toFixed(1)} raciones`);
-                    // Mensaje eliminado: No se envían alertas de hambruna
-                } else {
-                    Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} (${army.name}) de player ${army.player_id} (${army.username}) consumió ${totalConsumption.toFixed(1)} raciones. (Fuente: ${source})`);
-                }
-
-            } catch (armyError) {
-                Logger.error(armyError, {
-                    context: 'turn_engine.processMilitaryConsumption',
-                    phase: 'army_consumption',
-                    turn: turn,
-                    armyId: army.army_id
-                });
-                // Continue with other armies
-            }
+            await client.query(`
+                UPDATE territory_details td
+                SET food_stored = GREATEST(0, td.food_stored - agg.total_deficit)
+                FROM (
+                    SELECT v.h3_index, SUM(v.deficit) AS total_deficit
+                    FROM (
+                        SELECT unnest($1::text[])    AS h3_index,
+                               unnest($2::int[])     AS player_id,
+                               unnest($3::float[])   AS deficit
+                    ) v
+                    -- Solo descuenta si el feudo pertenece al jugador del ejército
+                    JOIN h3_map m ON m.h3_index = v.h3_index AND m.player_id = v.player_id
+                    GROUP BY v.h3_index
+                ) agg
+                WHERE td.h3_index = agg.h3_index
+            `, [hexes, playerIds, deficits]);
         }
 
-        Logger.engine(`[TURN ${turn}] Military consumption completed for ${armiesResult.rows.length} armies`);
+        Logger.engine(`[TURN ${turn}] Military consumption completed: ${totalArmies} armies, ${withDeficit.length} with fief deficit`);
+
     } catch (error) {
         Logger.error(error, {
             context: 'turn_engine.processMilitaryConsumption',
@@ -1285,6 +1239,9 @@ async function processActionCooldowns(client, turn) {
  * @returns {Object} Turn result with success status
  */
 async function processGameTurn(pool, config) {
+    // Activar flag de procesamiento (fuera de transacción para que sea visible inmediatamente)
+    await pool.query('UPDATE world_state SET is_processing = TRUE WHERE id = 1');
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1293,6 +1250,7 @@ async function processGameTurn(pool, config) {
         const pauseCheck = await client.query('SELECT is_paused FROM world_state WHERE id = 1');
         if (pauseCheck.rows[0]?.is_paused === true) {
             await client.query('ROLLBACK');
+            await pool.query('UPDATE world_state SET is_processing = FALSE WHERE id = 1');
             return { success: false, message: 'Game is paused', paused: true };
         }
 
@@ -1539,6 +1497,8 @@ async function processGameTurn(pool, config) {
         throw error;
     } finally {
         if (client) client.release();
+        // Desactivar flag siempre, incluso si hubo error
+        await pool.query('UPDATE world_state SET is_processing = FALSE WHERE id = 1').catch(() => {});
     }
 }
 
