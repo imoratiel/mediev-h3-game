@@ -1028,7 +1028,7 @@ class KingdomService {
                 return res.status(409).json({ success: false, linaje_taken: true, message: `El linaje "${linaje}" ya está en uso. Elige otro nombre.` });
             }
             Logger.action(
-                `✅ Inicialización completada. Capital: ${result.capitalHex}, feudos: ${result.allHexes.length}, señorío: ${result.senorioName ?? 'ninguno'}`,
+                `✅ Inicialización completada. Capital: ${result.capitalHex}, territorios: ${result.allHexes.length}, pagus: ${result.senorioName ?? 'ninguno'}`,
                 player_id
             );
             logGameEvent(`[INIT] Jugador ${player_id} inicializado. Capital: ${result.capitalHex}`);

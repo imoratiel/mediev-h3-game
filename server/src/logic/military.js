@@ -70,15 +70,15 @@ function validateRecruitment(params, territory, player, requirements) {
             }
         } else if (req.resource_type === 'wood_stored') {
             if ((territory.wood_stored || 0) < needed) {
-                return `Madera insuficiente en este feudo. Necesitas ${needed}, pero solo tienes ${territory.wood_stored || 0}.`;
+                return `Madera insuficiente en este territorio. Necesitas ${needed}, pero solo tienes ${territory.wood_stored || 0}.`;
             }
         } else if (req.resource_type === 'stone_stored') {
             if ((territory.stone_stored || 0) < needed) {
-                return `Piedra insuficiente en este feudo. Necesitas ${needed}, pero solo tienes ${territory.stone_stored || 0}.`;
+                return `Piedra insuficiente en este territorio. Necesitas ${needed}, pero solo tienes ${territory.stone_stored || 0}.`;
             }
         } else if (req.resource_type === 'iron_stored') {
             if ((territory.iron_stored || 0) < needed) {
-                return `Hierro insuficiente en este feudo. Necesitas ${needed}, pero solo tienes ${territory.iron_stored || 0}.`;
+                return `Hierro insuficiente en este territorio. Necesitas ${needed}, pero solo tienes ${territory.iron_stored || 0}.`;
             }
         }
     }

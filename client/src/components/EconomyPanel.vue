@@ -85,14 +85,14 @@
           <div class="eco-table-header">
             <h3 class="eco-table-title">🏛️ Tus Pagus</h3>
             <p class="eco-table-hint">
-              Gestiona la recaudación de cada señorío de forma independiente.
+              Gestiona la recaudación de cada Pagus de forma independiente.
             </p>
           </div>
 
-          <div v-if="loadingDivisions" class="eco-loading eco-loading-center">Cargando señoríos...</div>
+          <div v-if="loadingDivisions" class="eco-loading eco-loading-center">Cargando pagus...</div>
           <div v-else-if="divisionsError" class="eco-error eco-error-center">{{ divisionsError }}</div>
           <div v-else-if="divisions.length === 0" class="eco-empty">
-            Aún no has proclamado ningún señorío.
+            Aún no has proclamado ningún Pagus.
           </div>
           <div v-else class="pagus-list">
             <div
@@ -243,7 +243,7 @@ async function fetchDivisions() {
     if (data.success) {
       divisions.value = data.divisions ?? [];
     } else {
-      divisionsError.value = data.message || 'Error al cargar señoríos';
+      divisionsError.value = data.message || 'Error al cargar pagus';
     }
   } catch (err) {
     divisionsError.value = err?.response?.data?.message || 'Error de conexión';

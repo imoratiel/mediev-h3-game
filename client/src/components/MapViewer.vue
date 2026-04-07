@@ -874,7 +874,7 @@
                   />
                 </div>
                 <div class="filter-group">
-                  <label>Señorío</label>
+                  <label>Pagus</label>
                   <select
                     v-model="kingdomFilters.division"
                     class="kingdom-filter-input-sidebar"

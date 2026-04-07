@@ -676,7 +676,7 @@ class CharacterService {
             );
             if (!armyResult.rows[0]) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, message: 'Necesitas un ejército en el mismo feudo para capturar este personaje.' });
+                return res.status(400).json({ success: false, message: 'Necesitas un ejército en el mismo territorio para capturar este personaje.' });
             }
             const capturingArmyId = armyResult.rows[0].army_id;
 
@@ -766,7 +766,7 @@ class CharacterService {
             );
             if (!armyResult.rows[0]) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, message: 'Necesitas un ejército estacionado en el mismo feudo.' });
+                return res.status(400).json({ success: false, message: 'Necesitas un ejército estacionado en el mismo territorio.' });
             }
             const { army_id: foundArmyId, troop_count, culture_id } = armyResult.rows[0];
 
@@ -1212,7 +1212,7 @@ class CharacterService {
             );
             if (!barracksResult.rows[0]) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, message: 'Necesitas un edificio militar en este feudo para encarcelar al personaje.' });
+                return res.status(400).json({ success: false, message: 'Necesitas un edificio militar en este territorio para encarcelar al personaje.' });
             }
 
             const turnResult = await client.query(

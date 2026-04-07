@@ -1524,7 +1524,7 @@ class AIManagerService {
             const currentTurn = worldRow.rows[0]?.current_turn ?? turn;
             await NotificationService.createSystemNotification(
                 prevOwner, 'Militar',
-                `🏴 TERRITORIO PERDIDO\nEl feudo ${hex.fief_name} ha sido conquistado (Turno ${currentTurn})`,
+                `🏴 TERRITORIO PERDIDO\nEl territorio ${hex.fief_name} ha sido conquistado (Turno ${currentTurn})`,
                 currentTurn
             );
         }

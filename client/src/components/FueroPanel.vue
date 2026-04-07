@@ -52,7 +52,7 @@
         <!-- Tax rate slider -->
         <div class="fuero-tax-section">
           <div class="fuero-tax-header">
-            <span class="fuero-label">{{ taxLabel }} del señorío</span>
+            <span class="fuero-label">{{ taxLabel }} del Pagus</span>
             <span class="fuero-tax-value">{{ divisionTaxRate }}%</span>
           </div>
           <input
@@ -77,7 +77,7 @@
 
         <div class="fuero-info-note fuero-info-recruit">
           <span>&#x2694;&#xFE0F;</span>
-          <span>Los territorios del señorío permiten reclutar hasta <strong>400 hab.</strong> por territorio. Los territorios libres solo hasta <strong>200 hab.</strong> La felicidad aumenta un <strong>+10%</strong>.</span>
+          <span>Los territorios del Pagus permiten reclutar hasta <strong>400 hab.</strong> por territorio. Los territorios libres solo hasta <strong>200 hab.</strong> La felicidad aumenta un <strong>+10%</strong>.</span>
         </div>
       </div>
 
@@ -114,7 +114,7 @@
                 type="text"
                 maxlength="100"
                 class="fuero-name-input"
-                placeholder="Nombre del señorío..."
+                placeholder="Nombre del Pagus..."
                 @blur="refreshProposedName"
               />
               <button
