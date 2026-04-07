@@ -121,12 +121,28 @@ async function processCapitalCollapse(client, capitalH3, newOwnerId, defeatedPla
 
     // ── Transferir señoríos al conquistador ────────────────────────────────
     // Todos los señoríos del derrotado pasan al conquistador.
-    // Los feudos mantienen su division_id: el pagus sobrevive intacto.
-    await client.query(`
-        UPDATE political_divisions
-        SET player_id = $1
-        WHERE player_id = $2
-    `, [newOwnerId, defeatedPlayerId]);
+    // Si hay colisión de nombre (UNIQUE player_id+name), se añade sufijo con el id.
+    const existingNamesRes = await client.query(
+        'SELECT name FROM political_divisions WHERE player_id = $1',
+        [newOwnerId]
+    );
+    const existingNames = new Set(existingNamesRes.rows.map(r => r.name));
+
+    const defeatedDivisionsRes = await client.query(
+        'SELECT id, name FROM political_divisions WHERE player_id = $1',
+        [defeatedPlayerId]
+    );
+    for (const div of defeatedDivisionsRes.rows) {
+        let finalName = div.name;
+        if (existingNames.has(finalName)) {
+            finalName = `${div.name} #${div.id}`;
+        }
+        existingNames.add(finalName);
+        await client.query(
+            'UPDATE political_divisions SET player_id = $1, name = $2 WHERE id = $3',
+            [newOwnerId, finalName, div.id]
+        );
+    }
 
     Logger.engine(`[TURN ${turn}] Capital collapse: ${toConquer.length} fiefs cascade-conquered from ${capitalH3} (defeated player ${defeatedPlayerId})`);
 
