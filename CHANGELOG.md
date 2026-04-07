@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.8.0...v0.8.1) (2026-04-07)
+
+
+### Correcciones
+
+* error en el maximo de ejercitos por el nivel del personaje ([7e6c80b](https://github.com/imoratiel/hipania210ac-game/commit/7e6c80bfd527c6b6286f8d5119fc9f5f72fbc091))
+
 ## [0.8.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.7.0...v0.8.0) (2026-04-07)
 
 
