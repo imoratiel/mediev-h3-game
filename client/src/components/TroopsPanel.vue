@@ -4,7 +4,7 @@
 
     <div v-else-if="armies.length === 0" class="empty-state">
       <p>No tienes ejércitos activos.</p>
-      <p class="empty-hint">Ve a la lista de feudos para reclutar tu primera unidad.</p>
+      <p class="empty-hint">Ve a la lista de territorios para reclutar tu primera unidad.</p>
     </div>
 
     <div v-else class="troops-content">
@@ -234,8 +234,8 @@ const openTransfer = (army) => {
 };
 
 const getReinforceTooltip = (army) => {
-  if (!army.is_own_fief)       return 'El ejército no está estacionado en un feudo propio';
-  if (army.fief_grace_turns > 0) return `Feudo en período de ocupación (${army.fief_grace_turns} turnos restantes)`;
+  if (!army.is_own_fief)       return 'El ejército no está estacionado en un territorio propio';
+  if (army.fief_grace_turns > 0) return `Territorio en período de ocupación (${army.fief_grace_turns} turnos restantes)`;
   return 'Reforzar ejército con nuevas tropas';
 };
 

@@ -386,7 +386,7 @@
                 </button>
               </div>
               <select v-model="marketHireH3" class="market-select">
-                <option disabled value="null">Feudo de contratación…</option>
+                <option disabled value="null">Territorio de contratación…</option>
                 <option v-for="loc in workerHireLocations" :key="loc.h3_index" :value="loc.h3_index">
                   {{ loc.is_capital ? '👑 Capital' : '🏪 ' + (loc.settlement_name || loc.h3_index) }}
                 </option>
@@ -395,7 +395,7 @@
                 class="market-btn market-btn-hire"
                 :disabled="!marketHireTypeId || !marketHireH3"
                 @click="buyWorkerFromMarketPanel(marketHireH3, marketHireTypeId)"
-                title="Contratar trabajador en el feudo seleccionado"
+                title="Contratar trabajador en el territorio seleccionado"
               >⛏️ Contratar</button>
             </div>
             <p v-if="workerHireLocations.length === 0" class="market-hint">
@@ -478,7 +478,7 @@
                   <button
                     v-else
                     class="worker-btn worker-btn-build-active"
-                    title="Construir edificio en este feudo"
+                    title="Construir edificio en este territorio"
                     @click="buildModalOpenedFromWorker = true; activePanel = null; openBuildModal(worker.h3_index)"
                   >🏛️ Construir</button>
                   <button
@@ -497,10 +497,10 @@
         <div v-if="activePanel === 'kingdom'" class="panel-section kingdom-panel">
           <div class="fiefs-list" @scroll="handleFiefsScroll">
             <div v-if="loadingFiefs" class="fiefs-empty">
-              Cargando feudos...
+              Cargando territorios...
             </div>
             <div v-else-if="myFiefs.length === 0" class="fiefs-empty">
-              No tienes feudos aún. ¡Coloniza territorios para comenzar!
+              No tienes territorios aún. ¡Coloniza territorios para comenzar!
             </div>
             <div
               v-for="fief in displayedFiefs"
@@ -534,7 +534,7 @@
               </div>
             </div>
             <div v-if="loadingMoreFiefs" class="loading-more">
-              Cargando más feudos...
+              Cargando más territorios...
             </div>
           </div>
         </div>
@@ -846,9 +846,9 @@
                   class="kingdom-action-btn-sidebar"
                   :class="{ active: activeKingdomTab === 'fiefs' }"
                   @click="activeKingdomTab = 'fiefs'"
-                  title="Ver listado de feudos"
+                  title="Ver listado de territorios"
                 >
-                  🏰 Feudos
+                  🏰 Territorios
                 </button>
                 <button
                   class="kingdom-action-btn-sidebar"
@@ -865,7 +865,7 @@
               <h4 class="sidebar-subtitle">🔍 Filtros</h4>
               <div class="kingdom-filters-vertical">
                 <div class="filter-group">
-                  <label>Nombre del feudo</label>
+                  <label>Nombre del territorio</label>
                   <input
                     v-model="kingdomFilters.name"
                     type="text"
@@ -880,7 +880,7 @@
                     class="kingdom-filter-input-sidebar"
                   >
                     <option value="">Todos</option>
-                    <option value="__none__">Sin señorío</option>
+                    <option value="__none__">Sin pagus</option>
                     <option
                       v-for="div in myDivisions"
                       :key="div.id"
@@ -902,7 +902,7 @@
 
             <div class="sidebar-section kingdom-summary">
               <h4 class="sidebar-subtitle">📊 Resumen</h4>
-              <p>Total Feudos: <strong>{{ fiefsTotalCount }}</strong></p>
+              <p>Total Celdas: <strong>{{ fiefsTotalCount }}</strong></p>
               <p>Pob. Total: <strong>{{ formatNumber(myFiefs.reduce((acc, f) => acc + Number(f.population || 0), 0)) }}</strong></p>
             </div>
           </div>
@@ -1021,10 +1021,10 @@
           <h2 class="build-modal-title">🏗️ Construir Edificio</h2>
           <button class="build-modal-close" @click="closeBuildModal" title="Cerrar">✕</button>
         </div>
-        <p class="build-modal-subtitle">Feudo: <span class="build-modal-h3">{{ buildModalH3 }}</span></p>
+        <p class="build-modal-subtitle">Celda: <span class="build-modal-h3">{{ buildModalH3 }}</span></p>
 
         <div v-if="!buildModalHasWorker" class="build-worker-warning">
-          ⛏️ Necesitas un constructor en este feudo para iniciar la obra
+          ⛏️ Necesitas un constructor en este territorio para iniciar la obra
         </div>
 
         <div class="build-cards-grid">
@@ -1050,7 +1050,7 @@
             <button
               class="build-card-btn"
               :disabled="playerGold < building.gold_cost || isConstructing || !buildModalHasWorker"
-              :title="playerGold < building.gold_cost ? `Oro insuficiente (necesitas ${building.gold_cost} 💰)` : !buildModalHasWorker ? 'Necesitas un constructor en este feudo' : `Construir ${building.name}`"
+              :title="playerGold < building.gold_cost ? `Oro insuficiente (necesitas ${building.gold_cost} 💰)` : !buildModalHasWorker ? 'Necesitas un constructor en este territorio' : `Construir ${building.name}`"
               @click="doConstruct(buildModalH3, building.id)"
             >
               {{ isConstructing ? '...' : 'Construir' }}
@@ -1071,10 +1071,10 @@
           <h2 class="build-modal-title">🏰 Ampliar Edificio</h2>
           <button class="build-modal-close" @click="closeUpgradeModal" title="Cerrar">✕</button>
         </div>
-        <p class="build-modal-subtitle">Feudo: <span class="build-modal-h3">{{ upgradeModalH3 }}</span></p>
+        <p class="build-modal-subtitle">Celda: <span class="build-modal-h3">{{ upgradeModalH3 }}</span></p>
 
         <div v-if="!upgradeModalHasWorker" class="build-worker-warning">
-          ⛏️ Necesitas un constructor en este feudo para ampliar el edificio
+          ⛏️ Necesitas un constructor en este territorio para ampliar el edificio
         </div>
 
         <div v-if="upgradeModalBuilding" class="upgrade-preview">
@@ -1091,7 +1091,7 @@
             <button
               class="build-card-btn"
               :disabled="playerGold < upgradeModalBuilding.gold_cost || isUpgrading || !upgradeModalHasWorker"
-              :title="playerGold < upgradeModalBuilding.gold_cost ? `Oro insuficiente (necesitas ${upgradeModalBuilding.gold_cost} 💰)` : !upgradeModalHasWorker ? 'Necesitas un constructor en este feudo' : `Ampliar a ${upgradeModalBuilding.name}`"
+              :title="playerGold < upgradeModalBuilding.gold_cost ? `Oro insuficiente (necesitas ${upgradeModalBuilding.gold_cost} 💰)` : !upgradeModalHasWorker ? 'Necesitas un constructor en este territorio' : `Ampliar a ${upgradeModalBuilding.name}`"
               @click="doUpgrade"
             >
               {{ isUpgrading ? '...' : 'Ampliar' }}
@@ -2284,7 +2284,7 @@ const renderWorkerMarkers = (workers, currentPlayerId) => {
           : `<button id="worker-build-btn-${h3_index}"
                style="flex:1;padding:4px 6px;border:none;border-radius:4px;
                       background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;"
-               title="Construir edificio en este feudo">🏛️ Edificio</button>`
+               title="Construir edificio en este territorio">🏛️ Edificio</button>`
         : '';
 
       const ownActions = isOwn ? `
@@ -2905,7 +2905,7 @@ const openCharPopup = (charId, isEnemy, latlng) => {
     const popupIcon   = isMain ? '👑' : char.is_heir ? '🤴' : char.age < 16 ? '🧒' : '⭐';
     const joinLeaveBtn = char.army_id
       ? `<button id="char-leave-${char.id}" class="army-action-icon" title="Abandonar ejército">🚪</button>`
-      : `<button id="char-join-${char.id}" class="army-action-icon" title="Unirse al ejército del feudo">🔗</button>`;
+      : `<button id="char-join-${char.id}" class="army-action-icon" title="Unirse al ejército del territorio">🔗</button>`;
     popupHtml = `
       <div class="char-popup">
         <div class="char-popup-header">
@@ -2974,7 +2974,7 @@ const openWorkerPopup = (h3Index, latlng) => {
   const buildBtn = isOwn
     ? canBuildBridge
       ? `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir puente (consume trabajadores)">🌉 Puente</button>`
-      : `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir edificio en este feudo">🏛️ Edificio</button>`
+      : `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir edificio en este territorio">🏛️ Edificio</button>`
     : '';
 
   const ownActions = isOwn ? `
@@ -3336,7 +3336,7 @@ const focusOnFief = (h3_index) => {
     console.log(`[Fiefs] Focused on ${h3_index}`);
   } catch (err) {
     console.error('[Fiefs] Error focusing on fief:', err);
-    showToast('Error al enfocar el feudo', 'error');
+    showToast('Error al enfocar el territorio', 'error');
   }
 };
 
@@ -4428,7 +4428,7 @@ const handleFiefsScroll = (event) => {
         myFiefs.value.length
       );
       loadingMoreFiefs.value = false;
-      console.log(`✓ Feudos cargados: ${displayedFiefsCount.value} / ${myFiefs.value.length}`);
+      console.log(`✓ Territorios cargados: ${displayedFiefsCount.value} / ${myFiefs.value.length}`);
     }, 300);
   }
 };
@@ -4855,7 +4855,7 @@ const handleCharacterJoin = async (char) => {
     // El endpoint ya filtra por player_id del jugador autenticado
     const ownArmy = data.armies?.[0];
     if (!ownArmy) {
-      showToast('⚠️ No hay ejército propio en este feudo', 'warning');
+      showToast('⚠️ No hay ejército propio en este territorio', 'warning');
       return;
     }
     await mapApi.assignArmyCommander(ownArmy.army_id, char.id);
@@ -4931,7 +4931,7 @@ const handleArmyCommander = async (army, h3_index) => {
       // Asignar personaje disponible en el hex
       const char = _char_cache.find(c => c.h3_index === h3_index && !c.army_id);
       if (!char) {
-        showToast('⚠️ No hay personaje disponible en este feudo', 'warning');
+        showToast('⚠️ No hay personaje disponible en este territorio', 'warning');
         return;
       }
       await mapApi.assignArmyCommander(army.army_id, char.id);
@@ -5777,8 +5777,8 @@ const handleArmyConquer = async (army, h3_index) => {
     // Refrescar mapa y tropas
     await Promise.all([fetchHexagonData(), fetchTroops(), fetchArmyData()]);
   } catch (err) {
-    console.error('[MapViewer] Error al conquistar feudo:', err);
-    const msg = err?.response?.data?.message || '❌ Error al conquistar el feudo';
+    console.error('[MapViewer] Error al conquistar territorio:', err);
+    const msg = err?.response?.data?.message || '❌ Error al conquistar el territorio';
     showToast(msg, 'error');
   }
 };
@@ -5993,7 +5993,7 @@ const handleRecruitmentEmit = async ({ fief, army_name, units, mode = 'field' })
  */
 const recruitUnits = async () => {
   if (!selectedRecruitmentFief.value) {
-    recruitmentMessage.value = { type: 'error', text: 'Selecciona un feudo' };
+    recruitmentMessage.value = { type: 'error', text: 'Selecciona un territorio' };
     return;
   }
   if (!selectedUnitType.value) {

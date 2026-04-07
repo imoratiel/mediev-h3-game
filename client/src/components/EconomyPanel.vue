@@ -27,10 +27,10 @@
                 <div class="res-row"><span>⛰️ Piedra</span><strong>{{ fmt(summary.total_stone) }}</strong></div>
                 <div class="res-row"><span>⛏️ Hierro</span><strong>{{ fmt(summary.total_iron) }}</strong></div>
                 -->
-                <div class="res-row eco-gold-row"><span>💰 Oro (feudos)</span><strong class="gold">{{ fmt(summary.total_gold) }}</strong></div>
+                <div class="res-row eco-gold-row"><span>💰 Oro (territorios)</span><strong class="gold">{{ fmt(summary.total_gold) }}</strong></div>
                 <div class="res-row"><span>👥 Población</span><strong>{{ fmt(summary.total_population) }}</strong></div>
               </div>
-              <p class="eco-fiefs-note">{{ summary.fief_count }} feudo{{ summary.fief_count !== 1 ? 's' : '' }} bajo tu dominio</p>
+              <p class="eco-fiefs-note">{{ summary.fief_count }} territorio{{ summary.fief_count !== 1 ? 's' : '' }} bajo tu dominio</p>
             </template>
           </div>
 
@@ -110,7 +110,7 @@
               <!-- Stats row -->
               <div class="pagus-stats">
                 <div class="pagus-stat">
-                  <span class="pstat-label">🏰 Feudos</span>
+                  <span class="pstat-label">🏰 Territorios</span>
                   <span class="pstat-value">{{ div.fief_count }}</span>
                 </div>
                 <div class="pagus-stat">

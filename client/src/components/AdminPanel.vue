@@ -310,7 +310,7 @@
                   <th class="ai-th ai-th-name">Nombre</th>
                   <th class="ai-th ai-th-num">Tipo</th>
                   <th class="ai-th ai-th-num">💰 Oro</th>
-                  <th class="ai-th ai-th-num">🏰 Feudos</th>
+                  <th class="ai-th ai-th-num">🏰 Territorios</th>
                   <th class="ai-th ai-th-act"></th>
                 </tr>
               </thead>
@@ -420,7 +420,7 @@
 
           <div v-else class="reset-confirm-box">
             <p class="reset-confirm-text">
-              ¿Seguro? Esto eliminará <strong>todos los bots, ejércitos, feudos, edificios, mensajes y notificaciones</strong>.
+              ¿Seguro? Esto eliminará <strong>todos los bots, ejércitos, territorios, edificios, mensajes y notificaciones</strong>.
               Los jugadores conservan su cuenta pero empezarán con 50.000 de oro.
             </p>
             <div class="reset-confirm-actions">
@@ -612,7 +612,7 @@ const handleDeleteAgent = async (agent) => {
   if (deletingId.value) return;
   const confirmed = confirm(
     `¿Eliminar al agente "${agent.display_name}"?\n\n` +
-    `Se borrarán sus ejércitos, mensajes, edificios y se liberarán sus ${agent.territory_count} feudos. Esta acción no se puede deshacer.`
+    `Se borrarán sus ejércitos, mensajes, edificios y se liberarán sus ${agent.territory_count} territorios. Esta acción no se puede deshacer.`
   );
   if (!confirmed) return;
   deletingId.value = agent.player_id;

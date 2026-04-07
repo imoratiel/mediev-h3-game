@@ -128,14 +128,14 @@
         </tbody>
       </table>
       <div v-if="fiefs.length === 0" class="empty-state">
-        <p>No se encontraron feudos.</p>
+        <p>No se encontraron territorios.</p>
       </div>
     </div>
 
     <!-- Pagination bar (controlled by parent) -->
     <div v-if="total > 0" class="pagination-bar">
       <span class="pagination-info">
-        {{ rangeStart }}–{{ rangeEnd }} de {{ total }} feudos
+        {{ rangeStart }}–{{ rangeEnd }} de {{ total }} territorios
       </span>
       <div class="pagination-controls">
         <button

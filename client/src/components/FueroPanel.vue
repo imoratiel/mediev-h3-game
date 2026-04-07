@@ -17,7 +17,7 @@
       <!-- Loading state -->
       <div v-if="loading" class="fuero-loading">
         <div class="fuero-spinner"></div>
-        <p>Consultando los registros del feudo...</p>
+        <p>Consultando los registros del territorio...</p>
       </div>
 
       <!-- Error state -->
@@ -42,7 +42,7 @@
               <span class="stat-value stat-mono">{{ lawsData.division.capital_h3 }}</span>
             </div>
             <div class="division-stat">
-              <span class="stat-label">Feudos</span>
+              <span class="stat-label">Territorios</span>
               <span class="stat-value">{{ lawsData.division.fief_count }} / {{ lawsData.division.rank.max_fiefs_limit }}</span>
             </div>
           </div>
@@ -72,12 +72,12 @@
 
         <div class="fuero-info-note">
           <span>🏰</span>
-          <span>Este feudo forma parte del <strong>{{ lawsData.division.name }}</strong>. Los edictos que rigen este territorio han sido proclamados por su señor.</span>
+          <span>Este territorio forma parte del <strong>{{ lawsData.division.name }}</strong>. Los edictos que rigen este territorio han sido proclamados por su señor.</span>
         </div>
 
         <div class="fuero-info-note fuero-info-recruit">
           <span>&#x2694;&#xFE0F;</span>
-          <span>Los feudos del señorío permiten reclutar hasta <strong>400 hab.</strong> por feudo. Los feudos libres solo hasta <strong>200 hab.</strong> La felicidad aumenta un <strong>+10%</strong>.</span>
+          <span>Los territorios del señorío permiten reclutar hasta <strong>400 hab.</strong> por territorio. Los territorios libres solo hasta <strong>200 hab.</strong> La felicidad aumenta un <strong>+10%</strong>.</span>
         </div>
       </div>
 
@@ -86,7 +86,7 @@
 
         <!-- Not enough contiguous fiefs warning -->
         <div v-if="!lawsData.can_found" class="fuero-warn">
-          <p>⚠️ Necesitas al menos <strong>{{ lawsData.rank.min_fiefs_required }}</strong> feudos contiguos libres para fundar un {{ lawsData.rank.territory_name }}. Tienes {{ lawsData.contiguous_fiefs.length }} conquistados.</p>
+          <p>⚠️ Necesitas al menos <strong>{{ lawsData.rank.min_fiefs_required }}</strong> territorios contiguos libres para fundar un {{ lawsData.rank.territory_name }}. Tienes {{ lawsData.contiguous_fiefs.length }} conquistados.</p>
         </div>
 
         <template v-else>
@@ -95,19 +95,19 @@
             <div class="rank-banner-icon">⚜️</div>
             <div>
               <p class="rank-banner-title">Emitir edicto para el <strong>{{ lawsData.suggested_name }}</strong></p>
-              <p class="rank-banner-sub">Maximo {{ lawsData.rank.max_fiefs_limit }} feudos por {{ lawsData.rank.territory_name }}</p>
+              <p class="rank-banner-sub">Maximo {{ lawsData.rank.max_fiefs_limit }} territorios por {{ lawsData.rank.territory_name }}</p>
             </div>
           </div>
 
           <!-- Fief count summary -->
           <div class="fuero-fiefs-summary">
             <span class="fiefs-count-badge">{{ selectedFiefs.size }}</span>
-            <span>El nuevo {{ lawsData.rank.territory_name }} constara de <strong>{{ selectedFiefs.size }} feudos</strong></span>
+            <span>El nuevo {{ lawsData.rank.territory_name }} constara de <strong>{{ selectedFiefs.size }} territorios</strong></span>
           </div>
 
           <!-- Editable division name -->
           <div class="fuero-name-field">
-            <label class="fuero-label">Nombre del señorío</label>
+            <label class="fuero-label">Nombre del Pagus</label>
             <div class="fuero-name-input-row">
               <input
                 v-model="customName"
@@ -134,7 +134,7 @@
 
           <!-- Validation error -->
           <p v-if="selectedFiefs.size < lawsData.rank.min_fiefs_required" class="fuero-error-inline">
-            ⚠️ No hay suficientes feudos contiguos ({{ selectedFiefs.size }}/{{ lawsData.rank.min_fiefs_required }}).
+            ⚠️ No hay suficientes territorios contiguos ({{ selectedFiefs.size }}/{{ lawsData.rank.min_fiefs_required }}).
           </p>
 
           <!-- Result message -->
@@ -145,7 +145,7 @@
           <!-- Recruitment cap note -->
           <div class="fuero-info-note fuero-info-recruit">
             <span>&#x2694;&#xFE0F;</span>
-            <span>Crear un señorío sube el límite de reclutamiento por feudo de <strong>200</strong> a <strong>400 hab.</strong> y aumenta la felicidad un <strong>+10%</strong>.</span>
+            <span>Crear un pagus sube el límite de reclutamiento por territorio de <strong>200</strong> a <strong>400 hab.</strong> y aumenta la felicidad un <strong>+10%</strong>.</span>
           </div>
 
           <!-- Confirm button -->
@@ -156,7 +156,7 @@
               @click="proclaim"
             >
               <span v-if="proclaiming">Proclamando...</span>
-              <span v-else>⚜️ Proclamar {{ lawsData.rank.territory_name }} ({{ selectedFiefs.size }}/{{ lawsData.rank.min_fiefs_required }} feudos)</span>
+              <span v-else>⚜️ Proclamar {{ lawsData.rank.territory_name }} ({{ selectedFiefs.size }}/{{ lawsData.rank.min_fiefs_required }} territorios)</span>
             </button>
           </div>
         </template>
@@ -239,7 +239,7 @@ async function fetchLaws() {
       emitHighlights();
     }
   } catch (err) {
-    error.value = err?.response?.data?.message || 'Error al consultar los registros del feudo.';
+    error.value = err?.response?.data?.message || 'Error al consultar los registros del territorio.';
   } finally {
     loading.value = false;
   }
@@ -297,7 +297,7 @@ async function proclaim() {
       name: customName.value.trim() || undefined,
     });
 
-    let text = `¡${data.division.name} proclamado con ${data.division.fief_count} feudos!`;
+    let text = `¡${data.division.name} proclamado con ${data.division.fief_count} territorios!`;
     if (data.name_changed) {
       text += ` (El nombre "${data.original_name}" ya estaba en uso — se asignó "${data.division.name}" automáticamente.)`;
     }

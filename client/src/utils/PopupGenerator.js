@@ -194,7 +194,7 @@ export function generateCellPopupContent(cell, config) {
 
   // Recruit button - requires active military building (conservation > 20)
   if (cell.player_id === playerId && buildingActive && cell.fief_building.type_name === 'military') {
-    popupContent += `<button id="recruit-btn-${h3_index}" class="btn-popup btn-recruit" title="Reclutar tropas en este feudo">⚔️ Reclutar</button>`;
+    popupContent += `<button id="recruit-btn-${h3_index}" class="btn-popup btn-recruit" title="Reclutar tropas en este territorio">⚔️ Reclutar</button>`;
   }
 
   // Nueva Flota button - requires active maritime building (conservation > 20)
@@ -204,7 +204,7 @@ export function generateCellPopupContent(cell, config) {
 
   // Fueros y Leyes button - requires active Fortaleza (conservation > 20)
   if (cell.player_id === playerId && buildingActive && cell.fief_building.name === 'Fortaleza') {
-    popupContent += `<button id="fueros-btn-${h3_index}" class="btn-popup btn-fueros" title="Gestionar Edictos de este feudo">📜 Edictos</button>`;
+    popupContent += `<button id="fueros-btn-${h3_index}" class="btn-popup btn-fueros" title="Gestionar Edictos de este territorio">📜 Edictos</button>`;
   }
 
   // "Fundar Capital" button:
@@ -260,7 +260,7 @@ export function generateCellPopupContent(cell, config) {
           <button id="buy-worker-btn-${h3_index}"
             class="btn-popup"
             style="background:#b45309;border-color:#92400e;white-space:nowrap;"
-            title="Contratar trabajador en este feudo">
+            title="Contratar trabajador en este territorio">
             ⛏️ Contratar
           </button>
         </div>
@@ -488,7 +488,7 @@ export function generateArmyPopup(armyData, config) {
         const cmdClass = canAssign ? 'army-action-icon' : 'army-action-icon army-action-disabled';
         const cmdTitle = canAssign
           ? `Asignar ${characterAtHex.name} como comandante`
-          : 'No hay personaje disponible en este feudo';
+          : 'No hay personaje disponible en este territorio';
         popupContent += `<button id="army-commander-${army.army_id}" class="${cmdClass}" ${!canAssign ? 'disabled' : ''} title="${cmdTitle}">👑</button>`;
       }
 

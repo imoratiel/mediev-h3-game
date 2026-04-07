@@ -5,7 +5,7 @@
       <p v-if="fief" class="recruitment-subtitle">
         Reclutando en <strong>{{ fief.name }}</strong>
       </p>
-      <p v-else class="recruitment-subtitle">Selecciona un feudo desde la tabla para reclutar</p>
+      <p v-else class="recruitment-subtitle">Selecciona un territorio desde la tabla para reclutar</p>
 
       <!-- Recruitable pool indicator -->
       <div v-if="fief" class="recruitable-pool-bar">
@@ -34,7 +34,7 @@
           {{ armyCount }}/{{ armyLimit }}
         </span>
         <span v-if="armyCount >= armyLimit" class="army-capacity-hint">
-          — Necesitas más feudos para comandar más ejércitos
+          — Necesitas más territorios para comandar más ejércitos
         </span>
       </div>
     </div>
@@ -49,7 +49,7 @@
           <!-- DISABLED: <div class="resource-pill">⛏️ Hierro: {{ formatNumber(fief.iron) }}</div> -->
         </div>
         <button class="btn-back-to-fiefs" @click="$emit('back')">
-          ← Volver a la lista de feudos
+          ← Volver a la lista de territorios
         </button>
       </div>
 
@@ -124,7 +124,7 @@
       <div v-else class="recruitment-section garrison-info">
         <h4>2. Acuartelamiento</h4>
         <p class="garrison-desc">
-          Las tropas quedarán guarnecidas en este feudo. No podrán moverse pero defenderán el territorio
+          Las tropas quedarán guarnecidas en este territorio. No podrán moverse pero defenderán el territorio
           y se beneficiarán de los bonus del edificio militar.
           Si ya existe una guarnición, las nuevas tropas se incorporarán a ella.
         </p>
@@ -132,8 +132,8 @@
     </div>
 
     <div v-else class="empty-state">
-      <p>Debes seleccionar un feudo desde la tabla del reino para reclutar tropas.</p>
-      <button class="btn-back-to-fiefs" @click="$emit('back')">Ver Lista de Feudos</button>
+      <p>Debes seleccionar un territorio desde la tabla del reino para reclutar tropas.</p>
+      <button class="btn-back-to-fiefs" @click="$emit('back')">Ver Lista de Territorios</button>
     </div>
 
     <!-- Sticky summary footer -->
@@ -160,7 +160,7 @@
       <button
         class="btn-recruit"
         :disabled="!canBulkRecruit || isRecruiting || (recruitMode === 'field' && armyCount >= armyLimit)"
-        :title="recruitMode === 'field' && armyCount >= armyLimit ? 'Necesitas más feudos para comandar más ejércitos' : ''"
+        :title="recruitMode === 'field' && armyCount >= armyLimit ? 'Necesitas más territorios para comandar más ejércitos' : ''"
         @click="handleBulkRecruit"
       >
         <template v-if="isRecruiting">Procesando...</template>

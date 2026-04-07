@@ -664,7 +664,7 @@ class KingdomService {
             await client.query('COMMIT');
 
             Logger.action(`Player ${player_id} conquered ${h3_index} (prev owner: ${currentOwner}, result: ${result})`, { player_id, h3_index, previous_owner: currentOwner, result, cascaded: cascadedFiefs.length });
-            logGameEvent(`[CONQUISTA] Jugador ${player_id} conquistó ${h3_index} (dueño anterior: ${currentOwner}) — ${isCapital ? `¡CAPITAL! Cascada: ${cascadedFiefs.length} feudos` : 'feudo normal'}`);
+            logGameEvent(`[CONQUISTA] Jugador ${player_id} conquistó ${h3_index} (dueño anterior: ${currentOwner}) — ${isCapital ? `¡CAPITAL! Cascada: ${cascadedFiefs.length} territorios` : 'territorio normal'}`);
 
             return res.json({
                 success: true,
