@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.7.0...v0.8.0) (2026-04-07)
+
+
+### Nuevas funcionalidades
+
+* evitar acciones durante el cambio de turno ([17963b7](https://github.com/imoratiel/hipania210ac-game/commit/17963b713ba5c05ecf0db26c2f7e04f206573ac7))
+
+
+### Correcciones
+
+* limite de ejercitos basados en el rango, hasta ahora no había límite ([7182889](https://github.com/imoratiel/hipania210ac-game/commit/718288928b2f36784a9ea85091c4e5be22d53ebd))
+
 ## [0.7.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.6.0...v0.7.0) (2026-04-07)
 
 
