@@ -606,6 +606,7 @@
             :gameDate="gameDate"
             @read="handleNotificationRead"
             @readTab="handleNotificationsReadTab"
+            @focusHex="focusAndHighlightHex"
           />
         </div>
 
@@ -1627,6 +1628,7 @@ const toasts = ref([]);
 let toastIdCounter = 0;
 
 let map = null;
+let _highlightLayer = null; // Polígono de resalte de notificación
 let hexagonLayer = null;
 let settlementMarkersLayer = null;
 let settlementMarkersMap = {}; // Map: settlement name -> marker
@@ -3328,6 +3330,40 @@ const focusOnFief = (h3_index) => {
   } catch (err) {
     console.error('[Fiefs] Error focusing on fief:', err);
     showToast('Error al enfocar el feudo', 'error');
+  }
+};
+
+/**
+ * Centra el mapa en un hex y lo resalta con un polígono hasta que el usuario
+ * haga click en otro lugar.
+ */
+const focusAndHighlightHex = (h3_index) => {
+  if (!map || !h3_index) return;
+  try {
+    // Eliminar resalte previo
+    if (_highlightLayer) { _highlightLayer.remove(); _highlightLayer = null; }
+
+    const [lat, lng] = cellToLatLng(h3_index);
+    map.flyTo([lat, lng], 11, { duration: 1.0 });
+
+    // Construir polígono con los vértices del hex
+    const boundary = cellToBoundary(h3_index); // [[lat,lng], ...]
+    _highlightLayer = L.polygon(boundary, {
+      color:       '#ffe066',
+      weight:      3,
+      opacity:     1,
+      fillColor:   '#ffe066',
+      fillOpacity: 0.22,
+      dashArray:   '6 4',
+      interactive: false,
+    }).addTo(map);
+
+    // Borrar al primer click en el mapa
+    map.once('click', () => {
+      if (_highlightLayer) { _highlightLayer.remove(); _highlightLayer = null; }
+    });
+  } catch (err) {
+    console.error('[Notification] Error focusing hex:', err);
   }
 };
 
