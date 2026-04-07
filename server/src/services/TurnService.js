@@ -25,7 +25,8 @@ class TurnService {
                 success: true,
                 turn: state.current_turn,
                 date: { day: state.day, month: state.month, year: state.year, era: state.era },
-                is_paused: state.is_paused
+                is_paused: state.is_paused,
+                is_processing: state.is_processing ?? false,
             });
         } catch (error) {
             Logger.error(error, { endpoint: '/game/world-state', method: 'GET', userId: req.user?.player_id });

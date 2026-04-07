@@ -19,7 +19,7 @@ class TurnModel {
         return result.rows[0];
     }
     async GetWorldState() {
-        const result = await db.query(`SELECT current_turn, is_paused, ${DATE_PARTS_SQL} FROM world_state WHERE id = 1`);
+        const result = await db.query(`SELECT current_turn, is_paused, is_processing, ${DATE_PARTS_SQL} FROM world_state WHERE id = 1`);
         return result.rows[0];
     }
     async SetGamePaused() {

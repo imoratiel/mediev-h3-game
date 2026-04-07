@@ -88,6 +88,9 @@
           </div>
         </div>
         <div class="header-date">
+          <div v-if="isTurnProcessing" class="turn-processing-banner">
+            ⏳ Calculando turno…
+          </div>
           <div class="date-row">
             <span class="date-icon">📅</span>
             <span class="date-value">{{ formattedDate }}</span>
@@ -1259,6 +1262,7 @@ const explorationConfig = ref({ turns_required: 5, gold_cost: 100 }); // Configu
 const currentTurn = ref(1);
 const gameDate = ref({ day: 1, month: 1, year: 210, era: 'BC' });
 const formattedDate = ref('1 de marzo de 1039');
+const isTurnProcessing = ref(false);
 
 // Day of year based on current turn (1-365)
 const dayOfYear = computed(() => {
@@ -3097,6 +3101,7 @@ const fetchWorldState = async () => {
       gameDate.value = data.date;
       formattedDate.value = formatDate(gameDate.value);
       dayOfYear.value = currentTurn.value % 365;
+      isTurnProcessing.value = data.is_processing ?? false;
       console.log(`✓ World state loaded: Turn ${currentTurn.value}, Day ${dayOfYear.value}/365, Date ${formattedDate.value}`);
     }
   } catch (err) {
@@ -3169,6 +3174,7 @@ const syncWithServer = async () => {
     const response = await mapApi.getWorldState();
 
     if (response.success) {
+      isTurnProcessing.value = response.is_processing ?? false;
       const serverTurn = response.turn;
       const serverDate = response.date;
 
@@ -4637,6 +4643,19 @@ const showToast = (message, type = 'info') => {
       }, 300); // Match CSS animation duration
     }
   }, 3000);
+};
+
+/**
+ * Extrae el mensaje de un error de API y muestra un toast.
+ * Detecta el flag turn_processing para mostrar un mensaje específico.
+ */
+const handleApiError = (err, fallback = 'Error desconocido') => {
+  if (err?.turnProcessing) {
+    showToast('⏳ El servidor está calculando el turno. Inténtalo en unos segundos.', 'warning');
+  } else {
+    const msg = err?.response?.data?.message || err?.message || fallback;
+    showToast(msg, 'error');
+  }
 };
 
 /**
@@ -7158,6 +7177,22 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 4px;
   font-size: 11px;
+}
+
+.turn-processing-banner {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #ffe066;
+  background: rgba(255, 224, 102, 0.12);
+  border: 1px solid rgba(255, 224, 102, 0.35);
+  border-radius: 3px;
+  padding: 3px 7px;
+  text-align: center;
+  animation: pulse-turn 1.4s ease-in-out infinite;
+}
+@keyframes pulse-turn {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
 }
 
 .date-row {

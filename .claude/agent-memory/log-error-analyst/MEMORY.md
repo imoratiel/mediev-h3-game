@@ -71,6 +71,14 @@
 - **Fix estructural**: Añadir `lock_timeout` en las queries de combate del endpoint, o usar transacciones más cortas en el motor (COMMIT por ejército en lugar de COMMIT global del turno).
 - **Archivos implicados**: `server/src/logic/turn_engine.js` (processArmyRecovery usa transacciones largas), `server/src/services/CombatService.js` (attackSpecificArmy no tiene lock_timeout).
 
+## Ruta del Pool (`pool`) en Middlewares y Services
+
+- El pool de PostgreSQL está en `server/db.js` (raíz del servidor), NO en `src/config/db`
+- Desde `server/src/middleware/`: `require('../../db.js')`
+- Patrón confirmado en `auth.js` línea 4: `const pool = require('../../db.js');`
+- Bug recurrente al crear nuevos middlewares: usar `require('../config/db')` → `MODULE_NOT_FOUND` → crash-loop Docker
+- El pool se exporta directamente: `const pool = require(...)` sin destructuring (`{ pool }`)
+
 ## Archivos Clave
 
 - Motor: `server/src/logic/turn_engine.js`

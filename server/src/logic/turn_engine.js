@@ -1285,6 +1285,9 @@ async function processActionCooldowns(client, turn) {
  * @returns {Object} Turn result with success status
  */
 async function processGameTurn(pool, config) {
+    // Activar flag de procesamiento (fuera de transacción para que sea visible inmediatamente)
+    await pool.query('UPDATE world_state SET is_processing = TRUE WHERE id = 1');
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1293,6 +1296,7 @@ async function processGameTurn(pool, config) {
         const pauseCheck = await client.query('SELECT is_paused FROM world_state WHERE id = 1');
         if (pauseCheck.rows[0]?.is_paused === true) {
             await client.query('ROLLBACK');
+            await pool.query('UPDATE world_state SET is_processing = FALSE WHERE id = 1');
             return { success: false, message: 'Game is paused', paused: true };
         }
 
@@ -1539,6 +1543,8 @@ async function processGameTurn(pool, config) {
         throw error;
     } finally {
         if (client) client.release();
+        // Desactivar flag siempre, incluso si hubo error
+        await pool.query('UPDATE world_state SET is_processing = FALSE WHERE id = 1').catch(() => {});
     }
 }
 
