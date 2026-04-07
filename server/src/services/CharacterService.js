@@ -768,7 +768,7 @@ class CharacterService {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Necesitas un ejército estacionado en el mismo feudo.' });
             }
-            const { troop_count, culture_id } = armyResult.rows[0];
+            const { army_id: foundArmyId, troop_count, culture_id } = armyResult.rows[0];
 
             // 4. Turno actual para notificaciones
             const turnResult = await client.query(
@@ -851,7 +851,7 @@ class CharacterService {
             }
 
             // 8. Captura exitosa
-            await CharacterModel.setCaptive(client, char.id, attackerArmyId, char.level);
+            await CharacterModel.setCaptive(client, char.id, foundArmyId, char.level);
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
                 `⛓️ **${char.name}** ha sido capturado por el enemigo.`,
