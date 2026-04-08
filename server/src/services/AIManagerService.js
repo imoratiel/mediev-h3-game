@@ -186,12 +186,14 @@ class AIManagerService {
                 'SELECT id FROM cultures ORDER BY RANDOM() LIMIT 1'
             );
             const aiCultureId = cultureResult.rows[0]?.id ?? null;
+            let aiArmyLimit = 2;
             if (aiCultureId) {
                 const rankResult = await client.query(
-                    'SELECT id FROM noble_ranks WHERE culture_id = $1 AND level_order = 1 LIMIT 1',
+                    'SELECT id, army_limit FROM noble_ranks WHERE culture_id = $1 AND level_order = 1 LIMIT 1',
                     [aiCultureId]
                 );
                 const aiRankId = rankResult.rows[0]?.id ?? null;
+                aiArmyLimit    = rankResult.rows[0]?.army_limit ?? 2;
                 await client.query(
                     'UPDATE players SET culture_id = $1, noble_rank_id = $2 WHERE player_id = $3',
                     [aiCultureId, aiRankId, aiPlayerId]
@@ -296,7 +298,7 @@ class AIManagerService {
             });
 
             // ── Ejércitos de prueba (solo perfil dummy) ───────────────────────
-            if (profile === 'dummy' && bonusHexes.length >= 3) {
+            if (profile === 'dummy' && bonusHexes.length >= 1) {
                 const unitResult = await client.query(
                     `SELECT unit_type_id FROM unit_types
                      WHERE culture_id = $1 AND unit_class = 'INFANTRY_1'
@@ -305,8 +307,11 @@ class AIManagerService {
                 );
                 const basicUnitId = unitResult.rows[0]?.unit_type_id;
                 if (basicUnitId) {
-                    const armyHexes = bonusHexes.slice(0, 3);
-                    for (const [i, qty] of [[0, 100], [1, 10], [2, 1]]) {
+                    const allSizes   = [[100], [10], [1]];
+                    const sizesToUse = allSizes.slice(0, aiArmyLimit);
+                    const armyHexes  = bonusHexes.slice(0, sizesToUse.length);
+                    for (let i = 0; i < sizesToUse.length; i++) {
+                        const qty = sizesToUse[i][0];
                         const armyResult = await client.query(
                             `INSERT INTO armies (player_id, name, h3_index, food_provisions, gold_provisions, wood_provisions)
                              VALUES ($1, $2, $3, 0, 0, 0) RETURNING army_id`,
@@ -318,7 +323,8 @@ class AIManagerService {
                             [armyResult.rows[0].army_id, basicUnitId, qty]
                         );
                     }
-                    Logger.action(`[ACTION][${aiName}]: Ejércitos dummy creados (100/10/1) en ${armyHexes.join(', ')}`);
+                    const qtys = sizesToUse.map(s => s[0]).join('/');
+                    Logger.action(`[ACTION][${aiName}]: Ejércitos dummy creados (${qtys}) en ${armyHexes.join(', ')}`);
                 }
             }
 
