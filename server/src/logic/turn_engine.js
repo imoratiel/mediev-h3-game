@@ -41,6 +41,20 @@ async function processHarvest(client, turn, config) {
             WHERE m.player_id IS NOT NULL
         `);
 
+        // ── Pre-calcular: pagus con Mercado activo ────────────────────────────────
+        // Un solo Mercado por pagus activa el bono; tener dos no añade efecto extra.
+        const marketPagusResult = await client.query(`
+            SELECT DISTINCT td.division_id
+            FROM territory_details td
+            JOIN fief_buildings fb ON fb.h3_index = td.h3_index
+            JOIN buildings b ON b.id = fb.building_id
+            WHERE b.name = 'Mercado'
+              AND fb.is_under_construction = FALSE
+              AND fb.conservation > 0
+              AND td.division_id IS NOT NULL
+        `);
+        const pagusWithMarket = new Set(marketPagusResult.rows.map(r => r.division_id));
+
         for (const player of playersResult.rows) {
             try {
                 // Calculate production for this player's territories
@@ -61,6 +75,7 @@ async function processHarvest(client, turn, config) {
                 let totalIronProduced = 0;
                 let totalGoldProduced = 0;
                 const miracleHarvests = []; // Tracks miracle events for the notification
+                let marketFamineBonusUsed = false; // True si algún feudo en hambruna usó bono de Mercado
 
                 // Process each territory
                 for (const territory of territories.rows) {
@@ -79,6 +94,21 @@ async function processHarvest(client, turn, config) {
                     woodProduction = Math.floor(woodProduction * lumberMultiplier);
                     stoneProduction = Math.floor(stoneProduction * mineMultiplier);
                     ironProduction = Math.floor(ironProduction * mineMultiplier);
+
+                    // ── BONO DE MERCADO ───────────────────────────────────────────────────
+                    // Si el pagus tiene al menos un Mercado activo:
+                    //   · Feudo normal     → +3% producción de comida
+                    //   · Feudo en hambruna → +15% producción de comida (penaliza oro al jugador)
+                    // Tener dos Mercados en el mismo pagus no acumula bonificación.
+                    if (territory.division_id && pagusWithMarket.has(territory.division_id)) {
+                        if ((territory.food_stored || 0) <= 0) {
+                            foodProduction = Math.floor(foodProduction * 1.15);
+                            marketFamineBonusUsed = true;
+                        } else {
+                            foodProduction = Math.floor(foodProduction * 1.03);
+                        }
+                    }
+                    // ─────────────────────────────────────────────────────────────────────
 
                     // ── EMERGENCY HARVEST ────────────────────────────────────────────────
                     // If the fief cannot sustain even one more day of consumption after this
@@ -152,6 +182,27 @@ async function processHarvest(client, turn, config) {
                     WHERE player_id = $2
                 `, [netGold, player.player_id]);
 
+                // ── MERCADO: penalización de oro por hambruna ─────────────────────────
+                // Si algún feudo en hambruna recibió el bono de emergencia del Mercado,
+                // el jugador pierde el 15% de su oro total (coste de importar alimentos).
+                let marketGoldPenalty = 0;
+                if (marketFamineBonusUsed) {
+                    const goldRow = await client.query(
+                        'SELECT gold FROM players WHERE player_id = $1',
+                        [player.player_id]
+                    );
+                    const currentGold = parseInt(goldRow.rows[0]?.gold) || 0;
+                    marketGoldPenalty = Math.floor(currentGold * 0.15);
+                    if (marketGoldPenalty > 0) {
+                        await client.query(
+                            'UPDATE players SET gold = GREATEST(0, gold - $1) WHERE player_id = $2',
+                            [marketGoldPenalty, player.player_id]
+                        );
+                    }
+                    Logger.engine(`[TURN ${turn}] 🏪 Mercado hambruna: −${marketGoldPenalty} oro para jugador ${player.player_id}`);
+                }
+                // ─────────────────────────────────────────────────────────────────────
+
                 // Generate harvest notification
                 const miracleSection = miracleHarvests.length > 0
                     ? `\n\n✨ **¡Cosecha Milagrosa!**\n` +
@@ -159,6 +210,12 @@ async function processHarvest(client, turn, config) {
                       miracleHarvests.map(m =>
                           `• ${fmtHex(m.h3_index)}: ×${m.multiplier.toFixed(2)} (+${m.bonus} comida extra)`
                       ).join('\n')
+                    : '';
+
+                const marketSection = marketFamineBonusUsed
+                    ? `\n\n🏪 **Mercado — Suministro de Emergencia**\n` +
+                      `Feudos en hambruna recibieron el +15% de producción gracias al Mercado.\n` +
+                      `• Coste de importación: −${marketGoldPenalty.toLocaleString('es-ES')} oro (15% de reservas)`
                     : '';
 
                 const messageBody = `
@@ -174,7 +231,7 @@ async function processHarvest(client, turn, config) {
 • Comida: ${netFood >= 0 ? '+' : ''}${netFood}
 • Oro: ${netGold >= 0 ? '+' : ''}${netGold}
 
-${territories.rows.length > 0 ? `Territorios productivos: ${territories.rows.length}` : '⚠️ No tienes territorios productivos este turno'}${miracleSection}
+${territories.rows.length > 0 ? `Territorios productivos: ${territories.rows.length}` : '⚠️ No tienes territorios productivos este turno'}${miracleSection}${marketSection}
                 `.trim();
 
                 await NotificationService.createSystemNotification(player.player_id, 'Económico', messageBody, turn);
