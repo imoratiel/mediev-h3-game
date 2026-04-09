@@ -21,9 +21,9 @@ class MessageService {
     }
     async SendMessage(req,res){
         try {
-            const { recipient_username, subject, body } = req.body;
+            const { recipient_display_name, subject, body } = req.body;
 
-            const receiver = await PlayerModel.GetPlayerIdByUsername(recipient_username);
+            const receiver = await PlayerModel.GetPlayerIdByDisplayName(recipient_display_name);
 
             if (receiver.rows.length === 0) return res.status(404).json({ success: false, message: 'Destinatario no encontrado' });
 

@@ -53,7 +53,7 @@ const EXPANSIONIST = {
     GOLD_RESERVE:        3_000,   // Never go below this
     RECRUIT_QUANTITY:    100,     // Larger batches for aggression
     GOLD_TO_BUILD_FORTRESS: 20_000, // Oro mínimo para Fortaleza (ya tiene Cuarteles)
-    PAGUS_MIN_TERRITORIES:  8,      // Expansionista consolida más territorio antes del pagus
+    PAGUS_MIN_TERRITORIES:  5,      // Territorios mínimos para iniciar cadena pagus (o antes si al límite de ejércitos)
     COLORS: ['#C0392B','#1A5276','#1E8449','#7D3C98','#D4AC0D','#117A65','#BA4A00','#2E4057','#6C3483','#0E6655'],
     // Cell scoring weights for _loadCandidateHexes
     // High adjacency weight = aggressively fills gaps; low resource = not picky about terrain
@@ -820,8 +820,8 @@ class AIManagerService {
 
             await this._expansionistRecruitment(client, playerId, botName, state, turn); // B: Recruit
             await this._expansionistConstruction(client, playerId, botName, state, turn); // C: Build (cuarteles)
-            // C+: Fortaleza en capital cuando tiene suficientes territorios
-            if (!state.hasPagus && state.territories.length >= EXPANSIONIST.PAGUS_MIN_TERRITORIES) {
+            // C+: Fortaleza en capital — cuando tiene suficientes territorios O está al límite de ejércitos
+            if (!state.hasPagus && (state.territories.length >= EXPANSIONIST.PAGUS_MIN_TERRITORIES || state.atArmyLimit)) {
                 await this._botBuildFortaleza(client, playerId, botName, state, EXPANSIONIST.GOLD_TO_BUILD_FORTRESS, turn);
             }
             await client.query('COMMIT');
@@ -899,6 +899,19 @@ class AIManagerService {
 
             const hasPagus = territories.some(t => t.division_id != null);
 
+            // Capacidad de ejércitos (para activar modo pagus cuando está al límite)
+            const capacityResult = await client.query(`
+                SELECT
+                    (SELECT COUNT(*) FROM armies WHERE player_id = $1 AND NOT is_garrison AND NOT is_naval)::int AS army_count,
+                    COALESCE(nr.army_limit, 2) AS army_limit
+                FROM players p
+                LEFT JOIN noble_ranks nr ON nr.id = p.noble_rank_id
+                WHERE p.player_id = $1
+            `, [playerId]);
+            const fieldArmyCount = capacityResult.rows[0]?.army_count ?? 0;
+            const armyLimit      = parseInt(capacityResult.rows[0]?.army_limit) || 2;
+            const atArmyLimit    = fieldArmyCount >= armyLimit;
+
             // Capitales de pagus enemigas, con distancia mínima al territorio del bot
             // y estimación de la población de la capital (proxy de la dificultad de conquista)
             const enemyCapitalsResult = await client.query(`
@@ -930,6 +943,7 @@ class AIManagerService {
                 recruitLocations,
                 hasPagus,
                 enemyCapitals,
+                fieldArmyCount, armyLimit, atArmyLimit,
             };
         } finally {
             client.release();
@@ -1813,10 +1827,16 @@ class AIManagerService {
 
             await client.query('COMMIT');
 
-            // 9. Calcular boundary (fuera de transacción)
+            // 9. Promover rango noble (army_limit aumenta con el señorío)
+            await pool.query(
+                'UPDATE players SET noble_rank_id = $1 WHERE player_id = $2',
+                [senorioRank.id, playerId]
+            );
+
+            // 10. Calcular boundary (fuera de transacción)
             await MapService.generateDivisionBoundary(division.id);
 
-            Logger.bot(playerId, `[TURN ${turn}] 🏰 Fundó pagus "${divisionName}" (capital: ${capitalH3}, feudos: ${contiguous.length})`);
+            Logger.bot(playerId, `[TURN ${turn}] 🏰 Fundó pagus "${divisionName}" (capital: ${capitalH3}, feudos: ${contiguous.length}, rango: ${senorioRank.id})`);
 
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -1936,17 +1956,17 @@ class AIManagerService {
      * Prefers unclaimed hexes; attacks enemy fiefs if none are available.
      */
     async _expansionistExpansion(client, playerId, botName, state, turn) {
-        // Modo cierre de huecos: si tiene suficientes territorios y aún no hay pagus,
-        // priorizar hexes con muchos vecinos propios antes de atacar territorio enemigo.
+        // Modo cierre de huecos: si tiene suficientes territorios O está al límite de ejércitos
+        // y aún no tiene pagus — priorizar hexes contiguos para completar el bloque de señorío.
         let weights = EXPANSIONIST.SCORE_WEIGHTS;
-        if (!state.hasPagus && state.territories.length >= EXPANSIONIST.PAGUS_MIN_TERRITORIES) {
+        if (!state.hasPagus && (state.territories.length >= EXPANSIONIST.PAGUS_MIN_TERRITORIES || state.atArmyLimit)) {
             const hasGaps = state.candidateSet.some(hex => {
                 const owned = h3.gridDisk(hex, 1).filter(n => n !== hex && state.ownedSet.has(n));
                 return owned.length >= 3;
             });
             if (hasGaps) {
                 weights = EXPANSIONIST.PAGUS_GAP_WEIGHTS;
-                Logger.bot(playerId, `[TURN ${turn}] 🔲 Expansionista: modo cierre de huecos activo`);
+                Logger.bot(playerId, `[TURN ${turn}] 🔲 Expansionista: modo cierre de huecos activo (ejércitos: ${state.fieldArmyCount}/${state.armyLimit})`);
             }
         }
 

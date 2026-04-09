@@ -788,12 +788,12 @@
             <h2 class="column-title">Redactar</h2>
             <form class="message-compose-form" @submit.prevent="sendMessage">
               <div class="form-group">
-                <label for="msg-recipient">Para (Usuario):</label>
+                <label for="msg-recipient">Para (Personaje):</label>
                 <input
                   id="msg-recipient"
                   v-model="messageRecipient"
                   type="text"
-                  placeholder="Nombre de usuario"
+                  placeholder="Nombre del personaje"
                   required
                 />
               </div>
@@ -803,8 +803,7 @@
                   id="msg-subject"
                   v-model="messageSubject"
                   type="text"
-                  placeholder="Asunto del mensaje"
-                  required
+                  placeholder="Asunto del mensaje (opcional)"
                 />
               </div>
               <div class="form-group">
@@ -4340,9 +4339,8 @@ const selectMessage = async (message) => {
  * Reply to a message
  */
 const replyToMessage = (message) => {
-  // Determine recipient (if we sent it, reply to receiver; if we received it, reply to sender)
-  const isOurMessage = message.sender_id === playerId.value;
-  messageRecipient.value = isOurMessage ? message.receiver_username : message.sender_username;
+  // Respond to whoever wrote the message being replied to (always the sender)
+  messageRecipient.value = message.sender_username;
 
   // Add Re: to subject if not already there
   messageSubject.value = message.subject.startsWith('Re:')
@@ -4359,8 +4357,8 @@ const replyToMessage = (message) => {
  * Send a new message
  */
 const sendMessage = async () => {
-  if (!messageRecipient.value || !messageSubject.value || !messageBody.value) {
-    showToast('Por favor completa todos los campos', 'warning');
+  if (!messageRecipient.value || !messageBody.value) {
+    showToast('Por favor completa el destinatario y el mensaje', 'warning');
     return;
   }
 
@@ -4368,7 +4366,7 @@ const sendMessage = async () => {
     sendingMessage.value = true;
 
     const payload = {
-      recipient_username: messageRecipient.value,
+      recipient_display_name: messageRecipient.value,
       subject: messageSubject.value,
       body: messageBody.value
     };
