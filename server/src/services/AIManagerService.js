@@ -34,6 +34,8 @@ const CharacterModel         = require('../models/CharacterModel');
 const CharacterNameGenerator = require('../logic/CharacterNameGenerator');
 const infrastructure = require('../logic/infrastructure');
 const CONFIG         = require('../config.js');
+const { findContiguousFiefs }   = require('../logic/contiguitySearch.js');
+const { getUniqueDivisionName } = require('../logic/NamingService.js');
 
 // ── Constantes del perfil Dummy (no hace nada, solo ocupa territorio) ────────
 const DUMMY = {
@@ -50,10 +52,13 @@ const EXPANSIONIST = {
     GOLD_TO_EXPAND:          0,   // No gold threshold — always tries to expand
     GOLD_RESERVE:        3_000,   // Never go below this
     RECRUIT_QUANTITY:    100,     // Larger batches for aggression
+    GOLD_TO_BUILD_FORTRESS: 20_000, // Oro mínimo para Fortaleza (ya tiene Cuarteles)
+    PAGUS_MIN_TERRITORIES:  8,      // Expansionista consolida más territorio antes del pagus
     COLORS: ['#C0392B','#1A5276','#1E8449','#7D3C98','#D4AC0D','#117A65','#BA4A00','#2E4057','#6C3483','#0E6655'],
     // Cell scoring weights for _loadCandidateHexes
     // High adjacency weight = aggressively fills gaps; low resource = not picky about terrain
     SCORE_WEIGHTS: { resource: 0.5, adjacency: 4.0 },
+    PAGUS_GAP_WEIGHTS: { resource: 0.2, adjacency: 8.0 },
 };
 
 // ── Constantes del perfil Equilibrado ────────────────────────────────────────
@@ -67,9 +72,12 @@ const BALANCED = {
     RECRUIT_QUANTITY:     40,
     GARRISON_RATIO:       0.30,    // Maintain 30% of total population as troops
     FOOD_GOLD_RATIO_MIN:  0.30,    // food_stored / gold: below this → prioritize food terrain
+    GOLD_TO_BUILD_FORTRESS: 15_000, // Oro mínimo para Cuartel/Fortaleza (pagus)
+    PAGUS_MIN_TERRITORIES:  6,      // Territorios mínimos para activar cierre de huecos
     COLORS: ['#1565C0','#1976D2','#283593','#0D47A1','#0288D1','#01579B','#006064','#00695C'],
     // Cell scoring weights: balanced between resources and contiguity
     SCORE_WEIGHTS: { resource: 0.8, adjacency: 3.0 },
+    PAGUS_GAP_WEIGHTS: { resource: 0.3, adjacency: 8.0 },
 };
 
 // ── Constantes del perfil Agricultor ─────────────────────────────────────────
@@ -85,9 +93,13 @@ const FARMER = {
     RECRUIT_QUANTITY:    50,      // Tropas a reclutar en respuesta a amenaza
     FARM_MAX_LEVEL:      5,        // Nivel máximo de granja
     GOLD_TO_UPGRADE_FARM: 5_000,  // Gold mínimo para iniciar mejora de granja
+    GOLD_TO_BUILD_FORTRESS: 18_000, // Oro mínimo para construir Cuartel/Fortaleza (pagus)
+    PAGUS_MIN_TERRITORIES:  6,      // Territorios mínimos para activar cierre de huecos
     COLORS: ['#8B7355','#6B8E23','#A0522D','#556B2F','#8FBC8F','#BC8F5F','#9ACD32','#DEB887'],
     // Cell scoring weights: strong resource preference (food focus), moderate gap-fill
     SCORE_WEIGHTS: { resource: 1.0, adjacency: 2.0 },
+    // Weights for gap-closing mode (pre-pagus): adjacency dominates over resources
+    PAGUS_GAP_WEIGHTS: { resource: 0.3, adjacency: 8.0 },
 };
 
 class AIManagerService {
@@ -413,7 +425,7 @@ class AIManagerService {
 
     /**
      * Ciclo de decisión del perfil Agricultor.
-     * Prioridad: A (amenaza) → B (construcción) → C (expansión)
+     * Prioridad: A (amenaza) → B (granjas) → C (mercado) → D (fortaleza) → E (expansión) → F (pagus)
      */
     async _processFarmerTurn(agent, turn) {
         const { player_id: playerId, display_name: botName } = agent;
@@ -422,7 +434,7 @@ class AIManagerService {
         if (!state || state.territories.length === 0) return; // IA sin territorios
 
         if (state.isThreatened) {
-            // En modo defensivo: solo recluta, omite construcción y expansión
+            // En modo defensivo: solo recluta, omite el resto
             if (state.totalTroops < FARMER.MIN_TROOPS_DEFEND) {
                 await this._farmerThreatResponse(state, playerId, botName, turn);
             } else {
@@ -431,11 +443,11 @@ class AIManagerService {
             return;
         }
 
-        // ── Paso B: Construcción (sin amenaza) ───────────────────────────────
+        // ── Paso B: Mejora de granjas (prioridad productiva) ─────────────────
         const clientB = await pool.connect();
         try {
             await clientB.query('BEGIN');
-            await this._farmerConstruction(clientB, playerId, botName, state, turn);
+            await this._farmerUpgradeFarms(clientB, playerId, state, turn);
             await clientB.query('COMMIT');
         } catch (error) {
             await clientB.query('ROLLBACK').catch(() => {});
@@ -444,11 +456,11 @@ class AIManagerService {
             clientB.release();
         }
 
-        // ── Paso C: Expansión (conservadora, solo hexes libres) ───────────────
+        // ── Paso C: Construir Mercado (uno por pagus) ─────────────────────────
         const clientC = await pool.connect();
         try {
             await clientC.query('BEGIN');
-            await this._farmerExpansion(clientC, playerId, botName, state, turn);
+            await this._farmerConstruction(clientC, playerId, botName, state, turn);
             await clientC.query('COMMIT');
         } catch (error) {
             await clientC.query('ROLLBACK').catch(() => {});
@@ -457,18 +469,36 @@ class AIManagerService {
             clientC.release();
         }
 
-        // ── Paso D: Mejora de granjas ─────────────────────────────────────────
-        const clientD = await pool.connect();
-        try {
-            await clientD.query('BEGIN');
-            await this._farmerUpgradeFarms(clientD, playerId, state, turn);
-            await clientD.query('COMMIT');
-        } catch (error) {
-            await clientD.query('ROLLBACK').catch(() => {});
-            Logger.error(error, { context: 'AIManagerService._processFarmerTurn.D', playerId, turn });
-        } finally {
-            clientD.release();
+        // ── Paso D: Fortaleza en capital (solo cuando tiene suficientes territorios) ──
+        if (!state.hasPagus && state.territories.length >= FARMER.PAGUS_MIN_TERRITORIES) {
+            const clientD = await pool.connect();
+            try {
+                await clientD.query('BEGIN');
+                await this._botBuildFortaleza(clientD, playerId, botName, state, FARMER.GOLD_TO_BUILD_FORTRESS, turn);
+                await clientD.query('COMMIT');
+            } catch (error) {
+                await clientD.query('ROLLBACK').catch(() => {});
+                Logger.error(error, { context: 'AIManagerService._processFarmerTurn.D', playerId, turn });
+            } finally {
+                clientD.release();
+            }
         }
+
+        // ── Paso E: Expansión (conservadora, solo hexes libres) ───────────────
+        const clientE = await pool.connect();
+        try {
+            await clientE.query('BEGIN');
+            await this._farmerExpansion(clientE, playerId, botName, state, turn);
+            await clientE.query('COMMIT');
+        } catch (error) {
+            await clientE.query('ROLLBACK').catch(() => {});
+            Logger.error(error, { context: 'AIManagerService._processFarmerTurn.E', playerId, turn });
+        } finally {
+            clientE.release();
+        }
+
+        // ── Paso F: Fundar pagus (si hay Fortaleza + suficientes feudos contiguos) ──
+        await this._botFoundPagus(playerId, botName, turn);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -565,11 +595,14 @@ class AIManagerService {
                 parseInt(t.food_output) > 0 && parseInt(t.farm_level || 0) < FARMER.FARM_MAX_LEVEL
             );
 
+            const hasPagus = territories.some(t => t.division_id != null);
+
             return {
                 gold, capitalH3, territories, ownedSet, territoriesWithoutBuilding,
                 totalTroops, recruitLocations, isThreatened,
                 candidateSet: [...candidateSet],
                 farmUpgradeCandidates,
+                hasPagus,
             };
         } finally {
             client.release();
@@ -581,44 +614,58 @@ class AIManagerService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Fase B — Construcción: levanta un Market o Church (edificios con food_bonus)
-     * en el feudo con más food_stored entre los que no tienen edificio.
-     * Solo un edificio por turno para simular decisión de ahorro.
+     * Fase C — Construcción: levanta un Mercado en el pagus del jugador que aún no tenga uno.
+     * Regla: máximo 1 Mercado por pagus (activo o en construcción).
+     * Objetivo: el feudo sin edificio con mayor food_stored dentro de ese pagus.
      */
     async _farmerConstruction(client, playerId, botName, state, turn) {
         if (state.gold < FARMER.GOLD_TO_BUILD) return;
         if (state.territoriesWithoutBuilding.length === 0) return;
 
-        // Solo Market (economic) o Church (religious)
-        const buildingsResult = await client.query(`
-            SELECT b.id, b.name, b.gold_cost, b.construction_time_turns,
-                   bt.name AS type_name
+        // Obtener el Mercado (único edificio que construye el Agricultor)
+        const marketResult = await client.query(`
+            SELECT b.id, b.gold_cost
             FROM buildings b
             JOIN building_types bt ON bt.building_type_id = b.type_id
-            WHERE b.required_building_id IS NULL
-              AND bt.name IN ('economic', 'religious')
-            ORDER BY b.gold_cost ASC
+            WHERE bt.name = 'economic' AND b.name = 'Mercado'
+              AND b.required_building_id IS NULL
+            LIMIT 1
         `);
-        if (buildingsResult.rows.length === 0) return;
+        if (marketResult.rows.length === 0) return;
 
-        // El edificio más rentable que el agente puede permitirse respetando la reserva
-        const building = buildingsResult.rows.find(
-            b => state.gold - parseInt(b.gold_cost) >= FARMER.GOLD_RESERVE
+        const market = marketResult.rows[0];
+        if (state.gold - parseInt(market.gold_cost) < FARMER.GOLD_RESERVE) return;
+
+        // Pagus propios que ya tienen un Mercado (activo o en construcción)
+        const pagusWithMarketResult = await client.query(`
+            SELECT DISTINCT td.division_id
+            FROM territory_details td
+            JOIN fief_buildings fb ON fb.h3_index = td.h3_index
+            JOIN buildings b ON b.id = fb.building_id
+            JOIN h3_map m ON m.h3_index = td.h3_index
+            WHERE b.name = 'Mercado'
+              AND td.division_id IS NOT NULL
+              AND m.player_id = $1
+        `, [playerId]);
+        const pagusWithMarket = new Set(pagusWithMarketResult.rows.map(r => r.division_id));
+
+        // Candidatos: sin edificio, en un pagus propio que aún no tiene Mercado
+        const candidates = state.territoriesWithoutBuilding.filter(t =>
+            t.division_id != null && !pagusWithMarket.has(t.division_id)
         );
-        if (!building) return;
+        if (candidates.length === 0) return;
 
-        // Territorio objetivo: sin edificio + mayor food_stored (sitio más activo)
-        const target = state.territoriesWithoutBuilding.reduce((best, t) =>
+        // Construir en el feudo candidato con mayor food_stored
+        const target = candidates.reduce((best, t) =>
             parseInt(t.food_stored) > parseInt(best.food_stored) ? t : best
         );
 
         try {
-            await executeConstruction(client, playerId, { h3_index: target.h3_index, building_id: building.id }, { actorName: botName, skipWorkerCheck: true });
-            const emoji = building.type_name === 'economic' ? '🏪' : '⛪';
-            Logger.bot(playerId, `[TURN ${turn}] ${emoji} Inició construcción de "${building.name}" en ${target.h3_index}`);
+            await executeConstruction(client, playerId, { h3_index: target.h3_index, building_id: market.id }, { actorName: botName, skipWorkerCheck: true });
+            Logger.bot(playerId, `[TURN ${turn}] 🏪 Inició construcción de Mercado en ${target.h3_index} (pagus ${target.division_id})`);
         } catch (err) {
             if (err instanceof GameActionError) {
-                Logger.bot(playerId, `[TURN ${turn}] ⚠️ Construcción rechazada: ${err.message}`);
+                Logger.bot(playerId, `[TURN ${turn}] ⚠️ Construcción de Mercado rechazada: ${err.message}`);
             } else { throw err; }
         }
     }
@@ -751,7 +798,7 @@ class AIManagerService {
 
     /**
      * Ciclo de decisión del perfil Expansionista.
-     * Prioridad: A (colonizar) → B (reclutar) → C (construir cuarteles en la frontera)
+     * Prioridad: A0 (incursión capital pagus) → A (expansión) → B (recluta) → C (cuarteles/fortaleza) → D (pagus)
      * No espera amenazas: siempre recluta si hay oro y población suficiente.
      */
     async _processExpansionistTurn(agent, turn) {
@@ -762,9 +809,21 @@ class AIManagerService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await this._expansionistExpansion(client, playerId, botName, state, turn);  // A: Expand first
+
+            // A0: Incursión a capital de pagus enemiga (máxima prioridad)
+            const raidDone = await this._expansionistCapitalRaid(client, playerId, botName, state, turn);
+
+            // A: Expansión normal (solo si no hubo incursión este turno)
+            if (!raidDone) {
+                await this._expansionistExpansion(client, playerId, botName, state, turn);
+            }
+
             await this._expansionistRecruitment(client, playerId, botName, state, turn); // B: Recruit
-            await this._expansionistConstruction(client, playerId, botName, state, turn); // C: Build
+            await this._expansionistConstruction(client, playerId, botName, state, turn); // C: Build (cuarteles)
+            // C+: Fortaleza en capital cuando tiene suficientes territorios
+            if (!state.hasPagus && state.territories.length >= EXPANSIONIST.PAGUS_MIN_TERRITORIES) {
+                await this._botBuildFortaleza(client, playerId, botName, state, EXPANSIONIST.GOLD_TO_BUILD_FORTRESS, turn);
+            }
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -772,6 +831,9 @@ class AIManagerService {
         } finally {
             client.release();
         }
+
+        // D: Fundar pagus (fuera de transacción principal)
+        await this._botFoundPagus(playerId, botName, turn);
     }
 
     /**
@@ -785,6 +847,7 @@ class AIManagerService {
                 SELECT
                     m.h3_index,
                     td.population,
+                    td.division_id,
                     p.gold,
                     p.capital_h3,
                     fb.building_id        AS existing_building_id,
@@ -834,11 +897,39 @@ class AIManagerService {
                 }
             }
 
+            const hasPagus = territories.some(t => t.division_id != null);
+
+            // Capitales de pagus enemigas, con distancia mínima al territorio del bot
+            // y estimación de la población de la capital (proxy de la dificultad de conquista)
+            const enemyCapitalsResult = await client.query(`
+                SELECT pd.capital_h3, m.player_id AS owner_id,
+                       COALESCE(td.population, 200) AS population,
+                       COALESCE(td.defense_level, 0) AS defense_level
+                FROM political_divisions pd
+                JOIN h3_map m ON m.h3_index = pd.capital_h3
+                LEFT JOIN territory_details td ON td.h3_index = pd.capital_h3
+                WHERE pd.player_id != $1 AND pd.capital_h3 IS NOT NULL
+            `, [playerId]);
+
+            // Para cada capital enemiga, calcular la distancia H3 mínima desde cualquier feudo propio
+            const enemyCapitals = enemyCapitalsResult.rows.map(cap => {
+                let minDist = Infinity;
+                for (const hex of ownedSet) {
+                    try {
+                        const d = h3.gridDistance(hex, cap.capital_h3);
+                        if (d < minDist) minDist = d;
+                    } catch { /* resoluciones distintas — ignorar */ }
+                }
+                return { ...cap, distance: minDist };
+            }).filter(c => c.distance < Infinity);
+
             return {
                 gold, capitalH3, territories, ownedSet,
                 candidateSet: [...candidateSet],
                 frontierHexes, territoriesWithoutBuilding,
                 recruitLocations,
+                hasPagus,
+                enemyCapitals,
             };
         } finally {
             client.release();
@@ -959,7 +1050,7 @@ class AIManagerService {
 
     /**
      * Ciclo de decisión del perfil Equilibrado.
-     * Prioridad: A (construcción circular) → B (expansión selectiva) → C (reclutamiento de guarnición)
+     * Prioridad: A (construcción) → B (expansión) → C (fortaleza) → D (reclutamiento) → E (pagus)
      * Evaluación del ratio food/gold para determinar prioridades de expansión.
      */
     async _processBalancedTurn(agent, turn) {
@@ -972,7 +1063,11 @@ class AIManagerService {
             await client.query('BEGIN');
             await this._balancedConstruction(client, playerId, botName, state, turn); // A: Build
             await this._balancedExpansion(client, playerId, botName, state, turn);    // B: Expand
-            await this._balancedRecruitment(client, playerId, botName, state, turn);  // C: Recruit
+            // C: Fortaleza en capital cuando tiene suficientes territorios
+            if (!state.hasPagus && state.territories.length >= BALANCED.PAGUS_MIN_TERRITORIES) {
+                await this._botBuildFortaleza(client, playerId, botName, state, BALANCED.GOLD_TO_BUILD_FORTRESS, turn);
+            }
+            await this._balancedRecruitment(client, playerId, botName, state, turn);  // D: Recruit
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
@@ -980,6 +1075,9 @@ class AIManagerService {
         } finally {
             client.release();
         }
+
+        // E: Fundar pagus (fuera de transacción principal)
+        await this._botFoundPagus(playerId, botName, turn);
     }
 
     /**
@@ -994,6 +1092,7 @@ class AIManagerService {
                     m.h3_index,
                     td.population,
                     td.food_stored,
+                    td.division_id,
                     tt.food_output,
                     tt.wood_output,
                     tt.stone_output,
@@ -1063,6 +1162,8 @@ class AIManagerService {
                 }
             }
 
+            const hasPagus = territories.some(t => t.division_id != null);
+
             return {
                 gold, capitalH3, territories, ownedSet,
                 candidateSet: [...candidateSet],
@@ -1070,6 +1171,7 @@ class AIManagerService {
                 totalFoodStored, foodGoldRatio,
                 totalPopulation, garrisonTarget, totalTroops,
                 recruitLocations,
+                hasPagus,
             };
         } finally {
             client.release();
@@ -1542,6 +1644,189 @@ class AIManagerService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // PRIVADO: Shared — Construcción de Fortaleza (prerequisito de pagus)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Intenta construir la cadena militar necesaria para fundar un pagus:
+     *   · Si no hay Cuartel en la capital → lo construye.
+     *   · Si hay Cuartel completado pero sin Fortaleza → construye la Fortaleza.
+     * Solo actúa cuando el bot tiene suficientes territorios (PAGUS_MIN_TERRITORIES)
+     * y el oro lo permite (goldThreshold).
+     */
+    async _botBuildFortaleza(client, playerId, botName, state, goldThreshold, turn) {
+        if (state.territories.length < 1) return;
+        const capitalH3 = state.capitalH3;
+        if (!capitalH3) return;
+
+        const freshGold = await client.query('SELECT gold FROM players WHERE player_id = $1', [playerId]);
+        const currentGold = parseInt(freshGold.rows[0]?.gold) || 0;
+        if (currentGold < goldThreshold) return;
+
+        // Comprobar si ya existe una Fortaleza (activa o en construcción) → no hacer nada
+        const hasFortalezaResult = await client.query(`
+            SELECT 1 FROM fief_buildings fb
+            JOIN buildings b ON b.id = fb.building_id
+            JOIN h3_map m ON m.h3_index = fb.h3_index
+            WHERE m.player_id = $1 AND b.name = 'Fortaleza'
+            LIMIT 1
+        `, [playerId]);
+        if (hasFortalezaResult.rows.length > 0) return;
+
+        // Comprobar si la capital tiene Cuartel completado
+        const cuartelResult = await client.query(`
+            SELECT b.id AS cuartel_id
+            FROM fief_buildings fb
+            JOIN buildings b ON b.id = fb.building_id
+            WHERE fb.h3_index = $1 AND b.name = 'Cuartel' AND fb.is_under_construction = FALSE
+            LIMIT 1
+        `, [capitalH3]);
+
+        if (cuartelResult.rows.length > 0) {
+            // Capital tiene Cuartel → construir Fortaleza encima
+            const fortressBld = await client.query(`
+                SELECT b.id, b.gold_cost FROM buildings b
+                WHERE b.name = 'Fortaleza' LIMIT 1
+            `);
+            if (fortressBld.rows.length === 0) return;
+            const { id: fortressId, gold_cost } = fortressBld.rows[0];
+            if (currentGold - parseInt(gold_cost) < 2_000) return; // reserva mínima
+
+            try {
+                await executeConstruction(client, playerId, { h3_index: capitalH3, building_id: fortressId }, { actorName: botName, skipWorkerCheck: true });
+                Logger.bot(playerId, `[TURN ${turn}] 🏰 Inició construcción de Fortaleza en capital ${capitalH3}`);
+            } catch (err) {
+                if (!(err instanceof GameActionError)) throw err;
+                Logger.bot(playerId, `[TURN ${turn}] ⚠️ Fortaleza rechazada: ${err.message}`);
+            }
+            return;
+        }
+
+        // La capital no tiene Cuartel → verificar que no tiene ningún edificio y construirlo
+        const capitalTerr = state.territories.find(t => t.h3_index === capitalH3);
+        if (!capitalTerr || capitalTerr.existing_building_id) return; // ya tiene otro edificio
+
+        const cuartelBld = await client.query(`
+            SELECT b.id, b.gold_cost FROM buildings b WHERE b.name = 'Cuartel' LIMIT 1
+        `);
+        if (cuartelBld.rows.length === 0) return;
+        const { id: cuartelId, gold_cost: cuartelCost } = cuartelBld.rows[0];
+        if (currentGold - parseInt(cuartelCost) < 2_000) return;
+
+        try {
+            await executeConstruction(client, playerId, { h3_index: capitalH3, building_id: cuartelId }, { actorName: botName, skipWorkerCheck: true });
+            Logger.bot(playerId, `[TURN ${turn}] 🛡️ Inició construcción de Cuartel en capital ${capitalH3} (prerrequisito de Fortaleza)`);
+        } catch (err) {
+            if (!(err instanceof GameActionError)) throw err;
+            Logger.bot(playerId, `[TURN ${turn}] ⚠️ Cuartel rechazado: ${err.message}`);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVADO: Shared — Fundación de pagus
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Intenta fundar un pagus cuando se cumplen todas las condiciones:
+     *   · Existe una Fortaleza completada no asignada a ninguna división.
+     *   · El BFS desde esa Fortaleza alcanza al menos min_fiefs_required feudos libres.
+     * Genera el boundary GeoJSON tras el COMMIT.
+     */
+    async _botFoundPagus(playerId, botName, turn) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Buscar Fortaleza completada en feudo libre (sin division_id)
+            const fortressResult = await client.query(`
+                SELECT m.h3_index
+                FROM h3_map m
+                JOIN fief_buildings fb ON fb.h3_index = m.h3_index
+                JOIN buildings b ON b.id = fb.building_id
+                LEFT JOIN territory_details td ON td.h3_index = m.h3_index
+                WHERE m.player_id = $1
+                  AND b.name = 'Fortaleza'
+                  AND fb.is_under_construction = FALSE
+                  AND (td.division_id IS NULL OR td.h3_index IS NULL)
+                LIMIT 1
+            `, [playerId]);
+
+            if (fortressResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return;
+            }
+            const capitalH3 = fortressResult.rows[0].h3_index;
+
+            // 2. Rango Señorío de la cultura del jugador
+            const playerCulture = await KingdomModel.GetPlayerCulture(client, playerId);
+            const senorioRank = await DivisionModel.GetSenorioRank(client, playerCulture);
+            if (!senorioRank) {
+                await client.query('ROLLBACK');
+                return;
+            }
+            const minRequired = senorioRank.min_fiefs_required ?? 1;
+            const maxLimit    = senorioRank.max_fiefs_limit    ?? 40;
+
+            // 3. Feudos libres (sin division_id) del jugador para el BFS
+            const freeFiefs = await DivisionModel.GetPlayerFreeFiefs(client, playerId);
+            const freeFiefsSet = new Set(freeFiefs.map(f => f.h3_index));
+
+            if (!freeFiefsSet.has(capitalH3)) {
+                await client.query('ROLLBACK');
+                return;
+            }
+
+            // 4. BFS de contiguidad
+            const contiguous = findContiguousFiefs(freeFiefsSet, capitalH3, maxLimit);
+            if (contiguous.length < minRequired) {
+                await client.query('ROLLBACK');
+                return;
+            }
+
+            // 5. Bloquear y verificar (FOR UPDATE + ownership check)
+            try {
+                await DivisionModel.LockAndVerifyFiefs(client, contiguous, playerId);
+            } catch (err) {
+                await client.query('ROLLBACK');
+                Logger.bot(playerId, `[TURN ${turn}] 🏰 Pagus cancelado: ${err.message}`);
+                return;
+            }
+
+            // 6. Nombre único
+            const rawName      = generateDivisionName(playerCulture) || `Pagus-${capitalH3.slice(-4)}`;
+            const divisionName = await getUniqueDivisionName(client, rawName, playerId);
+
+            // 7. Crear división
+            const division = await DivisionModel.CreateDivision(client, {
+                player_id:     playerId,
+                name:          divisionName,
+                noble_rank_id: senorioRank.id,
+                capital_h3:    capitalH3,
+            });
+            if (!division) {
+                await client.query('ROLLBACK');
+                return; // conflicto de nombre (ya existe)
+            }
+
+            // 8. Asignar feudos
+            await DivisionModel.AssignFiefsToDivision(client, division.id, contiguous);
+
+            await client.query('COMMIT');
+
+            // 9. Calcular boundary (fuera de transacción)
+            await MapService.generateDivisionBoundary(division.id);
+
+            Logger.bot(playerId, `[TURN ${turn}] 🏰 Fundó pagus "${divisionName}" (capital: ${capitalH3}, feudos: ${contiguous.length})`);
+
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(error, { context: 'AIManagerService._botFoundPagus', playerId, turn });
+        } finally {
+            client.release();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // PRIVADO: Fase C Agricultor — Expansión conservadora
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -1561,10 +1846,85 @@ class AIManagerService {
             return;
         }
 
-        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, false, state.ownedSet, FARMER.SCORE_WEIGHTS);
+        // Modo cierre de huecos: si tiene suficientes territorios y aún no hay pagus,
+        // priorizar hexes rodeados de territorio propio (adyacencia ≥ 3 vecinos propios).
+        let weights = FARMER.SCORE_WEIGHTS;
+        if (!state.hasPagus && state.territories.length >= FARMER.PAGUS_MIN_TERRITORIES) {
+            const hasGaps = state.candidateSet.some(hex => {
+                const owned = h3.gridDisk(hex, 1).filter(n => n !== hex && state.ownedSet.has(n));
+                return owned.length >= 3;
+            });
+            if (hasGaps) {
+                weights = FARMER.PAGUS_GAP_WEIGHTS;
+                Logger.bot(playerId, `[TURN ${turn}] 🔲 Agricultor: modo cierre de huecos activo`);
+            }
+        }
+
+        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, false, state.ownedSet, weights);
         if (scored.length === 0) return;
 
         await this._botConquerHex(client, playerId, botName, scored[0].h3_index, turn);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVADO: Fase A0 Expansionista — Incursión a capitales de pagus enemigas
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Fase A0 — Incursión a capitales de pagus enemigas.
+     *
+     * Selecciona el objetivo de alta prioridad: la capital de pagus enemiga
+     * más cercana al territorio propio. Luego:
+     *   · Si es adyacente (está en candidateSet) → ataque directo.
+     *   · Si no es adyacente → conquista el hex adyacente más cercano a la capital
+     *     para abrir un corredor (carving turno a turno).
+     *
+     * No actúa si no hay ejército, ni si la capital está demasiado lejos (> MAX_RAID_DISTANCE).
+     *
+     * @returns {boolean} true si se tomó alguna acción
+     */
+    async _expansionistCapitalRaid(client, playerId, botName, state, turn) {
+        const MAX_RAID_DISTANCE = 20; // Ignora capitales muy lejanas
+
+        if (!state.enemyCapitals || state.enemyCapitals.length === 0) return false;
+
+        // 1. Seleccionar objetivo: capital más cercana dentro del rango
+        const reachable = state.enemyCapitals
+            .filter(c => c.distance <= MAX_RAID_DISTANCE)
+            .sort((a, b) => a.distance - b.distance);
+
+        if (reachable.length === 0) return false;
+        const target = reachable[0];
+        const targetH3 = target.capital_h3;
+
+        const candidateSet = new Set(state.candidateSet);
+
+        // 2. Si la capital ya es adyacente → atacar directamente
+        if (candidateSet.has(targetH3)) {
+            Logger.bot(playerId, `[TURN ${turn}] ⚔️ Asaltando capital de pagus ${targetH3} (adyacente)`);
+            const result = await this._botConquerHex(client, playerId, botName, targetH3, turn);
+            return result.conquered !== false;
+        }
+
+        // 3. No es adyacente: encontrar el mejor hex candidato que minimice distancia a la capital
+        //    Entre todos los candidatos (incluidos enemigos), tomar el más cercano al objetivo.
+        const candidatesWithDist = state.candidateSet.map(hex => {
+            let dist = Infinity;
+            try { dist = h3.gridDistance(hex, targetH3); } catch { /* ignora */ }
+            return { hex, dist };
+        }).filter(c => c.dist < Infinity);
+
+        if (candidatesWithDist.length === 0) return false;
+
+        candidatesWithDist.sort((a, b) => a.dist - b.dist);
+        const stepHex = candidatesWithDist[0].hex;
+
+        // Verificar que el hex no es propio (podría aparecer por rounding)
+        if (state.ownedSet.has(stepHex)) return false;
+
+        Logger.bot(playerId, `[TURN ${turn}] ➡️ Avanzando hacia capital ${targetH3} (dist: ${target.distance}) — paso en ${stepHex}`);
+        const result = await this._botConquerHex(client, playerId, botName, stepHex, turn);
+        return result.conquered !== false;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1576,8 +1936,21 @@ class AIManagerService {
      * Prefers unclaimed hexes; attacks enemy fiefs if none are available.
      */
     async _expansionistExpansion(client, playerId, botName, state, turn) {
-        // Try unclaimed hexes first, then enemy hexes (aggressive mode)
-        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, true, state.ownedSet, EXPANSIONIST.SCORE_WEIGHTS);
+        // Modo cierre de huecos: si tiene suficientes territorios y aún no hay pagus,
+        // priorizar hexes con muchos vecinos propios antes de atacar territorio enemigo.
+        let weights = EXPANSIONIST.SCORE_WEIGHTS;
+        if (!state.hasPagus && state.territories.length >= EXPANSIONIST.PAGUS_MIN_TERRITORIES) {
+            const hasGaps = state.candidateSet.some(hex => {
+                const owned = h3.gridDisk(hex, 1).filter(n => n !== hex && state.ownedSet.has(n));
+                return owned.length >= 3;
+            });
+            if (hasGaps) {
+                weights = EXPANSIONIST.PAGUS_GAP_WEIGHTS;
+                Logger.bot(playerId, `[TURN ${turn}] 🔲 Expansionista: modo cierre de huecos activo`);
+            }
+        }
+
+        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, true, state.ownedSet, weights);
         if (scored.length === 0) return;
 
         await this._botConquerHex(client, playerId, botName, scored[0].h3_index, turn);
@@ -1595,7 +1968,20 @@ class AIManagerService {
         const currentGold = parseInt(goldRow.rows[0]?.gold) || 0;
         if (currentGold < BALANCED.GOLD_TO_EXPAND) return;
 
-        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, false, state.ownedSet, BALANCED.SCORE_WEIGHTS);
+        // Modo cierre de huecos: si tiene suficientes territorios y aún no hay pagus.
+        let weights = BALANCED.SCORE_WEIGHTS;
+        if (!state.hasPagus && state.territories.length >= BALANCED.PAGUS_MIN_TERRITORIES) {
+            const hasGaps = state.candidateSet.some(hex => {
+                const owned = h3.gridDisk(hex, 1).filter(n => n !== hex && state.ownedSet.has(n));
+                return owned.length >= 3;
+            });
+            if (hasGaps) {
+                weights = BALANCED.PAGUS_GAP_WEIGHTS;
+                Logger.bot(playerId, `[TURN ${turn}] 🔲 Equilibrado: modo cierre de huecos activo`);
+            }
+        }
+
+        const scored = await this._loadCandidateHexes(state.candidateSet, playerId, false, state.ownedSet, weights);
         if (scored.length === 0) return;
 
         await this._botConquerHex(client, playerId, botName, scored[0].h3_index, turn);
