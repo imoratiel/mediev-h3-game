@@ -154,7 +154,7 @@ export function generateCellPopupContent(cell, config) {
           </div>`;
         } else {
           const consColor = cons >= 70 ? '#4caf50' : cons >= 40 ? '#ff9800' : '#f44336';
-          const inactiveWarning = cons < 20 ? `<div style="font-size:11px;color:#f44336;margin-top:3px;">⚠️ Inactivo (conservación &lt; 20%)</div>` : '';
+          const inactiveWarning = cons < 20 ? `<div style="font-size:11px;color:#f44336;margin-top:3px;">🏚️ En Ruinas (conservación &lt; 20%)</div>` : '';
           popupContent += `<div class="popup-building-status popup-building-done">
             ${getBuildingIcon(cell.fief_building.name, cell.fief_building.type_name)} Edificio: <strong>${cell.fief_building.name}</strong>
             <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
@@ -271,6 +271,11 @@ export function generateCellPopupContent(cell, config) {
       <p style="font-size:0.75rem;color:#6b7280;margin:8px 0 0 0;">
         ⚒️ Construye un edificio económico (Foro, Factoría...) para poder contratar trabajadores aquí.
       </p>`;
+  }
+
+  // Market button — own Capital or fief with active economic building
+  if (isCapitalHex || hasMarket) {
+    popupContent += `<button id="open-market-btn-${h3_index}" class="btn-popup btn-market" title="Abrir panel de comercio">🏪 Comprar aquí</button>`;
   }
 
   popupContent += '</div>';

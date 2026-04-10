@@ -27,6 +27,67 @@ function calcPrices(resource) {
 
 class MarketService {
 
+    // ── GET /api/market/my-locations ─────────────────────────────────────────
+    // Devuelve la capital del jugador + todos sus feudos con Mercado activo (conservation > 20).
+    // Incluye trabajadores presentes en cada ubicación.
+
+    async GetMyLocations(req, res) {
+        const playerId = req.user.player_id;
+        try {
+            const result = await pool.query(`
+                SELECT
+                    m.h3_index,
+                    COALESCE(s.name, td.custom_name, m.h3_index) AS location_name,
+                    (m.h3_index = p.capital_h3)                  AS is_capital,
+                    b.name                                        AS building_name,
+                    fb.conservation,
+                    fb.is_under_construction
+                FROM h3_map m
+                JOIN players p ON p.player_id = m.player_id
+                JOIN territory_details td ON td.h3_index = m.h3_index
+                LEFT JOIN settlements s ON s.h3_index = m.h3_index
+                LEFT JOIN fief_buildings fb ON fb.h3_index = m.h3_index
+                LEFT JOIN buildings b ON b.id = fb.building_id
+                LEFT JOIN building_types bt ON bt.building_type_id = b.type_id
+                WHERE m.player_id = $1
+                  AND (
+                    m.h3_index = p.capital_h3
+                    OR (
+                      bt.name = 'economic'
+                      AND fb.is_under_construction = FALSE
+                    )
+                  )
+                ORDER BY (m.h3_index = p.capital_h3) DESC, location_name
+            `, [playerId]);
+
+            // Para cada ubicación, incluir sus trabajadores presentes
+            const locations = await Promise.all(result.rows.map(async loc => {
+                const workers = await pool.query(`
+                    SELECT w.id, w.h3_index, w.destination_h3, w.type_id, w.speed,
+                           wt.name AS type_name,
+                           tt.name AS terrain_type,
+                           COALESCE(s2.name, tt.name, w.h3_index) AS location_name,
+                           COALESCE(s_dst.name, tt_dst.name, w.destination_h3) AS destination_name
+                    FROM workers w
+                    JOIN workers_types wt  ON w.type_id = wt.id
+                    LEFT JOIN h3_map mw    ON mw.h3_index = w.h3_index
+                    LEFT JOIN terrain_types tt ON tt.terrain_type_id = mw.terrain_type_id
+                    LEFT JOIN settlements s2   ON s2.h3_index = w.h3_index
+                    LEFT JOIN h3_map m_dst      ON m_dst.h3_index = w.destination_h3
+                    LEFT JOIN terrain_types tt_dst ON tt_dst.terrain_type_id = m_dst.terrain_type_id
+                    LEFT JOIN settlements s_dst ON s_dst.h3_index = w.destination_h3
+                    WHERE w.player_id = $1 AND w.h3_index = $2
+                `, [playerId, loc.h3_index]);
+                return { ...loc, workers: workers.rows };
+            }));
+
+            res.json({ success: true, locations });
+        } catch (error) {
+            Logger.error(error, { endpoint: 'GET /api/market/my-locations', userId: playerId });
+            res.status(500).json({ success: false, message: 'Error al obtener ubicaciones de mercado' });
+        }
+    }
+
     // ── GET /api/market/prices ────────────────────────────────────────────────
 
     async GetPrices(req, res) {
@@ -83,9 +144,8 @@ class MarketService {
             }
 
             // 2. Obtener reserva con lock
-            const resourceRow = await MarketModel.GetReserveForUpdate(client,
-                (await pool.query('SELECT id FROM market_resource_types WHERE name = $1', [resource])).rows[0]?.id
-            );
+            const rtResult = await client.query('SELECT id FROM market_resource_types WHERE name = $1', [resource]);
+            const resourceRow = await MarketModel.GetReserveForUpdate(client, rtResult.rows[0]?.id);
             if (!resourceRow || resourceRow.category !== 'commodity') {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ success: false, message: 'Recurso no válido para venta' });

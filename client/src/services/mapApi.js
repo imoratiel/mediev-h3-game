@@ -1003,6 +1003,11 @@ export async function stopFleet(fleet_id) {
 // MARKET ENDPOINTS
 // ============================================
 
+export async function getMyMarketLocations() {
+  const response = await axios.get(`${API_URL}/api/market/my-locations`);
+  return response.data;
+}
+
 export async function getMarketPrices() {
   const response = await axios.get(`${API_URL}/api/market/prices`);
   return response.data;

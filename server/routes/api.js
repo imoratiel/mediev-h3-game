@@ -220,10 +220,11 @@ module.exports = function () {
     // ============================================
     const MarketService = require('../src/services/MarketService.js');
 
-    router.get('/market/prices',  authenticateToken, (req, res) => MarketService.GetPrices(req, res));
-    router.post('/market/sell',   authenticateToken, (req, res) => MarketService.Sell(req, res));
-    router.post('/market/buy',    authenticateToken, (req, res) => MarketService.Buy(req, res));
-    router.get('/market/history', authenticateToken, (req, res) => MarketService.GetHistory(req, res));
+    router.get('/market/my-locations', authenticateToken, (req, res) => MarketService.GetMyLocations(req, res));
+    router.get('/market/prices',       authenticateToken, (req, res) => MarketService.GetPrices(req, res));
+    router.post('/market/sell',        authenticateToken, (req, res) => MarketService.Sell(req, res));
+    router.post('/market/buy',         authenticateToken, (req, res) => MarketService.Buy(req, res));
+    router.get('/market/history',      authenticateToken, (req, res) => MarketService.GetHistory(req, res));
 
     // ============================================
     // MESSAGES

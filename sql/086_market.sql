@@ -59,12 +59,9 @@ VALUES
     ('stone', 'Piedra',  'access',    0, 0, 0, 0, 0, 3000, 'Acceso a canteras de piedra. Tus edificios no se deterioran y se reparan solos cada turno.')
 ON CONFLICT (name) DO NOTHING;
 
-
--- Inicializar reserva de comida con stock de equilibrio
 INSERT INTO market_reserves (resource_type_id, current_reserve)
-SELECT id, base_reserve FROM market_resource_types WHERE name = 'food'
+SELECT id, 5000 FROM market_resource_types WHERE name = 'food'
 ON CONFLICT (resource_type_id) DO NOTHING;
-
 
 -- =============================================================
 INSERT INTO schema_migrations (script_name)
