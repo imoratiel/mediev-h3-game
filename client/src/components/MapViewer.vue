@@ -1296,6 +1296,9 @@
           >💰 Vender</button>
         </div>
 
+        <!-- Nota oferta/demanda -->
+        <p class="tp-market-note">Los precios fluctúan según la reserva global: suben cuando la comida escasea y bajan cuando abunda. Para comprar es necesario que otros jugadores hayan vendido previamente.</p>
+
         <!-- Workers at this location -->
         <div class="tp-workers-section">
           <div class="tp-section-label">Trabajadores aquí ({{ (tradePanel?.workers || []).length }})</div>
@@ -8441,6 +8444,16 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 0 2px;
 }
+.mkt-market-note {
+  font-size: 10px;
+  color: #7a6040;
+  line-height: 1.45;
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  background: rgba(197,160,89,0.06);
+  border-left: 2px solid rgba(197,160,89,0.3);
+  border-radius: 0 4px 4px 0;
+}
 
 .btn-refresh-workers {
   background: none;
@@ -8578,6 +8591,18 @@ onBeforeUnmount(() => {
 .tp-worker-name   { flex: 1; color: #e8d5b5; font-weight: 600; }
 .tp-worker-enroute { font-size: 10px; color: #34d399; }
 .tp-worker-idle   { font-size: 10px; color: #7a6040; }
+
+.tp-market-note {
+  font-size: 10px;
+  color: #7a6040;
+  line-height: 1.45;
+  margin: 0;
+  padding: 6px 16px 8px;
+  border-left: 2px solid rgba(197,160,89,0.3);
+  margin: 0 16px 4px;
+  background: rgba(197,160,89,0.05);
+  border-radius: 0 4px 4px 0;
+}
 
 /* Hire section */
 .tp-hire-section {
