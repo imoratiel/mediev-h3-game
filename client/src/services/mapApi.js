@@ -1028,6 +1028,11 @@ export async function getMarketHistory() {
   return response.data;
 }
 
+export async function marketCancelAccess(resourceName) {
+  const response = await axios.delete(`${API_URL}/api/market/access/${resourceName}`);
+  return response.data;
+}
+
 export async function getMyTerritories() {
   const response = await axios.get(`${API_URL}/api/game/my-fiefs`, { params: { page: 1, limit: 999 } });
   const fiefs = response.data?.fiefs ?? [];

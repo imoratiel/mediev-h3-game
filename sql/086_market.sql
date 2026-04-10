@@ -56,7 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_player_resource_access_expires ON player_resource
 INSERT INTO market_resource_types (name, display_name, category, base_price, base_reserve, min_price, max_price, spread, access_cost_monthly, description)
 VALUES
     ('food',  'Comida',  'commodity', 10.00, 50000, 0.50, 50.00, 0.10, 0, 'Alimentos producidos en los feudos. El precio sube cuando las reservas escasean.'),
-    ('stone', 'Piedra',  'access',    0, 0, 0, 0, 0, 3000, 'Acceso a canteras de piedra. Tus edificios no se deterioran y se reparan solos cada turno.')
+    ('stone', 'Piedra',  'access',    0, 0, 0, 0, 0, 20000, 'Acceso a canteras de piedra. Tus edificios no se deterioran y se reparan solos cada turno.')
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO market_reserves (resource_type_id, current_reserve)

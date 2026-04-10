@@ -426,6 +426,32 @@ class MarketService {
         }
     }
 
+    // ── DELETE /api/market/access/:resource ─────────────────────────────────
+    // Cancela el acceso activo a un recurso. No hay reembolso.
+
+    async CancelAccess(req, res) {
+        const playerId = req.user.player_id;
+        const { resource } = req.params;
+        try {
+            const resourceType = await MarketModel.GetResourceByName(resource);
+            if (!resourceType || resourceType.category !== 'access') {
+                return res.status(404).json({ success: false, message: 'Recurso de acceso no encontrado' });
+            }
+            const result = await require('../../db.js').query(
+                'DELETE FROM player_resource_access WHERE player_id = $1 AND resource_type_id = $2 RETURNING id',
+                [playerId, resourceType.id]
+            );
+            if (result.rowCount === 0) {
+                return res.status(404).json({ success: false, message: 'No tienes acceso activo a ese recurso' });
+            }
+            Logger.action(`Mercado: canceló acceso ${resource}`, playerId);
+            res.json({ success: true, message: `Acceso a ${resourceType.display_name} cancelado` });
+        } catch (error) {
+            Logger.error(error, { endpoint: 'DELETE /api/market/access', userId: playerId });
+            res.status(500).json({ success: false, message: 'Error al cancelar acceso' });
+        }
+    }
+
     // ── GET /api/market/history ──────────────────────────────────────────────
 
     async GetHistory(req, res) {

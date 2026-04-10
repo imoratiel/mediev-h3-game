@@ -448,23 +448,26 @@
             <div class="mkt-section-label" style="margin-top:18px">Acceso a Recursos</div>
             <div v-if="marketAccessResources.length === 0" class="mkt-empty">Cargando…</div>
             <div v-for="res in marketAccessResources" :key="res.id" class="mkt-access-card">
-              <div class="mkt-access-icon-wrap">🪨</div>
+              <div class="mkt-access-icon-wrap">⛏️</div>
               <div class="mkt-access-body">
                 <span class="mkt-access-name">{{ res.display_name }}</span>
                 <span class="mkt-access-desc">{{ res.description }}</span>
                 <span v-if="myAccessMap[res.id]" class="mkt-access-active-badge">
-                  ✅ Activo hasta {{ formatAccessExpiry(myAccessMap[res.id].expires_at) }}
+                  ✅ Próximo pago: {{ formatAccessExpiry() }}
                 </span>
               </div>
               <div class="mkt-access-action">
                 <span class="mkt-access-cost">{{ Number(res.access_cost_monthly).toLocaleString('es-ES') }} 💰/mes</span>
                 <button
-                  :class="['mkt-unlock-btn', { 'mkt-unlock-active': !!myAccessMap[res.id] }]"
-                  :disabled="!!myAccessMap[res.id] || marketTxLoading"
+                  v-if="!myAccessMap[res.id]"
+                  class="mkt-unlock-btn"
+                  :disabled="marketTxLoading"
                   @click="marketBuyAccess(res)"
-                >
-                  {{ myAccessMap[res.id] ? 'Activo' : 'Desbloquear' }}
-                </button>
+                >Adquirir</button>
+                <template v-else>
+                  <button class="mkt-unlock-btn mkt-unlock-active" disabled>Activo</button>
+                  <button class="mkt-cancel-btn" :disabled="marketTxLoading" @click="marketCancelAccess(res)">Cancelar</button>
+                </template>
               </div>
             </div>
 
@@ -1658,9 +1661,38 @@ const marketBuyAccess = async (resource) => {
   }
 };
 
-const formatAccessExpiry = (dateStr) => {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+const marketCancelAccess = async (resource) => {
+  if (!confirm(`¿Cancelar acceso a ${resource.display_name}? No se realizará ningún reembolso.`)) return;
+  marketTxLoading.value = true;
+  try {
+    const data = await mapApi.marketCancelAccess(resource.name);
+    if (data.success) {
+      showToast(`🚫 ${data.message}`, 'success');
+      await loadMarketPrices();
+    } else {
+      showToast(data.message || 'Error al cancelar acceso', 'error');
+    }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'Error al cancelar acceso', 'error');
+  } finally {
+    marketTxLoading.value = false;
+  }
+};
+
+const formatAccessExpiry = () => {
+  // El cobro/deterioro ocurre siempre el día 5 de cada mes de juego.
+  // Si ya pasó el día 5 este mes → próximo pago es el día 5 del mes siguiente.
+  const months = [
+    'Ianuarius', 'Februarius', 'Martius', 'Aprilis', 'Maius', 'Iunius',
+    'Quintilis', 'Sextilis', 'September', 'October', 'November', 'December',
+  ];
+  let { day, month, year, era } = gameDate.value;
+  if (day >= 5) {
+    month++;
+    if (month > 12) { month = 1; year--; }  // BC: año decrece
+  }
+  const suffix = era === 'BC' ? 'a.C.' : 'd.C.';
+  return `5 de ${months[month - 1]}, ${year} ${suffix}`;
 };
 
 const loadWorkerHireLocations = async () => {
@@ -8206,6 +8238,20 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #15803d, #166534);
   color: #dcfce7;
 }
+.mkt-cancel-btn {
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid rgba(248,113,113,0.5);
+  border-radius: 5px;
+  color: #f87171;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.mkt-cancel-btn:hover:not(:disabled) { background: rgba(248,113,113,0.1); }
+.mkt-cancel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Tipo trabajador grid ── */
 .mkt-worker-type-grid {

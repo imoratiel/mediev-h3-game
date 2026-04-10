@@ -1470,9 +1470,25 @@ async function processGameTurn(pool, config) {
             await purgeOldNotifications(client, newTurn);
             // Renovación/expiración de accesos de mercado
             try {
-                const { renewed, expired } = await MarketModel.ProcessMonthlyAccessRenewals(client);
+                const { renewed, expired, renewedList, expiredList } = await MarketModel.ProcessMonthlyAccessRenewals(client);
                 if (renewed + expired > 0) {
                     Logger.engine(`[TURN ${newTurn}] Accesos de mercado: ${renewed} renovados, ${expired} expirados`);
+                }
+                for (const r of renewedList) {
+                    await NotificationService.createSystemNotification(
+                        r.player_id,
+                        'Económico',
+                        `⛏️ Acceso a Canteras de Piedra renovado.\nSe han descontado ${r.cost.toLocaleString('es-ES')} 💰 de tu tesoro. Tus edificios seguirán reparándose automáticamente el próximo ciclo.`,
+                        newTurn
+                    );
+                }
+                for (const e of expiredList) {
+                    await NotificationService.createSystemNotification(
+                        e.player_id,
+                        'Económico',
+                        `⚠️ Acceso a Canteras de Piedra cancelado por falta de oro.\nTus edificios volverán a deteriorarse a partir de este ciclo. Puedes renovarlo desde el Mercado.`,
+                        newTurn
+                    );
                 }
             } catch (err) {
                 Logger.error(err, { context: 'turn_engine.processMonthlyAccessRenewals', turn: newTurn });

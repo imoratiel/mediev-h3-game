@@ -193,10 +193,11 @@ class MarketModel {
         `);
 
         let renewed = 0, expired = 0;
+        const renewedList = [];  // { player_id, display_name, cost }
+        const expiredList = [];  // { player_id, display_name }
 
         for (const row of dueResult.rows) {
             if (row.gold >= row.access_cost_monthly) {
-                // Cobrar y renovar 30 días
                 await client.query(
                     'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
                     [row.access_cost_monthly, row.player_id]
@@ -212,9 +213,9 @@ class MarketModel {
                     transaction_type: 'access_renew',
                     total_gold: row.access_cost_monthly,
                 });
+                renewedList.push({ player_id: row.player_id, display_name: row.display_name, cost: row.access_cost_monthly });
                 renewed++;
             } else {
-                // Sin oro suficiente → acceso expirado
                 await client.query(`
                     DELETE FROM player_resource_access
                     WHERE player_id = $1 AND resource_type_id = $2
@@ -225,11 +226,12 @@ class MarketModel {
                     transaction_type: 'access_expired',
                     total_gold: 0,
                 });
+                expiredList.push({ player_id: row.player_id, display_name: row.display_name });
                 expired++;
             }
         }
 
-        return { renewed, expired };
+        return { renewed, expired, renewedList, expiredList };
     }
 }
 
