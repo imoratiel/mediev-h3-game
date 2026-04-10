@@ -999,3 +999,39 @@ export async function stopFleet(fleet_id) {
   return response.data;
 }
 
+// ============================================
+// MARKET ENDPOINTS
+// ============================================
+
+export async function getMarketPrices() {
+  const response = await axios.get(`${API_URL}/api/market/prices`);
+  return response.data;
+}
+
+export async function marketBuy(payload) {
+  const response = await axios.post(`${API_URL}/api/market/buy`, payload);
+  return response.data;
+}
+
+export async function marketSell(payload) {
+  const response = await axios.post(`${API_URL}/api/market/sell`, payload);
+  return response.data;
+}
+
+export async function getMarketHistory() {
+  const response = await axios.get(`${API_URL}/api/market/history`);
+  return response.data;
+}
+
+export async function getMyTerritories() {
+  const response = await axios.get(`${API_URL}/api/game/my-fiefs`, { params: { page: 1, limit: 999 } });
+  const fiefs = response.data?.fiefs ?? [];
+  const capitalH3 = fiefs[0]?.capital_h3 ?? null;
+  const territories = fiefs.map(f => ({
+    h3_index: f.h3_index,
+    settlement_name: f.location_name,
+    is_capital: f.h3_index === capitalH3,
+  }));
+  return { territories };
+}
+

@@ -366,129 +366,221 @@
         <!-- Troops Panel - MOVED TO FULLSCREEN OVERLAY -->
 
         <!-- Market Panel -->
-        <div v-if="activePanel === 'market'" class="panel-section market-panel">
+        <div v-if="activePanel === 'market'" class="mkt-panel">
 
-          <!-- ── Contratar Trabajador ───────────────────────────────────── -->
-          <div class="market-section">
-            <div class="market-section-title">⛏️ Contratar Trabajador</div>
-            <div class="market-hire-form">
-              <div class="market-worker-type-buttons">
-                <button
-                  v-for="t in workerTypes"
-                  :key="t.id"
-                  class="market-worker-type-btn"
-                  :class="{ active: marketHireTypeId === t.id }"
-                  @click="marketHireTypeId = t.id"
-                >
-                  <span class="worker-type-icon">{{ workerTypeIcon(t.name) }}</span>
-                  <span class="worker-type-name">{{ t.name }}</span>
-                  <span class="worker-type-cost">{{ Number(t.cost).toLocaleString('es-ES') }} 💰</span>
+          <!-- ── Barra de recursos ──────────────────────────────────────── -->
+          <div class="mkt-resource-bar">
+            <div class="mkt-resource">
+              <span class="mkt-res-icon">💰</span>
+              <span class="mkt-res-value">{{ Number(playerGold).toLocaleString('es-ES') }}</span>
+              <span class="mkt-res-label">Oro</span>
+            </div>
+            <div class="mkt-res-divider"></div>
+            <div class="mkt-resource">
+              <span class="mkt-res-icon">🌾</span>
+              <span class="mkt-res-value">{{ marketFood ? Number(marketFood.current_reserve).toLocaleString('es-ES') : '—' }}</span>
+              <span class="mkt-res-label">Reserva</span>
+            </div>
+          </div>
+
+          <!-- ── Pestañas ───────────────────────────────────────────────── -->
+          <div class="mkt-tabs">
+            <button :class="['mkt-tab', { active: marketTab === 'trade' }]" @click="marketTab = 'trade'">
+              🛒 Comercio
+            </button>
+            <button :class="['mkt-tab', { active: marketTab === 'workers' }]" @click="marketTab = 'workers'">
+              👷 Trabajadores
+            </button>
+          </div>
+
+          <!-- ══════════════ PESTAÑA COMERCIO ══════════════ -->
+          <div v-if="marketTab === 'trade'" class="mkt-content">
+
+            <div class="mkt-section-label">Comercio de Alimentos</div>
+
+            <!-- Tarjeta comida -->
+            <div class="mkt-commodity-card">
+              <div class="mkt-commodity-header">
+                <div class="mkt-commodity-icon-wrap">🌾</div>
+                <div class="mkt-commodity-meta">
+                  <span class="mkt-commodity-name">Comida</span>
+                  <span class="mkt-commodity-stock" v-if="marketFood">
+                    Reserva: {{ Number(marketFood.current_reserve).toLocaleString('es-ES') }} u
+                  </span>
+                </div>
+                <button class="mkt-icon-btn" @click="loadMarketPrices" :disabled="marketLoading" title="Actualizar precios">
+                  {{ marketLoading ? '⏳' : '🔄' }}
                 </button>
               </div>
-              <select v-model="marketHireH3" class="market-select">
-                <option disabled value="null">Territorio de contratación…</option>
-                <option v-for="loc in workerHireLocations" :key="loc.h3_index" :value="loc.h3_index">
-                  {{ loc.is_capital ? '👑 Capital' : '🏪 ' + (loc.settlement_name || loc.h3_index) }}
+
+              <div v-if="marketFood" class="mkt-price-row">
+                <div class="mkt-price-pill mkt-price-pill-buy">
+                  <span class="mkt-price-pill-label">Comprar</span>
+                  <span class="mkt-price-pill-value">{{ marketFood.buy_price }} 💰</span>
+                </div>
+                <div class="mkt-price-pill mkt-price-pill-sell">
+                  <span class="mkt-price-pill-label">Vender</span>
+                  <span class="mkt-price-pill-value">{{ marketFood.sell_price }} 💰</span>
+                </div>
+              </div>
+
+              <!-- Selector de cantidad con +/- y escritura libre -->
+              <div class="mkt-qty-row">
+                <button class="mkt-qty-btn" @click="marketFoodAmount = Math.max(1, (marketFoodAmount || 0) - 50)">−</button>
+                <input
+                  v-model.number="marketFoodAmount"
+                  type="number" min="1"
+                  class="mkt-qty-input"
+                  placeholder="Cantidad"
+                />
+                <button class="mkt-qty-btn" @click="marketFoodAmount = (marketFoodAmount || 0) + 50">+</button>
+              </div>
+
+              <div v-if="marketFood && marketFoodAmount > 0" class="mkt-totals">
+                <span>Venta ≈ <strong>{{ Math.floor(marketFood.sell_price * marketFoodAmount).toLocaleString('es-ES') }} 💰</strong></span>
+                <span>Compra ≈ <strong>{{ Math.ceil(marketFood.buy_price * marketFoodAmount).toLocaleString('es-ES') }} 💰</strong></span>
+              </div>
+
+              <select v-model="marketFoodH3" class="mkt-select">
+                <option disabled value="">Feudo de origen/destino…</option>
+                <option v-for="t in myTerritories" :key="t.h3_index" :value="t.h3_index">
+                  {{ t.is_capital ? '👑 Capital' : '🏘️ ' + (t.settlement_name || t.h3_index.slice(-6)) }}
                 </option>
               </select>
-              <button
-                class="market-btn market-btn-hire"
-                :disabled="!marketHireTypeId || !marketHireH3"
-                @click="buyWorkerFromMarketPanel(marketHireH3, marketHireTypeId)"
-                title="Contratar trabajador en el territorio seleccionado"
-              >⛏️ Contratar</button>
+
+              <div class="mkt-action-row">
+                <button
+                  class="mkt-action-btn mkt-btn-buy"
+                  :disabled="!marketFood || !marketFoodAmount || marketFoodAmount <= 0 || !marketFoodH3 || marketTxLoading"
+                  @click="marketBuyFood"
+                >
+                  🛒 Comprar
+                </button>
+                <button
+                  class="mkt-action-btn mkt-btn-sell"
+                  :disabled="!marketFood || !marketFoodAmount || marketFoodAmount <= 0 || !marketFoodH3 || marketTxLoading"
+                  @click="marketSellFood"
+                >
+                  💰 Vender
+                </button>
+              </div>
             </div>
-            <p v-if="workerHireLocations.length === 0" class="market-hint">
+
+            <!-- Acceso a recursos -->
+            <div class="mkt-section-label" style="margin-top:18px">Acceso a Recursos</div>
+
+            <div v-if="marketAccessResources.length === 0" class="mkt-empty">Cargando…</div>
+            <div v-for="res in marketAccessResources" :key="res.id" class="mkt-access-card">
+              <div class="mkt-access-icon-wrap">🪨</div>
+              <div class="mkt-access-body">
+                <span class="mkt-access-name">{{ res.display_name }}</span>
+                <span class="mkt-access-desc">{{ res.description }}</span>
+                <span v-if="myAccessMap[res.id]" class="mkt-access-active-badge">
+                  ✅ Activo hasta {{ formatAccessExpiry(myAccessMap[res.id].expires_at) }}
+                </span>
+              </div>
+              <div class="mkt-access-action">
+                <span class="mkt-access-cost">{{ Number(res.access_cost_monthly).toLocaleString('es-ES') }} 💰/mes</span>
+                <button
+                  :class="['mkt-unlock-btn', { 'mkt-unlock-active': !!myAccessMap[res.id] }]"
+                  :disabled="!!myAccessMap[res.id] || marketTxLoading"
+                  @click="marketBuyAccess(res)"
+                >
+                  {{ myAccessMap[res.id] ? 'Activo' : 'Desbloquear' }}
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ══════════════ PESTAÑA TRABAJADORES ══════════════ -->
+          <div v-if="marketTab === 'workers'" class="mkt-content">
+
+            <div class="mkt-section-label">Contratar Trabajador</div>
+
+            <div class="mkt-worker-type-grid">
+              <button
+                v-for="t in workerTypes"
+                :key="t.id"
+                :class="['mkt-wt-btn', { active: marketHireTypeId === t.id }]"
+                @click="marketHireTypeId = t.id"
+              >
+                <span class="mkt-wt-icon">{{ workerTypeIcon(t.name) }}</span>
+                <span class="mkt-wt-name">{{ t.name }}</span>
+                <span class="mkt-wt-cost">{{ Number(t.cost).toLocaleString('es-ES') }} 💰</span>
+              </button>
+            </div>
+
+            <select v-model="marketHireH3" class="mkt-select">
+              <option disabled value="null">Territorio de contratación…</option>
+              <option v-for="loc in workerHireLocations" :key="loc.h3_index" :value="loc.h3_index">
+                {{ loc.is_capital ? '👑 Capital' : '🏪 ' + (loc.settlement_name || loc.h3_index) }}
+              </option>
+            </select>
+
+            <p v-if="workerHireLocations.length === 0" class="mkt-hint">
               Necesitas una Capital o un edificio económico completado para contratar.
             </p>
-          </div>
 
-          <!-- ── Mercado de Alimentos ───────────────────────────────────── -->
-          <div class="market-section">
-            <div class="market-section-title">🌾 Mercado de Alimentos</div>
-            <div class="market-food-price-row">
-              <span class="market-price-label">Precio unitario</span>
-              <span class="market-price-value">— 💰 / u</span>
-            </div>
-            <div class="market-food-form">
-              <input
-                v-model.number="marketFoodAmount"
-                type="number" min="1" step="50"
-                class="market-qty-input"
-                placeholder="Cantidad"
-              />
-              <span class="market-food-total">≈ — 💰</span>
-            </div>
-            <div class="market-food-actions">
-              <button class="market-btn market-btn-buy" disabled title="Próximamente">
-                🛒 Comprar
-              </button>
-              <button class="market-btn market-btn-sell" disabled title="Próximamente">
-                💰 Vender
-              </button>
-            </div>
-          </div>
+            <button
+              class="mkt-action-btn mkt-btn-hire"
+              :disabled="!marketHireTypeId || !marketHireH3"
+              @click="buyWorkerFromMarketPanel(marketHireH3, marketHireTypeId)"
+            >⛏️ Contratar</button>
 
-          <!-- ── Mis Trabajadores ──────────────────────────────────────── -->
-          <div class="market-section">
-            <div class="market-section-header">
-              <div class="market-section-title">
-                👷 Mis Trabajadores
-                <span class="market-worker-count">{{ myWorkers.length }}</span>
+            <!-- Mis trabajadores -->
+            <div class="mkt-section-header" style="margin-top:18px">
+              <div class="mkt-section-label" style="margin:0">
+                Tus Trabajadores
+                <span class="mkt-worker-badge">{{ myWorkers.length }}</span>
               </div>
-              <button class="btn-refresh-workers" @click="fetchMyWorkers" :disabled="loadingWorkers" title="Actualizar">
+              <button class="mkt-icon-btn" @click="fetchMyWorkers" :disabled="loadingWorkers">
                 {{ loadingWorkers ? '⏳' : '🔄' }}
               </button>
             </div>
 
-            <div v-if="loadingWorkers" class="workers-loading">Cargando trabajadores...</div>
-
-            <div v-else-if="myWorkers.length === 0" class="workers-empty">
-              <p>No tienes trabajadores contratados.</p>
-            </div>
-
-            <div v-else class="workers-list">
+            <div v-if="loadingWorkers" class="mkt-empty">Cargando…</div>
+            <div v-else-if="myWorkers.length === 0" class="mkt-empty">No tienes trabajadores contratados.</div>
+            <div v-else class="mkt-worker-list">
               <div
                 v-for="worker in myWorkers"
                 :key="worker.id"
-                class="worker-card"
+                :class="['mkt-worker-card', { 'mkt-worker-card--moving': !!worker.destination_h3 }]"
               >
-                <div class="worker-card-top">
-                  <span class="worker-type-badge">⛏️ {{ worker.type_name }}</span>
-                  <span class="worker-id">#{{ worker.id }}</span>
+                <!-- Banner "En ruta" visible cuando el trabajador se está moviendo -->
+                <div v-if="worker.destination_h3" class="mkt-enroute-banner">
+                  <span class="mkt-enroute-dot"></span>
+                  En ruta → {{ worker.destination_name || worker.destination_h3.slice(-6) }}
                 </div>
-                <div class="worker-card-info">
-                  <span title="Ubicación actual">📍 {{ cellToLatLng(worker.h3_index).map(v => v.toFixed(3)).join(', ') }} ({{ worker.h3_index }})</span>
-                  <span v-if="worker.terrain_type" class="worker-terrain">🌍 {{ worker.terrain_type }}</span>
-                  <span v-if="worker.destination_h3" class="worker-en-route" title="Destino">
-                    ➡️ {{ cellToLatLng(worker.destination_h3).map(v => v.toFixed(3)).join(', ') }} ({{ worker.destination_h3 }})
-                  </span>
+
+                <div class="mkt-wc-row">
+                <div class="mkt-wc-left">
+                  <span class="mkt-wc-icon">{{ workerTypeIcon(worker.type_name) }}</span>
+                  <div class="mkt-wc-info">
+                    <span class="mkt-wc-name">{{ worker.type_name }}</span>
+                    <span class="mkt-wc-loc">📍 {{ worker.location_name || worker.terrain_type || worker.h3_index.slice(-6) }}</span>
+                  </div>
                 </div>
-                <div class="worker-card-stats">
-                  <span title="Velocidad">💨 {{ worker.speed }}</span>
-                  <span title="Coste">💰 {{ worker.cost }}</span>
-                </div>
-                <div class="worker-card-actions">
+                <div class="mkt-wc-actions">
                   <button
                     v-if="['Río','Agua'].includes(worker.terrain_type)"
-                    class="worker-btn worker-btn-build-active"
-                    title="Construir puente (consume trabajadores)"
+                    class="mkt-wc-btn mkt-wc-btn-build"
                     @click="buildBridgeFromPanel(worker.h3_index)"
-                  >🌉 Puente</button>
+                  >🌉</button>
                   <button
                     v-else
-                    class="worker-btn worker-btn-build-active"
-                    title="Construir edificio en este territorio"
+                    class="mkt-wc-btn mkt-wc-btn-build"
                     @click="buildModalOpenedFromWorker = true; activePanel = null; openBuildModal(worker.h3_index)"
-                  >🏛️ Construir</button>
+                  >🏛️</button>
                   <button
-                    class="worker-btn worker-btn-move"
+                    class="mkt-wc-btn mkt-wc-btn-move"
                     @click="startWorkerMoveFromPanel(worker.id, worker.h3_index)"
-                    title="Mover este trabajador"
-                  >➡️ Mover</button>
+                  >➡️</button>
+                </div>
                 </div>
               </div>
             </div>
+
           </div>
 
         </div>
@@ -1403,6 +1495,111 @@ const workerTypeIcon = (name) => {
   return icons[name?.toLowerCase()] ?? '👷';
 };
 const marketFoodAmount = ref(100);
+const marketFoodH3      = ref('');
+const marketTab         = ref('trade'); // 'trade' | 'workers'
+const marketFood        = ref(null);    // commodity row with buy_price/sell_price
+const marketAccessResources = ref([]); // access-type resources
+const myAccessMap       = ref({});     // { resource_type_id: access_row }
+const marketLoading     = ref(false);
+const marketTxLoading   = ref(false);
+const myTerritories     = ref([]);     // list for feudo picker
+
+const loadMarketPrices = async () => {
+  marketLoading.value = true;
+  try {
+    const data = await mapApi.getMarketPrices();
+    if (!data.success) return;
+    marketFood.value = data.resources.find(r => r.name === 'food') ?? null;
+    marketAccessResources.value = data.resources.filter(r => r.category === 'access');
+    const accessMap = {};
+    for (const a of (data.my_access ?? [])) {
+      accessMap[a.resource_type_id] = a;
+    }
+    myAccessMap.value = accessMap;
+  } catch (e) {
+    console.error('Error cargando precios del mercado:', e);
+  } finally {
+    marketLoading.value = false;
+  }
+};
+
+const loadMyTerritories = async () => {
+  try {
+    const data = await mapApi.getMyTerritories();
+    myTerritories.value = data.territories ?? [];
+  } catch (e) {
+    console.error('Error cargando territorios:', e);
+  }
+};
+
+const marketBuyFood = async () => {
+  if (!marketFoodAmount.value || !marketFoodH3.value) return;
+  marketTxLoading.value = true;
+  try {
+    const data = await mapApi.marketBuy({
+      resource: 'food',
+      quantity: marketFoodAmount.value,
+      h3_index: marketFoodH3.value,
+    });
+    if (data.success) {
+      showToast(`🛒 ${data.message}`, 'success');
+      playerGold.value = Math.max(0, playerGold.value - (data.total_gold ?? 0));
+      await loadMarketPrices();
+    } else {
+      showToast(data.message || 'Error al comprar', 'error');
+    }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'Error al comprar', 'error');
+  } finally {
+    marketTxLoading.value = false;
+  }
+};
+
+const marketSellFood = async () => {
+  if (!marketFoodAmount.value || !marketFoodH3.value) return;
+  marketTxLoading.value = true;
+  try {
+    const data = await mapApi.marketSell({
+      resource: 'food',
+      quantity: marketFoodAmount.value,
+      h3_index: marketFoodH3.value,
+    });
+    if (data.success) {
+      showToast(`💰 ${data.message}`, 'success');
+      playerGold.value = playerGold.value + (data.total_gold ?? 0);
+      await loadMarketPrices();
+    } else {
+      showToast(data.message || 'Error al vender', 'error');
+    }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'Error al vender', 'error');
+  } finally {
+    marketTxLoading.value = false;
+  }
+};
+
+const marketBuyAccess = async (resource) => {
+  marketTxLoading.value = true;
+  try {
+    const data = await mapApi.marketBuy({ resource: resource.name });
+    if (data.success) {
+      showToast(`✅ ${data.message}`, 'success');
+      playerGold.value = Math.max(0, playerGold.value - (data.cost ?? 0));
+      await loadMarketPrices();
+    } else {
+      showToast(data.message || 'Error al contratar acceso', 'error');
+    }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'Error al contratar acceso', 'error');
+  } finally {
+    marketTxLoading.value = false;
+  }
+};
+
+const formatAccessExpiry = (dateStr) => {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 
 const loadWorkerHireLocations = async () => {
   try {
@@ -4234,8 +4431,11 @@ const togglePanel = (panelName) => {
       fetchNotifications(); // refresh con spinner al abrir el panel
     }
     if (panelName === 'market') {
+      marketTab.value = 'trade';
       fetchMyWorkers();
       loadWorkerHireLocations();
+      loadMarketPrices();
+      loadMyTerritories();
     }
   }
 };
@@ -7609,177 +7809,459 @@ onBeforeUnmount(() => {
 }
 
 /* ── Market Panel ── */
-.market-panel {
+/* ═══════════════════════════════════════════════════════
+   PANEL MERCADO — Rediseño con estilo medieval cálido
+   ═══════════════════════════════════════════════════════ */
+
+.mkt-panel {
   display: flex;
   flex-direction: column;
   gap: 0;
   padding: 0;
   overflow-y: auto;
+  height: 100%;
+  background: linear-gradient(180deg, #1c1208 0%, #160e05 100%);
 }
 
-.market-section {
-  padding: 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+/* ── Barra de recursos ── */
+.mkt-resource-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 10px 16px;
+  background: rgba(0,0,0,0.35);
+  border-bottom: 1px solid rgba(197,160,89,0.2);
+}
+.mkt-resource {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  justify-content: center;
+}
+.mkt-res-icon  { font-size: 18px; }
+.mkt-res-value { font-size: 14px; font-weight: 700; color: #fbbf24; }
+.mkt-res-label { font-size: 10px; color: #a89060; text-transform: uppercase; letter-spacing: 0.5px; }
+.mkt-res-divider {
+  width: 1px;
+  height: 28px;
+  background: rgba(197,160,89,0.25);
+  margin: 0 4px;
+}
+
+/* ── Tabs ── */
+.mkt-tabs {
+  display: flex;
+  gap: 0;
+  padding: 10px 12px 0;
+  border-bottom: 1px solid rgba(197,160,89,0.15);
+}
+.mkt-tab {
+  flex: 1;
+  padding: 7px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #7a6040;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  letter-spacing: 0.3px;
+}
+.mkt-tab:hover { color: #c5a059; }
+.mkt-tab.active {
+  color: #fbbf24;
+  border-bottom-color: #c5a059;
+}
+
+/* ── Content area ── */
+.mkt-content {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 14px 12px;
+  overflow-y: auto;
 }
 
-.market-section-title {
-  font-size: 11px;
+/* ── Section label ── */
+.mkt-section-label {
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
   color: #c5a059;
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-bottom: 2px;
 }
-
-.market-worker-count {
+.mkt-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mkt-worker-badge {
   background: rgba(197,160,89,0.2);
   color: #c5a059;
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 10px;
+  margin-left: 4px;
 }
 
-.market-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.market-hire-form {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.market-worker-type-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.market-worker-type-btn {
+/* ── Commodity card ── */
+.mkt-commodity-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(197,160,89,0.25);
+  border-radius: 8px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+.mkt-commodity-header {
+  display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 8px 12px;
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(197,160,89,0.35);
-  border-radius: 6px;
-  color: #e8d5b5;
-  cursor: pointer;
+  gap: 10px;
+}
+.mkt-commodity-icon-wrap {
+  font-size: 26px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(197,160,89,0.12);
+  border-radius: 8px;
+  border: 1px solid rgba(197,160,89,0.25);
+  flex-shrink: 0;
+}
+.mkt-commodity-meta {
   flex: 1;
-  min-width: 80px;
-  transition: background 0.15s, border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-.market-worker-type-btn:hover {
-  background: rgba(197,160,89,0.15);
-  border-color: rgba(197,160,89,0.6);
-}
-.market-worker-type-btn.active {
-  background: rgba(197,160,89,0.25);
-  border-color: #c5a059;
-}
-.worker-type-icon  { font-size: 20px; }
-.worker-type-name  { font-size: 11px; text-transform: capitalize; }
-.worker-type-cost  { font-size: 10px; color: #9ca3af; }
+.mkt-commodity-name  { font-size: 14px; font-weight: 700; color: #e8d5b5; }
+.mkt-commodity-stock { font-size: 11px; color: #7a6040; }
 
-.market-select {
-  width: 100%;
-  padding: 5px 8px;
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(197,160,89,0.35);
-  border-radius: 4px;
-  color: #e8d5b5;
-  font-size: 12px;
+.mkt-icon-btn {
+  background: none;
+  border: none;
   cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+  opacity: 0.6;
+  border-radius: 4px;
+  transition: opacity 0.15s;
 }
-.market-select:focus { outline: none; border-color: #c5a059; }
+.mkt-icon-btn:hover { opacity: 1; }
+.mkt-icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-.market-hint {
-  font-size: 10px;
-  color: var(--color-text-dim);
-  margin: 0;
-}
-
-.market-food-price-row {
+/* ── Price pills ── */
+.mkt-price-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.market-price-label {
-  font-size: 11px;
-  color: var(--color-text-dim);
-}
-
-.market-price-value {
-  font-size: 12px;
-  font-weight: 600;
-  color: #fbbf24;
-}
-
-.market-food-form {
-  display: flex;
-  align-items: center;
   gap: 8px;
 }
-
-.market-qty-input {
+.mkt-price-pill {
   flex: 1;
-  padding: 5px 8px;
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(197,160,89,0.35);
-  border-radius: 4px;
-  color: #e8d5b5;
-  font-size: 12px;
-  min-width: 0;
-}
-.market-qty-input:focus { outline: none; border-color: #c5a059; }
-
-.market-food-total {
-  font-size: 11px;
-  color: #fbbf24;
-  white-space: nowrap;
-}
-
-.market-food-actions {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  gap: 2px;
+}
+.mkt-price-pill-buy  { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); }
+.mkt-price-pill-sell { background: rgba(134,239,172,0.1); border: 1px solid rgba(134,239,172,0.3); }
+.mkt-price-pill-label { font-size: 10px; color: #7a6040; text-transform: uppercase; letter-spacing: 0.4px; }
+.mkt-price-pill-buy  .mkt-price-pill-value { color: #f87171; font-size: 13px; font-weight: 700; }
+.mkt-price-pill-sell .mkt-price-pill-value { color: #86efac; font-size: 13px; font-weight: 700; }
+
+/* ── Quantity row ── */
+.mkt-qty-row {
+  display: flex;
+  align-items: center;
   gap: 6px;
 }
-
-.market-btn {
+.mkt-qty-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(197,160,89,0.4);
+  background: rgba(197,160,89,0.1);
+  color: #fbbf24;
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mkt-qty-btn:hover { background: rgba(197,160,89,0.22); }
+.mkt-qty-input {
   flex: 1;
-  padding: 6px 8px;
+  padding: 6px 10px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(197,160,89,0.35);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  min-width: 0;
+}
+.mkt-qty-input:focus { outline: none; border-color: #c5a059; }
+.mkt-qty-input::-webkit-inner-spin-button,
+.mkt-qty-input::-webkit-outer-spin-button { opacity: 0.4; }
+
+/* ── Totals preview ── */
+.mkt-totals {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #7a6040;
+  padding: 0 2px;
+}
+.mkt-totals strong { color: #fbbf24; }
+
+/* ── Select ── */
+.mkt-select {
+  width: 100%;
+  padding: 7px 10px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(197,160,89,0.3);
+  border-radius: 6px;
+  color: #e8d5b5;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mkt-select:focus { outline: none; border-color: #c5a059; }
+
+/* ── Action buttons ── */
+.mkt-action-row {
+  display: flex;
+  gap: 8px;
+}
+.mkt-action-btn {
+  flex: 1;
+  padding: 8px 10px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  letter-spacing: 0.2px;
+}
+.mkt-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.mkt-action-btn:not(:disabled):hover { opacity: 0.88; transform: translateY(-1px); }
+.mkt-action-btn:not(:disabled):active { transform: translateY(0); }
+
+.mkt-btn-buy  { background: linear-gradient(135deg, #15803d, #166534); color: #dcfce7; }
+.mkt-btn-sell { background: linear-gradient(135deg, #b45309, #92400e); color: #fef3c7; }
+.mkt-btn-hire { background: linear-gradient(135deg, #7c3aed, #5b21b6); color: #ede9fe; margin-top: 4px; }
+
+/* ── Acceso a recursos ── */
+.mkt-access-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(197,160,89,0.2);
+  border-radius: 8px;
+}
+.mkt-access-icon-wrap {
+  font-size: 22px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(197,160,89,0.1);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.mkt-access-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mkt-access-name  { font-size: 13px; font-weight: 700; color: #e8d5b5; }
+.mkt-access-desc  { font-size: 11px; color: #7a6040; line-height: 1.35; }
+.mkt-access-active-badge { font-size: 11px; color: #86efac; margin-top: 2px; }
+
+.mkt-access-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.mkt-access-cost { font-size: 11px; color: #fbbf24; font-weight: 600; white-space: nowrap; }
+.mkt-unlock-btn {
+  padding: 5px 10px;
+  background: linear-gradient(135deg, #d97706, #b45309);
+  border: none;
+  border-radius: 5px;
+  color: #fef3c7;
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   transition: opacity 0.15s;
+  white-space: nowrap;
 }
-.market-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.market-btn:not(:disabled):hover { opacity: 0.85; }
-
-.market-btn-hire {
-  background: #b45309;
-  color: #fef3c7;
-}
-.market-btn-hire:disabled { background: #374151; color: #6b7280; }
-
-.market-btn-buy {
-  background: #16a34a;
-  color: #f0fdf4;
+.mkt-unlock-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mkt-unlock-btn:not(:disabled):hover { opacity: 0.85; }
+.mkt-unlock-active {
+  background: linear-gradient(135deg, #15803d, #166534);
+  color: #dcfce7;
 }
 
-.market-btn-sell {
-  background: #b45309;
-  color: #fef3c7;
+/* ── Tipo trabajador grid ── */
+.mkt-worker-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.mkt-wt-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 6px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(197,160,89,0.25);
+  border-radius: 7px;
+  color: #e8d5b5;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.mkt-wt-btn:hover { background: rgba(197,160,89,0.12); border-color: rgba(197,160,89,0.5); }
+.mkt-wt-btn.active {
+  background: rgba(197,160,89,0.2);
+  border-color: #c5a059;
+  box-shadow: 0 0 0 1px rgba(197,160,89,0.3);
+}
+.mkt-wt-icon { font-size: 20px; }
+.mkt-wt-name { font-size: 11px; font-weight: 600; text-transform: capitalize; }
+.mkt-wt-cost { font-size: 10px; color: #7a6040; }
+
+/* ── Mis Trabajadores ── */
+.mkt-worker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mkt-worker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(197,160,89,0.18);
+  border-radius: 7px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.mkt-wc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mkt-wc-row .mkt-wc-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.mkt-wc-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.mkt-wc-icon { font-size: 20px; flex-shrink: 0; }
+.mkt-wc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mkt-wc-name   { font-size: 12px; font-weight: 600; color: #e8d5b5; }
+.mkt-wc-loc    { font-size: 10px; color: #7a6040; }
+.mkt-wc-enroute { font-size: 10px; color: #34d399; }
+
+.mkt-wc-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.mkt-wc-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 5px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s;
+}
+.mkt-wc-btn:hover { opacity: 0.8; }
+.mkt-wc-btn-build { background: #22c55e; }
+.mkt-wc-btn-move  { background: #f59e0b; }
+
+.mkt-worker-card--moving {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.05);
+}
+
+.mkt-enroute-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #34d399;
+  letter-spacing: 0.2px;
+  margin-bottom: 6px;
+}
+
+@keyframes mkt-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+.mkt-enroute-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  flex-shrink: 0;
+  animation: mkt-pulse 1.4s ease-in-out infinite;
+}
+
+/* ── Misc ── */
+.mkt-empty {
+  text-align: center;
+  color: #7a6040;
+  font-size: 12px;
+  padding: 16px 8px;
+}
+.mkt-hint {
+  font-size: 10px;
+  color: #7a6040;
+  margin: 0;
+  padding: 0 2px;
 }
 
 .btn-refresh-workers {
@@ -7793,6 +8275,7 @@ onBeforeUnmount(() => {
 }
 .btn-refresh-workers:hover { opacity: 1; }
 
+/* Legacy worker card classes — kept for compatibility */
 .workers-loading,
 .workers-empty {
   text-align: center;
@@ -7800,105 +8283,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
   padding: 20px 8px;
 }
-.workers-hint {
-  margin-top: 6px;
-  font-size: 11px;
-}
-
-.workers-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  max-height: calc(100vh - 200px);
-}
-
-.worker-card {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 6px;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.worker-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.worker-type-badge {
-  font-size: 12px;
-  font-weight: 600;
-  color: #f59e0b;
-}
-
-.worker-id {
-  font-size: 10px;
-  color: var(--color-text-dim);
-}
-
-.worker-card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
-  color: var(--color-text-dim);
-}
-
-.worker-en-route {
-  color: #34d399;
-  font-size: 11px;
-}
-
-.worker-card-stats {
-  display: flex;
-  gap: 10px;
-  font-size: 11px;
-  color: var(--color-text-dim);
-}
-
-.worker-card-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.worker-btn {
-  flex: 1;
-  padding: 4px 6px;
-  border: none;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.worker-btn:hover:not(:disabled) { opacity: 0.85; }
-
-.worker-btn-build {
-  background: #374151;
-  color: #9ca3af;
-  border: 1px solid #4b5563;
-  cursor: not-allowed;
-}
-
-.worker-btn-build-active {
-  background: #22c55e;
-  color: #14532d;
-}
-
-.worker-btn-move {
-  background: #f59e0b;
-  color: #1c1917;
-}
-
-.worker-terrain {
-  font-size: 10px;
-  color: #60a5fa;
-}
+.worker-terrain { font-size: 10px; color: #60a5fa; }
 
 /* Layers Panel Sections */
 .layers-panel {

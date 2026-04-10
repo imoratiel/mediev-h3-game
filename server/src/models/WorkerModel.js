@@ -133,11 +133,17 @@ class WorkerModel {
         const result = await pool.query(
             `SELECT w.id, w.h3_index, w.destination_h3, w.type_id, w.hp, w.speed, w.detection_range, w.created_at,
                     wt.name AS type_name, wt.cost,
-                    tt.name AS terrain_type
+                    tt.name  AS terrain_type,
+                    COALESCE(s_cur.name, tt.name, w.h3_index)    AS location_name,
+                    COALESCE(s_dst.name, tt_dst.name, w.destination_h3) AS destination_name
              FROM workers w
-             JOIN workers_types wt ON w.type_id = wt.id
-             LEFT JOIN h3_map m    ON w.h3_index = m.h3_index
+             JOIN workers_types wt  ON w.type_id = wt.id
+             LEFT JOIN h3_map m     ON w.h3_index = m.h3_index
              LEFT JOIN terrain_types tt ON m.terrain_type_id = tt.terrain_type_id
+             LEFT JOIN settlements s_cur ON s_cur.h3_index = w.h3_index
+             LEFT JOIN h3_map m_dst      ON m_dst.h3_index = w.destination_h3
+             LEFT JOIN terrain_types tt_dst ON tt_dst.terrain_type_id = m_dst.terrain_type_id
+             LEFT JOIN settlements s_dst ON s_dst.h3_index = w.destination_h3
              WHERE w.player_id = $1
              ORDER BY w.created_at DESC`,
             [player_id]

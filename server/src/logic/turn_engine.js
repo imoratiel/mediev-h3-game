@@ -6,6 +6,7 @@ const { processCharacterLifecycle } = require('./character_lifecycle');
 const { processNobleRanks } = require('./noble_rank_system');
 const { processTithe } = require('./tithe_system');
 const { processBuildingDecay } = require('./building_decay');
+const MarketModel = require('../models/MarketModel');
 const { processGraceTurns } = require('./conquest_system');
 const { processWorkerMovements } = require('./workerMovement');
 const GAME_CONFIG = require('../config/constants');
@@ -1467,6 +1468,15 @@ async function processGameTurn(pool, config) {
             await processHappiness(client, newTurn);
             await processMonthlyProduction(client, newTurn, config);
             await purgeOldNotifications(client, newTurn);
+            // Renovación/expiración de accesos de mercado
+            try {
+                const { renewed, expired } = await MarketModel.ProcessMonthlyAccessRenewals(client);
+                if (renewed + expired > 0) {
+                    Logger.engine(`[TURN ${newTurn}] Accesos de mercado: ${renewed} renovados, ${expired} expirados`);
+                }
+            } catch (err) {
+                Logger.error(err, { context: 'turn_engine.processMonthlyAccessRenewals', turn: newTurn });
+            }
         }
 
         // Harvest logic (days 75 and 180 - Spring and Fall harvests)
