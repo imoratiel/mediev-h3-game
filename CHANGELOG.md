@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.9.0...v0.10.0) (2026-04-14)
+
+
+### Nuevas funcionalidades
+
+* buscador de personajes al enviar mensajes ([dd42ddc](https://github.com/imoratiel/hipania210ac-game/commit/dd42ddc58adbfa9d20c5bb859c1fd32a0f5d3cbe))
+
+
+### Correcciones
+
+* crear hilos de mensajes ([5808cca](https://github.com/imoratiel/hipania210ac-game/commit/5808cca019a0189a2384e8bbbc0491f9e5bf411a))
+* problema con contenedor db ([094b80b](https://github.com/imoratiel/hipania210ac-game/commit/094b80b729e018477e7ed54cd61e5d222fba500c))
+
 ## [0.9.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.8.1...v0.9.0) (2026-04-14)
 
 
