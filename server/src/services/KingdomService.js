@@ -5,6 +5,7 @@ const KingdomModel = require('../models/KingdomModel.js');
 const ArmyModel = require('../models/ArmyModel.js');
 const CombatModel = require('../models/CombatModel.js');
 const { CONFIG } = require('../config.js');
+const GAME_CONFIG = require('../config/constants.js');
 const { getPopulationCap } = require('../config/gameFunctions.js');
 const infrastructure = require('../logic/infrastructure.js');
 const conquest = require('../logic/conquest.js');
@@ -494,6 +495,7 @@ class KingdomService {
             // 3. Verificar que el hex no es propio + cargar datos de milicia y capital
             const hexResult = await client.query(`
                 SELECT m.player_id,
+                       m.terrain_type_id,
                        COALESCE(td.custom_name, m.h3_index) AS fief_name,
                        COALESCE(td.population, 200)    AS population,
                        COALESCE(td.defense_level, 0)   AS defense_level,
@@ -513,14 +515,19 @@ class KingdomService {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Este territorio ya es tuyo' });
             }
+            if (hex.terrain_type_id === GAME_CONFIG.MAP.RIVER_TERRAIN_TYPE_ID) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'No se puede conquistar un río. Construye un puente primero.' });
+            }
 
             // 3a. Verificar adyacencia: al menos un vecino debe ser del atacante o estar libre
+            // Los ríos sin puente (terrain_type_id = RIVER) no cuentan como paso libre
             const neighbors = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
             const adjResult = await client.query(`
                 SELECT COUNT(*)::int AS count FROM h3_map
                 WHERE h3_index = ANY($1::text[])
-                  AND (player_id = $2 OR player_id IS NULL)
-            `, [neighbors, player_id]);
+                  AND (player_id = $2 OR (player_id IS NULL AND terrain_type_id != $3))
+            `, [neighbors, player_id, GAME_CONFIG.MAP.RIVER_TERRAIN_TYPE_ID]);
             if (adjResult.rows[0].count === 0) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Solo puedes conquistar territorios adyacentes a los tuyos o a tierra libre.' });
@@ -723,6 +730,7 @@ class KingdomService {
             // 2. Verificar que el hex no es propio + cargar datos de milicia y capital
             const hexResult = await client.query(`
                 SELECT m.player_id,
+                       m.terrain_type_id,
                        COALESCE(td.custom_name, m.h3_index) AS fief_name,
                        COALESCE(td.population, 200)    AS population,
                        COALESCE(td.defense_level, 0)   AS defense_level,
@@ -741,14 +749,19 @@ class KingdomService {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Este territorio ya es tuyo' });
             }
+            if (hex.terrain_type_id === GAME_CONFIG.MAP.RIVER_TERRAIN_TYPE_ID) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'No se puede conquistar un río. Construye un puente primero.' });
+            }
 
             // 2a. Verificar adyacencia: al menos un vecino debe ser del atacante o estar libre
+            // Los ríos sin puente (terrain_type_id = RIVER) no cuentan como paso libre
             const neighborsF = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
             const adjResultF = await client.query(`
                 SELECT COUNT(*)::int AS count FROM h3_map
                 WHERE h3_index = ANY($1::text[])
-                  AND (player_id = $2 OR player_id IS NULL)
-            `, [neighborsF, player_id]);
+                  AND (player_id = $2 OR (player_id IS NULL AND terrain_type_id != $3))
+            `, [neighborsF, player_id, GAME_CONFIG.MAP.RIVER_TERRAIN_TYPE_ID]);
             if (adjResultF.rows[0].count === 0) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, message: 'Solo puedes conquistar territorios adyacentes a los tuyos o a tierra libre.' });

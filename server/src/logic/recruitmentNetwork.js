@@ -28,25 +28,37 @@ const MAX_RECRUITS_INDEPENDENT = GAME_CONFIG.DIVISIONS.MAX_RECRUITS_INDEPENDENT;
  * @returns {Promise<string[]>} Ordered BFS list of connected h3 indices (max distance MAX_RANGE)
  */
 async function getConnectedNetwork(client, startH3, playerId) {
-    const result = await client.query(
-        'SELECT h3_index FROM h3_map WHERE player_id = $1',
-        [playerId]
+    const RIVER_ID  = GAME_CONFIG.MAP.RIVER_TERRAIN_TYPE_ID;
+    const BRIDGE_ID = GAME_CONFIG.MAP.BRIDGE_TERRAIN_TYPE_ID;
+
+    // Hexes propios (excluyendo ríos — no transmiten abastecimiento)
+    const playerResult = await client.query(
+        'SELECT h3_index FROM h3_map WHERE player_id = $1 AND terrain_type_id != $2',
+        [playerId, RIVER_ID]
     );
-    const playerHexSet = new Set(result.rows.map(r => r.h3_index));
+    const playerHexSet = new Set(playerResult.rows.map(r => r.h3_index));
+
+    // Puentes de cualquier propietario: actúan como conectores neutros para todos
+    const bridgeResult = await client.query(
+        'SELECT h3_index FROM h3_map WHERE terrain_type_id = $1',
+        [BRIDGE_ID]
+    );
+    const bridgeSet = new Set(bridgeResult.rows.map(r => r.h3_index));
 
     const visited = new Set([startH3]);
     const bfsOrder = [];
-    // Queue stores [h3_index, depth]
     const queue = [[startH3, 0]];
 
     while (queue.length > 0) {
         const [current, depth] = queue.shift();
         bfsOrder.push(current);
-        if (depth >= MAX_RANGE) continue; // No expandir más allá del radio máximo
+        if (depth >= MAX_RANGE) continue;
         const neighbors = h3.gridDisk(current, 1).filter(n => n !== current);
         for (const neighbor of neighbors) {
-            if (!visited.has(neighbor) && playerHexSet.has(neighbor)) {
-                visited.add(neighbor);
+            if (visited.has(neighbor)) continue;
+            visited.add(neighbor);
+            // Propagar por hexes propios o por puentes (conectores neutros)
+            if (playerHexSet.has(neighbor) || bridgeSet.has(neighbor)) {
                 queue.push([neighbor, depth + 1]);
             }
         }

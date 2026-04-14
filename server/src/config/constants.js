@@ -16,6 +16,7 @@ const GAME_CONFIG = {
         MAX_MOVEMENT_DISTANCE: 100,       // Máximo de hexágonos para seleccionar destino (radio)
         H3_RESOLUTION: 8,                 // Resolución de celdas H3 usada en el sistema
         BRIDGE_TERRAIN_TYPE_ID: 15,       // ID de tipo de terreno que representa un puente (paso entre islas)
+        RIVER_TERRAIN_TYPE_ID:  4,        // ID de tipo de terreno Río (no conquistable sin puente)
     },
 
     // ⚔️ Atributos de Ejércitos y Unidades
