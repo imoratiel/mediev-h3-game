@@ -282,9 +282,11 @@ class KingdomService {
             const filter_division = (req.query.filter_division || '').trim();
             const filter_maxpop = req.query.filter_maxpop != null && req.query.filter_maxpop !== ''
                 ? parseInt(req.query.filter_maxpop) : null;
+            const sort_field = (req.query.sort_field || '').trim();
+            const sort_dir   = req.query.sort_dir === 'desc' ? 'desc' : 'asc';
 
             const { rows, total } = await KingdomModel.GetMyFiefs(req.user.player_id, {
-                page, limit, filter_name, filter_maxpop, filter_division
+                page, limit, filter_name, filter_maxpop, filter_division, sort_field, sort_dir
             });
 
             const fiefs = rows.map(row => {

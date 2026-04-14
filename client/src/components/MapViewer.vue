@@ -978,6 +978,8 @@
               :total="fiefsTotalCount"
               :page="fiefsPage"
               :limit="fiefsLimit"
+              :sortField="fiefsSort.field"
+              :sortDir="fiefsSort.dir"
               :playerGold="playerGold"
               :explorationConfig="explorationConfig"
               :workerTypes="workerTypes"
@@ -990,6 +992,7 @@
               @buyWorker="handleBuyWorkerFromTable"
               @change-page="handleFiefsPageChange"
               @change-limit="handleFiefsLimitChange"
+              @sort-change="handleFiefsSortChange"
             />
           </div>
 
@@ -1573,6 +1576,7 @@ const myDivisions = ref([]); // Player's señoríos for the filter dropdown
 const fiefsPage       = ref(1);
 const fiefsLimit      = ref(10);
 const fiefsTotalCount = ref(0);
+const fiefsSort = ref({ field: '', dir: 'asc' });
 
 // Re-fetch from page 1 whenever filters change
 watch(kingdomFilters, () => {
@@ -3636,6 +3640,8 @@ const updateFiefsUI = async ({ page, limit } = {}) => {
       filter_name:      kingdomFilters.value.name     || '',
       filter_maxpop:    kingdomFilters.value.maxPopulation ?? null,
       filter_division:  kingdomFilters.value.division || '',
+      sort_field:       fiefsSort.value.field,
+      sort_dir:         fiefsSort.value.dir,
     });
 
     if (data.success) {
@@ -3663,6 +3669,12 @@ const handleFiefsLimitChange = (l) => {
   fiefsPage.value  = 1;
   fiefsLimit.value = l;
   updateFiefsUI({ page: 1, limit: l });
+};
+
+const handleFiefsSortChange = ({ field, dir }) => {
+  fiefsSort.value = { field, dir };
+  fiefsPage.value = 1;
+  updateFiefsUI({ page: 1 });
 };
 
 const loadMyDivisions = async () => {

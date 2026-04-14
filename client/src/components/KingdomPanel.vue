@@ -4,16 +4,16 @@
       <table class="kingdom-table">
         <thead>
           <tr>
-            <th class="col-feudo">Centuria</th>
-            <th class="col-terreno">Terreno</th>
-            <th class="col-number">💰</th>
-            <th class="col-number">👥</th>
-            <th class="col-number">😊</th>
-            <th class="col-number mobile-hide">🌾</th>
-            <th class="col-number mobile-hide">Auton.</th>
-            <th class="col-farm mobile-hide">Granja</th>
-            <th class="col-division mobile-hide">Comarca</th>
-            <th class="col-number mobile-hide">⚔️</th>
+            <th class="col-feudo sortable" @click="setSort('h3_index')">Centuria<span class="sort-icon">{{ sortIcon('h3_index') }}</span></th>
+            <th class="col-terreno sortable" @click="setSort('terrain')">Terreno<span class="sort-icon">{{ sortIcon('terrain') }}</span></th>
+            <th class="col-number sortable" @click="setSort('gold')">💰<span class="sort-icon">{{ sortIcon('gold') }}</span></th>
+            <th class="col-number sortable" @click="setSort('population')">👥<span class="sort-icon">{{ sortIcon('population') }}</span></th>
+            <th class="col-number sortable" @click="setSort('happiness')">😊<span class="sort-icon">{{ sortIcon('happiness') }}</span></th>
+            <th class="col-number mobile-hide sortable" @click="setSort('food')">🌾<span class="sort-icon">{{ sortIcon('food') }}</span></th>
+            <th class="col-number mobile-hide sortable" @click="setSort('autonomy')">Auton.<span class="sort-icon">{{ sortIcon('autonomy') }}</span></th>
+            <th class="col-farm mobile-hide sortable" @click="setSort('farm_level')">Granja<span class="sort-icon">{{ sortIcon('farm_level') }}</span></th>
+            <th class="col-division mobile-hide sortable" @click="setSort('division_name')">Comarca<span class="sort-icon">{{ sortIcon('division_name') }}</span></th>
+            <th class="col-number mobile-hide sortable" @click="setSort('total_troops')">⚔️<span class="sort-icon">{{ sortIcon('total_troops') }}</span></th>
             <th class="col-edificio mobile-hide">🏛️</th>
             <th class="col-actions">Acc.</th>
           </tr>
@@ -235,6 +235,8 @@ const props = defineProps({
   total:             { type: Number, default: 0 },
   page:              { type: Number, default: 1 },
   limit:             { type: Number, default: 10 },
+  sortField:         { type: String, default: '' },
+  sortDir:           { type: String, default: 'asc' },
   playerGold:        { type: Number, default: 0 },
   explorationConfig: { type: Object, default: () => ({ gold_cost: 0 }) },
   workerTypes:       { type: Array,  default: () => [] },
@@ -242,9 +244,19 @@ const props = defineProps({
 
 const emit = defineEmits([
   'focusOnFief', 'exploreFief', 'openRecruitment', 'openConstruction', 'openUpgrade',
-  'change-page', 'change-limit',
+  'change-page', 'change-limit', 'sort-change',
   'buyWorker', 'upgradeFarm',
 ]);
+
+const setSort = (field) => {
+  const dir = props.sortField === field && props.sortDir === 'asc' ? 'desc' : 'asc';
+  emit('sort-change', { field, dir });
+};
+
+const sortIcon = (field) => {
+  if (props.sortField !== field) return '';
+  return props.sortDir === 'asc' ? ' ▲' : ' ▼';
+};
 
 const TERRAIN_COLORS = {
   'Mar':                '#1a6b9e',
@@ -363,6 +375,23 @@ const formatGold = (val) => {
   position: sticky;
   top: 0;
   z-index: 10;
+  user-select: none;
+}
+
+.kingdom-table th.sortable {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.kingdom-table th.sortable:hover {
+  background: rgba(197, 160, 89, 0.15);
+  color: #ffe566;
+}
+
+.sort-icon {
+  font-size: 0.7rem;
+  opacity: 0.8;
+  margin-left: 2px;
 }
 
 .kingdom-table td {
