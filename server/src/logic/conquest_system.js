@@ -132,6 +132,7 @@ async function processCapitalCollapse(client, capitalH3, newOwnerId, defeatedPla
         'SELECT id, name FROM political_divisions WHERE player_id = $1',
         [defeatedPlayerId]
     );
+    const defeatedDivisionIds = [];
     for (const div of defeatedDivisionsRes.rows) {
         let finalName = div.name;
         if (existingNames.has(finalName)) {
@@ -142,6 +143,18 @@ async function processCapitalCollapse(client, capitalH3, newOwnerId, defeatedPla
             'UPDATE political_divisions SET player_id = $1, name = $2 WHERE id = $3',
             [newOwnerId, finalName, div.id]
         );
+        defeatedDivisionIds.push(div.id);
+    }
+
+    // Asegurar que TODOS los feudos de las comarcas transferidas cambian de dueño,
+    // no sólo los alcanzados por el BFS (que tiene límite de rango).
+    if (defeatedDivisionIds.length > 0) {
+        await client.query(`
+            UPDATE h3_map SET player_id = $1
+            WHERE h3_index IN (
+                SELECT h3_index FROM territory_details WHERE division_id = ANY($2::int[])
+            ) AND player_id = $3
+        `, [newOwnerId, defeatedDivisionIds, defeatedPlayerId]);
     }
 
     Logger.engine(`[TURN ${turn}] Capital collapse: ${toConquer.length} fiefs cascade-conquered from ${capitalH3} (defeated player ${defeatedPlayerId})`);
