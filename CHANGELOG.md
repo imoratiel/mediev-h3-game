@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.8.1...v0.9.0) (2026-04-14)
+
+
+### Nuevas funcionalidades
+
+* IA alimentada por groq ([7f883b0](https://github.com/imoratiel/hipania210ac-game/commit/7f883b0335b5a6e74d043d33a4c7c07ae283f8ad))
+* implementar mejora de mercado en los turnos ([5dfdb26](https://github.com/imoratiel/hipania210ac-game/commit/5dfdb269beb021cb7f513e71c5c74ef4ab2166f5))
+* mejora de los bots ia ([1570696](https://github.com/imoratiel/hipania210ac-game/commit/15706966e16bc458a19d53b860f8b12179bb65b7))
+* mensaje explicativo sobre las ventas de recursos ([5be233d](https://github.com/imoratiel/hipania210ac-game/commit/5be233d0833eb8291ee9b09949085e7f3f2b8361))
+* modificadores de combate por terreno ([39514b9](https://github.com/imoratiel/hipania210ac-game/commit/39514b903090426d429fc355f5a33082538c9bb9))
+* panel de compra por mercado ([970acd0](https://github.com/imoratiel/hipania210ac-game/commit/970acd07ae74cb3553af149d0dd84d3776a385d6))
+* primera versión del nuevo mercado ([62b9c1f](https://github.com/imoratiel/hipania210ac-game/commit/62b9c1f84bfd4cda1529777ef02e8b384c289dbd))
+* recurso piedra aplicado a la conservacion de los edificios ([cd0852d](https://github.com/imoratiel/hipania210ac-game/commit/cd0852df4a993d2746c4db194123353253a6118b))
+* resetear mercados al resetear partida ([5fe6a71](https://github.com/imoratiel/hipania210ac-game/commit/5fe6a71c2809d416cc216b75340b5d4c31704801))
+
+
+### Correcciones
+
+* error de los bots al construir edificios de otra cultura ([98a6ade](https://github.com/imoratiel/hipania210ac-game/commit/98a6ade67a02707328de2bd67030b05b13397a1d))
+* errores en los mensajes ([4daeecc](https://github.com/imoratiel/hipania210ac-game/commit/4daeecce9daeaa7ec421a4b8278a92a82469d3bb))
+
 ## [0.8.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.8.0...v0.8.1) (2026-04-07)
 
 
