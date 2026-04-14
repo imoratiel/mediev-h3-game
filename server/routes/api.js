@@ -238,9 +238,7 @@ module.exports = function () {
     router.put('/messages/:id/read', authenticateToken, MessageService.MarkMessageAsRead );
 
     // Get thread messages
-    router.get('/messages/thread/:thread_id', authenticateToken, async (req, res) => {
-        
-    });
+    router.get('/messages/thread/:thread_id', authenticateToken, MessageService.GetThread);
 
     // ============================================
     // WORKERS

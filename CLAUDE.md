@@ -33,3 +33,13 @@ El proyecto ha sido refactorizado para separar responsabilidades y mejorar la ma
 /src/Model/: Capa de persistencia. Contiene exclusivamente las consultas SQL (usando pool.query). Devuelve objetos limpios o arrays (result.rows).
 /src/config/: Constantes globales y parámetros de balanceo (costes de terreno, límites de movimiento).
 /src/logic/: Lógica de negocio por temáticas, funciones avanzadas que implican múltiples entidades y cálculos automatizados
+
+## 7. Approach
+Think before acting. Read existing files before writing code.
+Be concise in output but thorough in reasoning.
+Prefer editing over rewriting whole files.
+Do not re-read files you have already read unless the file may have changed.
+Test your code before declaring done.
+No sycophantic openers or closing fluff.
+Keep solutions simple and direct.
+User instructions always override this file.
