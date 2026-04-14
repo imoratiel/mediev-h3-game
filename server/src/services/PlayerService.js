@@ -122,20 +122,25 @@ class PlayerService {
      * Excluye al propio jugador si está autenticado.
      */
     async Search(req, res) {
-        const q = (req.query.q ?? '').trim();
-        if (q.length < 2) return res.json({ players: [] });
+        const q      = (req.query.q ?? '').trim();
+        const selfId = req.user?.player_id ?? null;
+        // q vacío → devuelve todos (usado para precarga de autocomplete)
+        // q < 2 caracteres y no vacío → sin resultados
+        if (q.length > 0 && q.length < 2) return res.json({ players: [] });
         try {
-            const selfId = req.user?.player_id ?? null;
             const result = await pool.query(`
-                SELECT player_id, COALESCE(display_name, username) AS name, username
-                FROM players
-                WHERE is_ai = FALSE
-                  AND (is_exiled IS NULL OR is_exiled = FALSE)
-                  AND LOWER(display_name) LIKE $1
-                  AND ($2::int IS NULL OR player_id <> $2)
-                ORDER BY display_name, username
-                LIMIT 10
-            `, [`%${q.toLowerCase()}%`, selfId]);
+                SELECT p.player_id,
+                       COALESCE(p.display_name, p.username) AS name,
+                       nr.title_male AS rank_title
+                FROM players p
+                LEFT JOIN noble_ranks nr ON nr.id = p.noble_rank_id
+                WHERE p.is_ai = FALSE
+                  AND (p.is_exiled IS NULL OR p.is_exiled = FALSE)
+                  AND ($1 = '' OR LOWER(p.display_name) LIKE '%' || $1 || '%')
+                  AND ($2::int IS NULL OR p.player_id <> $2)
+                ORDER BY p.display_name
+                LIMIT 50
+            `, [q.toLowerCase(), selfId]);
             res.json({ players: result.rows });
         } catch (error) {
             Logger.error(error, { endpoint: '/players/search', q });

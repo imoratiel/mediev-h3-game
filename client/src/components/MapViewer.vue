@@ -761,7 +761,7 @@
               >
                 <div class="message-item-header">
                   <span class="message-sender">{{ message.sender_username || 'Sistema' }}</span>
-                  <span class="message-date">{{ new Date(message.sent_at).toLocaleDateString() }}</span>
+                  <span class="message-date">{{ new Date(message.sent_at).toLocaleDateString() }} {{ new Date(message.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
                 </div>
                 <div class="message-subject">{{ message.subject }}</div>
               </div>
@@ -786,8 +786,8 @@
                 <p>{{ selectedMessage.body }}</p>
               </div>
               <div class="message-actions">
-                <button class="btn-primary" @click="replyToMessage(selectedMessage)">
-                  ↩️ Responder
+                <button class="btn-send" @click="replyToMessage(selectedMessage)">
+                  📝 Responder
                 </button>
                 <button
                   v-if="selectedMessage.h3_index"
@@ -828,13 +828,38 @@
             <form class="message-compose-form" @submit.prevent="sendMessage">
               <div class="form-group">
                 <label for="msg-recipient">Para (Personaje):</label>
-                <input
-                  id="msg-recipient"
-                  v-model="messageRecipient"
-                  type="text"
-                  placeholder="Nombre del personaje"
-                  required
-                />
+                <div class="recipient-wrap">
+                  <input
+                    id="msg-recipient"
+                    v-model="messageRecipient"
+                    type="text"
+                    :class="{ 'recipient-ok': recipientSelected }"
+                    placeholder="Nombre del personaje"
+                    autocomplete="off"
+                    required
+                    @input="onRecipientInput"
+                    @focus="loadRecipientPlayers"
+                  />
+                  <button v-if="messageRecipient" type="button" class="recipient-clear" @click="clearRecipient" title="Limpiar">✕</button>
+                  <div v-if="recipientDropdown.length" class="recipient-dropdown">
+                    <button
+                      v-for="p in recipientDropdown"
+                      :key="p.player_id"
+                      type="button"
+                      class="recipient-option"
+                      @click="selectRecipient(p)"
+                    >
+                      <span class="recipient-name">{{ p.name }}</span>
+                      <span class="recipient-rank" v-if="p.rank_title">{{ p.rank_title }}</span>
+                    </button>
+                  </div>
+                  <div v-else-if="recipientLoading" class="recipient-dropdown">
+                    <span class="recipient-hint">Cargando jugadores…</span>
+                  </div>
+                  <div v-else-if="messageRecipient.length >= 1 && !recipientSelected && recipientAllPlayers.length > 0" class="recipient-dropdown">
+                    <span class="recipient-hint">Sin resultados</span>
+                  </div>
+                </div>
               </div>
               <div class="form-group">
                 <label for="msg-subject">Asunto:</label>
@@ -1457,6 +1482,46 @@ const messageSubject = ref('');
 const messageBody = ref('');
 const sendingMessage = ref(false);
 const parentMessage = ref(null); // Stores the message being replied to
+
+// Recipient autocomplete
+const recipientAllPlayers  = ref([]);   // lista completa, cargada una vez
+const recipientDropdown    = ref([]);   // resultados filtrados
+const recipientSelected    = ref(false); // true cuando el usuario eligió de la lista
+const recipientLoading     = ref(false);
+
+const _normalizeStr = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+async function loadRecipientPlayers() {
+  if (recipientAllPlayers.value.length > 0) return; // ya cargados
+  recipientLoading.value = true;
+  try {
+    const data = await mapApi.searchPlayers('');
+    recipientAllPlayers.value = (data.players ?? []).filter(p => p.player_id !== playerId.value);
+  } catch { /* silencioso */ } finally {
+    recipientLoading.value = false;
+  }
+}
+
+function onRecipientInput() {
+  recipientSelected.value = false;
+  const q = _normalizeStr(messageRecipient.value);
+  if (!q) { recipientDropdown.value = []; return; }
+  recipientDropdown.value = recipientAllPlayers.value.filter(p =>
+    _normalizeStr(p.name).includes(q) || _normalizeStr(p.username).includes(q)
+  ).slice(0, 8);
+}
+
+function selectRecipient(p) {
+  messageRecipient.value  = p.name;
+  recipientSelected.value = true;
+  recipientDropdown.value = [];
+}
+
+function clearRecipient() {
+  messageRecipient.value  = '';
+  recipientSelected.value = false;
+  recipientDropdown.value = [];
+}
 
 // Server synchronization state
 const SYNC_INTERVAL = 30000; // Poll server every 30 seconds
@@ -4572,6 +4637,9 @@ const openOverlay = (overlayName) => {
   if (overlayName === 'characters') {
     fetchAndRenderCharacters();
   }
+  if (overlayName === 'messages') {
+    loadRecipientPlayers();
+  }
 };
 
 /**
@@ -4637,16 +4705,16 @@ const selectMessage = async (message) => {
  * Reply to a message
  */
 const replyToMessage = (message) => {
-  // Respond to whoever wrote the message being replied to (always the sender)
-  messageRecipient.value = message.sender_username;
+  messageRecipient.value  = message.sender_display_name || message.sender_username;
+  recipientSelected.value = true;   // bloquea el dropdown
+  recipientDropdown.value = [];
 
-  // Add Re: to subject if not already there
   messageSubject.value = message.subject.startsWith('Re:')
     ? message.subject
     : `Re: ${message.subject}`;
 
   messageBody.value = '';
-  parentMessage.value = message; // Store parent message for threading
+  parentMessage.value = message;
 
   showToast('📝 Formulario preparado para responder', 'info');
 };
@@ -12217,6 +12285,73 @@ onBeforeUnmount(() => {
 
 /* Buttons */
 .btn-primary,
+/* ── Recipient autocomplete ── */
+.recipient-wrap {
+  position: relative;
+}
+.recipient-wrap input {
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 28px;
+}
+.recipient-wrap input.recipient-ok {
+  border-color: #40a060;
+  color: #80e090;
+}
+.recipient-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #a08060;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0 2px;
+  line-height: 1;
+}
+.recipient-clear:hover { color: #e08080; }
+.recipient-dropdown {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  background: #1a150e;
+  border: 1px solid #4a3820;
+  border-radius: 4px;
+  z-index: 200;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.recipient-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #2a1e0e;
+  color: #e8d5a3;
+  cursor: pointer;
+  text-align: left;
+  gap: 8px;
+  font-family: inherit;
+}
+.recipient-option:last-child { border-bottom: none; }
+.recipient-option:hover { background: rgba(201,168,76,0.1); }
+.recipient-rank { font-size: 0.75rem; color: #c9a84c; opacity: 0.8; }
+.recipient-name { font-size: 0.9rem; }
+.recipient-hint {
+  display: block;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  color: #7a6040;
+  font-style: italic;
+}
+
 .btn-send {
   padding: 12px 24px;
   background: var(--color-accent-gold);
