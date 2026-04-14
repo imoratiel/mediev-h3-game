@@ -282,7 +282,7 @@ class ArmyService {
                 await client.query('ROLLBACK');
                 return res.status(400).json({
                     success: false,
-                    message: `Población insuficiente. Tu red de territorios puede aportar ${recruitablePool} reclutas (mínimo garantizado por territorio: ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab.; límite en Pagus: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_DIVISION}, en territorio libre: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_INDEPENDENT}).`
+                    message: `Población insuficiente. Tu red de territorios puede aportar ${recruitablePool} reclutas (mínimo garantizado por territorio: ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab.; límite en Comarca: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_DIVISION}, en territorio libre: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_INDEPENDENT}).`
                 });
             }
 

@@ -120,10 +120,10 @@
         <!-- ── TESTING: CREAR PAGUS ──────────────────────────────────────── -->
         <section class="admin-section">
           <h3 class="section-title">🏛️ Testing</h3>
-          <p class="force-hint">Crea un Pagus completo adyacente a tu territorio (centurias colonizadas + fortaleza + capital).</p>
+          <p class="force-hint">Crea una Comarca completa adyacente a tu territorio (centurias colonizadas + fortaleza + capital).</p>
           <div class="controls-row">
             <button class="ctrl-btn btn-force" :disabled="creatingPagus" @click="handleCreatePagus">
-              {{ creatingPagus ? '⏳ Creando...' : '🏛️ Crear Pagus' }}
+              {{ creatingPagus ? '⏳ Creando...' : '🏛️ Crear Comarca' }}
             </button>
             <button class="ctrl-btn btn-force" :disabled="spawningDummy" @click="handleSpawnDummy">
               {{ spawningDummy ? '⏳ Invocando...' : '🪆 Invocar DUMMY' }}
@@ -235,8 +235,7 @@
               title="Proveedor de decisiones IA"
             >
               <option value="procedural">🔧 Procedural (Gratis)</option>
-              <option value="gemini">✨ Gemini Flash</option>
-              <option value="openai">🤖 GPT-4o Mini</option>
+              <option value="groq">⚡ Groq (llama-3.1-8b)</option>
             </select>
             <input
               v-model.number="aiBudget"

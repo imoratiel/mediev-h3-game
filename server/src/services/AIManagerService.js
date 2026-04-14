@@ -394,7 +394,9 @@ class AIManagerService {
         Logger.engine(`[TURN ${turn}] 🤖 AI: procesando ${agents.length} agente(s)...`);
 
         // Check proxy availability once per cycle (cached 30s) — avoids per-agent DB hits
-        const { available: aiAvailable, provider: aiProvider } = await aiProxy.checkAvailability();
+        const availability = await aiProxy.checkAvailability();
+        const { available: aiAvailable, provider: aiProvider } = availability;
+        Logger.engine(`[TURN ${turn}] 🤖 AI proxy: available=${aiAvailable}, provider=${aiProvider}${availability.reason ? `, reason=${availability.reason}` : ''}${availability.totalTokens != null ? `, tokens=${availability.totalTokens}/${availability.maxBudget}` : ''}`);
 
         for (const agent of agents) {
             try {

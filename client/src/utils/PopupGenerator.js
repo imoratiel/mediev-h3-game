@@ -56,7 +56,7 @@ export function generateCellPopupContent(cell, config) {
   // TITLE - Settlement name, division name, or fallback
   const title = cell.settlement_name
     || cell.division_name
-    || (cell.player_id ? 'Fundus sin Pagus' : 'Territorio Libre');
+    || (cell.player_id ? 'Fundus sin Comarca' : 'Territorio Libre');
   const titleIcon = cell.is_capital ? '👑' : (cell.settlement_name ? '🏛️' : (cell.division_name ? '🏰' : '🗺️'));
 
   popupContent += `<h3 class="popup-title">${titleIcon} ${title}</h3>`;

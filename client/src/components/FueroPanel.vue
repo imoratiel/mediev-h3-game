@@ -52,7 +52,7 @@
         <!-- Tax rate slider -->
         <div class="fuero-tax-section">
           <div class="fuero-tax-header">
-            <span class="fuero-label">{{ taxLabel }} del Pagus</span>
+            <span class="fuero-label">{{ taxLabel }} de la Comarca</span>
             <span class="fuero-tax-value">{{ divisionTaxRate }}%</span>
           </div>
           <input
@@ -77,7 +77,7 @@
 
         <div class="fuero-info-note fuero-info-recruit">
           <span>&#x2694;&#xFE0F;</span>
-          <span>Los territorios del Pagus permiten reclutar hasta <strong>400 hab.</strong> por territorio. Los territorios libres solo hasta <strong>200 hab.</strong> La felicidad aumenta un <strong>+10%</strong>.</span>
+          <span>Los territorios de la Comarca permiten reclutar hasta <strong>400 hab.</strong> por territorio. Los territorios libres solo hasta <strong>200 hab.</strong> La felicidad aumenta un <strong>+10%</strong>.</span>
         </div>
       </div>
 
@@ -107,14 +107,14 @@
 
           <!-- Editable division name -->
           <div class="fuero-name-field">
-            <label class="fuero-label">Nombre del Pagus</label>
+            <label class="fuero-label">Nombre de la Comarca</label>
             <div class="fuero-name-input-row">
               <input
                 v-model="customName"
                 type="text"
                 maxlength="100"
                 class="fuero-name-input"
-                placeholder="Nombre del Pagus..."
+                placeholder="Nombre de la Comarca..."
                 @blur="refreshProposedName"
               />
               <button
@@ -145,7 +145,7 @@
           <!-- Recruitment cap note -->
           <div class="fuero-info-note fuero-info-recruit">
             <span>&#x2694;&#xFE0F;</span>
-            <span>Crear un pagus sube el límite de reclutamiento por territorio de <strong>200</strong> a <strong>400 hab.</strong> y aumenta la felicidad un <strong>+10%</strong>.</span>
+            <span>Crear una comarca sube el límite de reclutamiento por territorio de <strong>200</strong> a <strong>400 hab.</strong> y aumenta la felicidad un <strong>+10%</strong>.</span>
           </div>
 
           <!-- Confirm button -->

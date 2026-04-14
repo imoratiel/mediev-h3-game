@@ -12,7 +12,7 @@
             <th class="col-number mobile-hide">🌾</th>
             <th class="col-number mobile-hide">Auton.</th>
             <th class="col-farm mobile-hide">Granja</th>
-            <th class="col-division mobile-hide">Pagus</th>
+            <th class="col-division mobile-hide">Comarca</th>
             <th class="col-number mobile-hide">⚔️</th>
             <th class="col-edificio mobile-hide">🏛️</th>
             <th class="col-actions">Acc.</th>

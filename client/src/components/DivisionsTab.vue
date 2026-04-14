@@ -53,7 +53,7 @@
 
       <div v-if="data.divisions.length === 0" class="dt-empty">
         <p>Aun no has proclamado ninguna division politica.</p>
-        <p class="dt-empty-hint">Abre el popup de un territorio con <strong>Fortaleza</strong> y pulsa <em>Edictos</em> para fundar tu primer Pagus.</p>
+        <p class="dt-empty-hint">Abre el popup de un territorio con <strong>Fortaleza</strong> y pulsa <em>Edictos</em> para fundar tu primera Comarca.</p>
       </div>
 
       <div v-else class="dt-divisions-list">

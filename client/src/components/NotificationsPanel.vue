@@ -163,10 +163,15 @@ watch(activeTab, (tabKey) => {
   markActiveTab(tabKey);
 });
 
-// Al montar el panel, marcar el tab inicial
-onMounted(() => {
-  markActiveTab(activeTab.value);
-});
+// Al montar o cuando llegan las notificaciones por primera vez, marcar el tab activo.
+// onMounted no es suficiente porque la prop puede llegar vacía y llenarse después.
+let initialMarkDone = false;
+watch(() => props.notifications, () => {
+  if (!initialMarkDone && props.notifications.length > 0) {
+    initialMarkDone = true;
+    markActiveTab(activeTab.value);
+  }
+}, { immediate: true });
 </script>
 
 <style scoped>

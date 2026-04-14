@@ -912,13 +912,13 @@
                   />
                 </div>
                 <div class="filter-group">
-                  <label>Pagus</label>
+                  <label>Comarca</label>
                   <select
                     v-model="kingdomFilters.division"
                     class="kingdom-filter-input-sidebar"
                   >
                     <option value="">Todos</option>
-                    <option value="__none__">Sin pagus</option>
+                    <option value="__none__">Sin comarca</option>
                     <option
                       v-for="div in myDivisions"
                       :key="div.id"

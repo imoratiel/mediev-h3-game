@@ -37,7 +37,7 @@
           <!-- Global Tax Rate -->
           <div class="eco-card">
             <h4 class="eco-card-title">📊 Impuesto Global</h4>
-            <p class="eco-hint">Se aplica a todos los pagus.</p>
+            <p class="eco-hint">Se aplica a todas las comarcas.</p>
             <div class="eco-tax-row">
               <input type="range" min="1" max="15" step="1"
                 v-model.number="localTaxRate" class="eco-tax-slider" />
@@ -80,19 +80,19 @@
 
         </div>
 
-        <!-- Pagus List -->
+        <!-- Comarcas List -->
         <div class="eco-main">
           <div class="eco-table-header">
-            <h3 class="eco-table-title">🏛️ Tus Pagus</h3>
+            <h3 class="eco-table-title">🏛️ Tus Comarcas</h3>
             <p class="eco-table-hint">
-              Gestiona la recaudación de cada Pagus de forma independiente.
+              Gestiona la recaudación de cada Comarca de forma independiente.
             </p>
           </div>
 
-          <div v-if="loadingDivisions" class="eco-loading eco-loading-center">Cargando pagus...</div>
+          <div v-if="loadingDivisions" class="eco-loading eco-loading-center">Cargando comarcas...</div>
           <div v-else-if="divisionsError" class="eco-error eco-error-center">{{ divisionsError }}</div>
           <div v-else-if="divisions.length === 0" class="eco-empty">
-            Aún no has proclamado ningún Pagus.
+            Aún no has proclamado ninguna Comarca.
           </div>
           <div v-else class="pagus-list">
             <div
@@ -243,7 +243,7 @@ async function fetchDivisions() {
     if (data.success) {
       divisions.value = data.divisions ?? [];
     } else {
-      divisionsError.value = data.message || 'Error al cargar pagus';
+      divisionsError.value = data.message || 'Error al cargar comarcas';
     }
   } catch (err) {
     divisionsError.value = err?.response?.data?.message || 'Error de conexión';

@@ -234,7 +234,7 @@ class AdminService {
         } catch (error) {
             await client.query('ROLLBACK').catch(() => {});
             Logger.error(error, { endpoint: '/admin/create-pagus', userId: adminId, player_id });
-            res.status(500).json({ success: false, message: error.message || 'Error al crear pagus' });
+            res.status(500).json({ success: false, message: error.message || 'Error al crear comarca' });
         } finally {
             client.release();
         }
