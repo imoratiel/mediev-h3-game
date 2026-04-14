@@ -182,7 +182,7 @@ class ArmyService {
             }
 
             if (army.is_garrison) {
-                return res.status(400).json({ success: false, message: 'Las tropas acuarteladas no pueden moverse. Forman parte de la guarnición del feudo.' });
+                return res.status(400).json({ success: false, message: 'Las tropas acuarteladas no pueden moverse. Forman parte de la guarnición del territorio.' });
             }
 
             const distance = h3.gridDistance(army.h3_index, target_h3);
@@ -267,7 +267,7 @@ class ArmyService {
                     await client.query('ROLLBACK');
                     return res.status(400).json({
                         success: false,
-                        message: 'Solo puedes reclutar en tu Capital o en feudos con un edificio militar (Cuartel o Fortaleza).'
+                        message: 'Solo puedes reclutar en tu Capital o en territorios con un edificio militar (Cuartel o Fortaleza).'
                     });
                 }
             }
@@ -282,7 +282,7 @@ class ArmyService {
                 await client.query('ROLLBACK');
                 return res.status(400).json({
                     success: false,
-                    message: `Población insuficiente. Tu red de feudos puede aportar ${recruitablePool} reclutas (mínimo garantizado por feudo: ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab.; límite en señorío: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_DIVISION}, en feudo libre: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_INDEPENDENT}).`
+                    message: `Población insuficiente. Tu red de territorios puede aportar ${recruitablePool} reclutas (mínimo garantizado por territorio: ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab.; límite en Comarca: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_DIVISION}, en territorio libre: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_INDEPENDENT}).`
                 });
             }
 
@@ -851,7 +851,7 @@ class ArmyService {
             }
             if (army.fief_owner !== player_id) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, message: 'Solo puedes licenciar tropas en un feudo propio' });
+                return res.status(400).json({ success: false, message: 'Solo puedes licenciar tropas en un territorio propio' });
             }
 
             // Validate troop group
@@ -920,7 +920,7 @@ class ArmyService {
 
             Logger.action(`Licenció ${qty} tropas (tipo ${unit_type_id}) del ejército ${army_id}`, player_id, { h3_index: army.h3_index, surplus });
             const baseMsg = totalLeft === 0
-                ? `${qty} soldados licenciados. El ejército se ha disuelto y los suministros han vuelto al feudo.`
+                ? `${qty} soldados licenciados. El ejército se ha disuelto y los suministros han vuelto al territorio.`
                 : `${qty} soldados licenciados y devueltos a la población civil.`;
             const surplusMsg = surplus > 0 ? ` ${surplus} personas no encontraron acomodo y se dispersaron.` : '';
             res.json({
@@ -985,19 +985,19 @@ class ArmyService {
             );
             if (territoryResult.rows.length === 0) {
                 await client.query('ROLLBACK');
-                return res.status(404).json({ success: false, message: 'El feudo donde está el ejército no existe' });
+                return res.status(404).json({ success: false, message: 'El territorio donde está el ejército no existe' });
             }
             const territory = territoryResult.rows[0];
 
             if (territory.fief_owner !== player_id) {
                 await client.query('ROLLBACK');
-                return res.status(403).json({ success: false, message: 'El ejército no está en un feudo propio' });
+                return res.status(403).json({ success: false, message: 'El ejército no está en un territorio propio' });
             }
             if (parseInt(territory.grace_turns) > 0) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({
                     success: false,
-                    message: `Feudo en período de ocupación (${territory.grace_turns} turnos restantes). No se puede reforzar hasta que se estabilice.`
+                    message: `Territorio en período de ocupación (${territory.grace_turns} turnos restantes). No se puede reforzar hasta que se estabilice.`
                 });
             }
 
@@ -1013,7 +1013,7 @@ class ArmyService {
                     await client.query('ROLLBACK');
                     return res.status(400).json({
                         success: false,
-                        message: 'Solo puedes reforzar en tu Capital o en feudos con un edificio militar completado (Cuartel o Fortaleza).'
+                        message: 'Solo puedes reforzar en tu Capital o en territorios con un edificio militar completado (Cuartel o Fortaleza).'
                     });
                 }
             }

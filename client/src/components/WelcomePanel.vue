@@ -80,7 +80,7 @@
       <div class="welcome-grants">
         <div class="grant-item">
           <span class="grant-icon">🏰</span>
-          Un feudo capital y sus tierras colindantes
+          Un territorio capital y sus tierras colindantes
         </div>
         <div class="grant-item">
           <span class="grant-icon">⚔️</span>

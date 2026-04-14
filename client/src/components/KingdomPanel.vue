@@ -12,7 +12,7 @@
             <th class="col-number mobile-hide">🌾</th>
             <th class="col-number mobile-hide">Auton.</th>
             <th class="col-farm mobile-hide">Granja</th>
-            <th class="col-division mobile-hide">Pagus</th>
+            <th class="col-division mobile-hide">Comarca</th>
             <th class="col-number mobile-hide">⚔️</th>
             <th class="col-edificio mobile-hide">🏛️</th>
             <th class="col-actions">Acc.</th>
@@ -128,14 +128,14 @@
         </tbody>
       </table>
       <div v-if="fiefs.length === 0" class="empty-state">
-        <p>No se encontraron feudos.</p>
+        <p>No se encontraron territorios.</p>
       </div>
     </div>
 
     <!-- Pagination bar (controlled by parent) -->
     <div v-if="total > 0" class="pagination-bar">
       <span class="pagination-info">
-        {{ rangeStart }}–{{ rangeEnd }} de {{ total }} feudos
+        {{ rangeStart }}–{{ rangeEnd }} de {{ total }} territorios
       </span>
       <div class="pagination-controls">
         <button

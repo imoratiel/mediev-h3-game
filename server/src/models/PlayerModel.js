@@ -25,6 +25,14 @@ class PlayerModel {
         return result;
     }
 
+    async GetPlayerIdByDisplayName(displayName) {
+        const result = await pool.query(
+            'SELECT player_id FROM players WHERE LOWER(display_name) = LOWER($1) AND deleted = FALSE',
+            [displayName]
+        );
+        return result;
+    }
+
     // ── OAuth ──────────────────────────────────────────────────────────────────
 
     /**

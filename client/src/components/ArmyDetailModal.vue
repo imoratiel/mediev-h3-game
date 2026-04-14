@@ -145,7 +145,7 @@
               </div>
               -->
             </div>
-          <!-- Refuerzo (solo cuando el ejército está en feudo propio) -->
+          <!-- Refuerzo (solo cuando el ejército está en territorio propio) -->
           <template v-if="armyDetail?.is_own_fief">
             <div class="adm-section-label" style="display:flex; align-items:center; justify-content:space-between; padding-right:20px;">
               <span>🗡️ REFORZAR EJÉRCITO</span>
@@ -154,10 +154,10 @@
               </button>
             </div>
 
-            <!-- Bloqueado: feudo en período de gracia -->
+            <!-- Bloqueado: territorio en período de gracia -->
             <div v-if="armyDetail.fief_grace_turns > 0" class="adm-reinforce-blocked">
-              🏚️ Feudo en período de ocupación ({{ armyDetail.fief_grace_turns }} turnos restantes).<br>
-              No se puede reclutar hasta que el feudo se estabilice.
+              🏚️ Territorio en período de ocupación ({{ armyDetail.fief_grace_turns }} turnos restantes).<br>
+              No se puede reclutar hasta que el territorio se estabilice.
             </div>
 
             <!-- Bloqueado: sin edificio militar -->
@@ -165,8 +165,8 @@
               v-else-if="armyDetail.h3_index !== armyDetail.capital_h3 && !armyDetail.fief_has_military"
               class="adm-reinforce-blocked"
             >
-              🏗️ Este feudo no tiene un edificio militar completado.<br>
-              Solo puedes reforzar en tu Capital o en feudos con un Cuartel o Fortaleza.
+              🏗️ Este territorio no tiene un edificio militar completado.<br>
+              Solo puedes reforzar en tu Capital o en territorios con un Cuartel o Fortaleza.
             </div>
 
             <!-- Formulario de refuerzo -->

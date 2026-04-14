@@ -7,7 +7,7 @@
       <span class="cap-value" :class="{ 'at-limit': fleetCount >= fleetLimit }">
         {{ fleetCount }}/{{ fleetLimit }}
       </span>
-      <span v-if="fleetCount >= fleetLimit" class="cap-hint">— Necesitas más feudos</span>
+      <span v-if="fleetCount >= fleetLimit" class="cap-hint">— Necesitas más territorios</span>
     </div>
 
     <!-- ── Loading / empty ───────────────────────────────────── -->
@@ -15,7 +15,7 @@
 
     <div v-else-if="fleets.length === 0" class="naval-empty">
       <p>No tienes flotas activas.</p>
-      <p class="empty-hint">Construye un Puerto (⛵) en un feudo costero para crear tu primera flota.</p>
+      <p class="empty-hint">Construye un Puerto (⛵) en un territorio costero para crear tu primera flota.</p>
     </div>
 
     <!-- ── Fleet list ─────────────────────────────────────────── -->
@@ -153,7 +153,7 @@
 
     <!-- ── Create fleet banner ─────────────────────────────────── -->
     <div v-if="!loading && fleetCount < fleetLimit" class="create-fleet-hint">
-      <p>Para crear una flota, ve a un feudo con Puerto y usa el botón "⛵ Nueva Flota" en el popup del hex.</p>
+      <p>Para crear una flota, ve a un territorio con Puerto y usa el botón "⛵ Nueva Flota" en el popup del hex.</p>
     </div>
 
   </div>

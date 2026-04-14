@@ -216,6 +216,18 @@ module.exports = function () {
     router.put('/admin/game-config', authenticateToken, requireAdmin, AdminService.UpdateGameConfig);
 
     // ============================================
+    // MARKET
+    // ============================================
+    const MarketService = require('../src/services/MarketService.js');
+
+    router.get('/market/my-locations',        authenticateToken, (req, res) => MarketService.GetMyLocations(req, res));
+    router.get('/market/prices',              authenticateToken, (req, res) => MarketService.GetPrices(req, res));
+    router.post('/market/sell',               authenticateToken, (req, res) => MarketService.Sell(req, res));
+    router.post('/market/buy',                authenticateToken, (req, res) => MarketService.Buy(req, res));
+    router.delete('/market/access/:resource', authenticateToken, (req, res) => MarketService.CancelAccess(req, res));
+    router.get('/market/history',             authenticateToken, (req, res) => MarketService.GetHistory(req, res));
+
+    // ============================================
     // MESSAGES
     // ============================================
 

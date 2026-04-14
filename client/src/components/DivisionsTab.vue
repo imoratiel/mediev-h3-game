@@ -24,7 +24,7 @@
         </div>
         <div class="dt-fiefs-badge">
           <span class="dt-fiefs-num">{{ data.player.total_fiefs }}</span>
-          <span class="dt-fiefs-label">feudos</span>
+          <span class="dt-fiefs-label">territorios</span>
         </div>
       </div>
 
@@ -38,7 +38,7 @@
           <div class="dt-progress-fill" :style="{ width: promoPercent + '%' }"></div>
         </div>
         <p class="dt-promo-sub">
-          {{ data.player.total_fiefs }} / {{ data.next_rank.min_fiefs_required }} feudos requeridos
+          {{ data.player.total_fiefs }} / {{ data.next_rank.min_fiefs_required }} territorios requeridos
           <span v-if="data.next_rank.required_count > 0">
             · {{ divisionsOfCurrentRank }} / {{ data.next_rank.required_count }} {{ currentRankTitle }}{{ data.next_rank.required_count > 1 ? 's' : '' }}
           </span>
@@ -53,7 +53,7 @@
 
       <div v-if="data.divisions.length === 0" class="dt-empty">
         <p>Aun no has proclamado ninguna division politica.</p>
-        <p class="dt-empty-hint">Abre el popup de un feudo con <strong>Fortaleza</strong> y pulsa <em>Edictos</em> para fundar tu primer Senorio.</p>
+        <p class="dt-empty-hint">Abre el popup de un territorio con <strong>Fortaleza</strong> y pulsa <em>Edictos</em> para fundar tu primera Comarca.</p>
       </div>
 
       <div v-else class="dt-divisions-list">
@@ -63,7 +63,7 @@
             <h4 class="dt-div-name">{{ div.name }}</h4>
             <div class="dt-div-meta">
               <span>🏰 Capital: <span class="dt-mono">{{ div.capital_h3?.slice(-6) ?? '—' }}</span></span>
-              <span>📦 {{ div.fief_count }} feudos</span>
+              <span>📦 {{ div.fief_count }} territorios</span>
             </div>
           </div>
           <div class="dt-div-titles">

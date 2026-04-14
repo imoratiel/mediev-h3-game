@@ -45,7 +45,7 @@ class DivisionService {
                 [h3_index]
             );
             if (!ownerResult.rows[0] || ownerResult.rows[0].player_id !== player_id) {
-                return res.status(403).json({ success: false, message: 'No posees este feudo' });
+                return res.status(403).json({ success: false, message: 'No posees este territorio' });
             }
 
             // 2. Verificar Fortaleza
@@ -53,7 +53,7 @@ class DivisionService {
             if (!hasFortress) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Este feudo necesita una Fortaleza para proclamar un Senorio'
+                    message: 'Este territorio necesita una Fortaleza para proclamar una Comarca'
                 });
             }
 
@@ -212,7 +212,7 @@ class DivisionService {
                 await client.query('ROLLBACK');
                 return res.status(400).json({
                     success: false,
-                    message: `Un Senorio requiere al menos ${minRequired} feudos (enviados: ${fiefs.length})`
+                    message: `Una Comarca requiere al menos ${minRequired} territorios (enviados: ${fiefs.length})`
                 });
             }
 
@@ -220,7 +220,7 @@ class DivisionService {
                 await client.query('ROLLBACK');
                 return res.status(400).json({
                     success: false,
-                    message: `Un Senorio no puede tener mas de ${maxLimit} feudos`
+                    message: `Una Comarca no puede tener más de ${maxLimit} territorios`
                 });
             }
 
@@ -336,7 +336,7 @@ class DivisionService {
         const { tax_rate } = req.body;
 
         if (isNaN(divisionId)) {
-            return res.status(400).json({ success: false, message: 'ID de señorío inválido' });
+            return res.status(400).json({ success: false, message: 'ID de Comarca inválido' });
         }
         if (tax_rate === undefined || tax_rate === null) {
             return res.status(400).json({ success: false, message: 'tax_rate es requerido' });
@@ -351,7 +351,7 @@ class DivisionService {
         try {
             const updated = await DivisionModel.UpdateTaxRate(client, divisionId, player_id, Math.round(rate * 100) / 100);
             if (!updated) {
-                return res.status(404).json({ success: false, message: 'Señorío no encontrado o no te pertenece' });
+                return res.status(404).json({ success: false, message: 'Comarca no encontrada o no te pertenece' });
             }
             Logger.action(`División ${updated.name} (id=${divisionId}): tax_rate → ${updated.tax_rate}%`, player_id);
             return res.json({ success: true, division: updated });

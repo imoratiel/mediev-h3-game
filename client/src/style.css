@@ -664,6 +664,16 @@ button {
   filter: brightness(1.2);
 }
 
+.btn-market {
+  background: linear-gradient(135deg, #7c3aed, #5b21b6) !important;
+  color: #ede9fe !important;
+  margin-top: 6px !important;
+}
+
+.btn-market:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+
 /* Division boundary tooltip */
 .leaflet-division-tooltip {
   background: rgba(20, 10, 5, 0.92) !important;

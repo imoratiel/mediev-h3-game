@@ -229,7 +229,7 @@
             v-if="!c.is_imprisoned"
             class="char-btn char-btn-small char-btn-secondary"
             @click="imprisonCaptive(c)"
-            title="Encarcelar (requiere cuartel en este feudo)"
+            title="Encarcelar (requiere cuartel en este territorio)"
           >🔒 Encarcelar</button>
           <button
             class="char-btn char-btn-small char-btn-danger"

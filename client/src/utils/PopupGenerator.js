@@ -56,7 +56,7 @@ export function generateCellPopupContent(cell, config) {
   // TITLE - Settlement name, division name, or fallback
   const title = cell.settlement_name
     || cell.division_name
-    || (cell.player_id ? 'Fundus sin Pagus' : 'Territorio Libre');
+    || (cell.player_id ? 'Fundus sin Comarca' : 'Territorio Libre');
   const titleIcon = cell.is_capital ? '👑' : (cell.settlement_name ? '🏛️' : (cell.division_name ? '🏰' : '🗺️'));
 
   popupContent += `<h3 class="popup-title">${titleIcon} ${title}</h3>`;
@@ -154,7 +154,7 @@ export function generateCellPopupContent(cell, config) {
           </div>`;
         } else {
           const consColor = cons >= 70 ? '#4caf50' : cons >= 40 ? '#ff9800' : '#f44336';
-          const inactiveWarning = cons < 20 ? `<div style="font-size:11px;color:#f44336;margin-top:3px;">⚠️ Inactivo (conservación &lt; 20%)</div>` : '';
+          const inactiveWarning = cons < 20 ? `<div style="font-size:11px;color:#f44336;margin-top:3px;">🏚️ En Ruinas (conservación &lt; 20%)</div>` : '';
           popupContent += `<div class="popup-building-status popup-building-done">
             ${getBuildingIcon(cell.fief_building.name, cell.fief_building.type_name)} Edificio: <strong>${cell.fief_building.name}</strong>
             <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
@@ -194,7 +194,7 @@ export function generateCellPopupContent(cell, config) {
 
   // Recruit button - requires active military building (conservation > 20)
   if (cell.player_id === playerId && buildingActive && cell.fief_building.type_name === 'military') {
-    popupContent += `<button id="recruit-btn-${h3_index}" class="btn-popup btn-recruit" title="Reclutar tropas en este feudo">⚔️ Reclutar</button>`;
+    popupContent += `<button id="recruit-btn-${h3_index}" class="btn-popup btn-recruit" title="Reclutar tropas en este territorio">⚔️ Reclutar</button>`;
   }
 
   // Nueva Flota button - requires active maritime building (conservation > 20)
@@ -204,7 +204,7 @@ export function generateCellPopupContent(cell, config) {
 
   // Fueros y Leyes button - requires active Fortaleza (conservation > 20)
   if (cell.player_id === playerId && buildingActive && cell.fief_building.name === 'Fortaleza') {
-    popupContent += `<button id="fueros-btn-${h3_index}" class="btn-popup btn-fueros" title="Gestionar Edictos de este feudo">📜 Edictos</button>`;
+    popupContent += `<button id="fueros-btn-${h3_index}" class="btn-popup btn-fueros" title="Gestionar Edictos de este territorio">📜 Edictos</button>`;
   }
 
   // "Fundar Capital" button:
@@ -260,7 +260,7 @@ export function generateCellPopupContent(cell, config) {
           <button id="buy-worker-btn-${h3_index}"
             class="btn-popup"
             style="background:#b45309;border-color:#92400e;white-space:nowrap;"
-            title="Contratar trabajador en este feudo">
+            title="Contratar trabajador en este territorio">
             ⛏️ Contratar
           </button>
         </div>
@@ -271,6 +271,11 @@ export function generateCellPopupContent(cell, config) {
       <p style="font-size:0.75rem;color:#6b7280;margin:8px 0 0 0;">
         ⚒️ Construye un edificio económico (Foro, Factoría...) para poder contratar trabajadores aquí.
       </p>`;
+  }
+
+  // Market button — own Capital or fief with active economic building
+  if (isCapitalHex || hasMarket) {
+    popupContent += `<button id="open-market-btn-${h3_index}" class="btn-popup btn-market" title="Abrir panel de comercio">🏪 Comprar aquí</button>`;
   }
 
   popupContent += '</div>';
@@ -488,7 +493,7 @@ export function generateArmyPopup(armyData, config) {
         const cmdClass = canAssign ? 'army-action-icon' : 'army-action-icon army-action-disabled';
         const cmdTitle = canAssign
           ? `Asignar ${characterAtHex.name} como comandante`
-          : 'No hay personaje disponible en este feudo';
+          : 'No hay personaje disponible en este territorio';
         popupContent += `<button id="army-commander-${army.army_id}" class="${cmdClass}" ${!canAssign ? 'disabled' : ''} title="${cmdTitle}">👑</button>`;
       }
 

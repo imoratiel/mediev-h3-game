@@ -283,7 +283,7 @@ async function executeConstruction(client, playerId, { h3_index, building_id }, 
         // Only one maritime building per Pagus
         const existingPort = await KingdomModel.GetMaritimeBuildingInDivision(client, h3_index);
         if (existingPort) {
-            throw new GameActionError(`Tu Pagus ya tiene un puerto en ${existingPort.h3_index}.`);
+            throw new GameActionError(`Tu Comarca ya tiene un puerto en ${existingPort.h3_index}.`);
         }
     }
 

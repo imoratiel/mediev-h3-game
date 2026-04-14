@@ -28,7 +28,8 @@ async function resetGame() {
             LOCK TABLE armies, troops, workers, active_constructions, bridges,
                        fief_buildings, territory_details, h3_map,
                        messages, notifications, players, world_state,
-                       political_divisions, characters
+                       political_divisions, characters,
+                       market_reserves, market_transactions, player_resource_access
             IN ACCESS EXCLUSIVE MODE
         `);
 
@@ -97,6 +98,16 @@ async function resetGame() {
 
         // 11. Reset world date and turn counter
         await client.query(`UPDATE world_state SET current_turn = 0, game_date = '0210-01-01 BC' WHERE id = 1`);
+
+        // 12. Reset market: clear transactions and access, restore food reserve
+        await client.query('DELETE FROM player_resource_access');
+        await client.query('DELETE FROM market_transactions');
+        await client.query(`
+            UPDATE market_reserves
+            SET current_reserve = mrt.base_reserve, updated_at = NOW()
+            FROM market_resource_types mrt
+            WHERE market_reserves.resource_type_id = mrt.id
+        `);
 
         await client.query('COMMIT');
     } catch (err) {

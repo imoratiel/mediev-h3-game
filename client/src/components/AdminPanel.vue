@@ -120,10 +120,10 @@
         <!-- ── TESTING: CREAR PAGUS ──────────────────────────────────────── -->
         <section class="admin-section">
           <h3 class="section-title">🏛️ Testing</h3>
-          <p class="force-hint">Crea un Pagus completo adyacente a tu territorio (centurias colonizadas + fortaleza + capital).</p>
+          <p class="force-hint">Crea una Comarca completa adyacente a tu territorio (centurias colonizadas + fortaleza + capital).</p>
           <div class="controls-row">
             <button class="ctrl-btn btn-force" :disabled="creatingPagus" @click="handleCreatePagus">
-              {{ creatingPagus ? '⏳ Creando...' : '🏛️ Crear Pagus' }}
+              {{ creatingPagus ? '⏳ Creando...' : '🏛️ Crear Comarca' }}
             </button>
             <button class="ctrl-btn btn-force" :disabled="spawningDummy" @click="handleSpawnDummy">
               {{ spawningDummy ? '⏳ Invocando...' : '🪆 Invocar DUMMY' }}
@@ -235,8 +235,7 @@
               title="Proveedor de decisiones IA"
             >
               <option value="procedural">🔧 Procedural (Gratis)</option>
-              <option value="gemini">✨ Gemini Flash</option>
-              <option value="openai">🤖 GPT-4o Mini</option>
+              <option value="groq">⚡ Groq (llama-3.1-8b)</option>
             </select>
             <input
               v-model.number="aiBudget"
@@ -310,7 +309,7 @@
                   <th class="ai-th ai-th-name">Nombre</th>
                   <th class="ai-th ai-th-num">Tipo</th>
                   <th class="ai-th ai-th-num">💰 Oro</th>
-                  <th class="ai-th ai-th-num">🏰 Feudos</th>
+                  <th class="ai-th ai-th-num">🏰 Territorios</th>
                   <th class="ai-th ai-th-act"></th>
                 </tr>
               </thead>
@@ -420,7 +419,7 @@
 
           <div v-else class="reset-confirm-box">
             <p class="reset-confirm-text">
-              ¿Seguro? Esto eliminará <strong>todos los bots, ejércitos, feudos, edificios, mensajes y notificaciones</strong>.
+              ¿Seguro? Esto eliminará <strong>todos los bots, ejércitos, territorios, edificios, mensajes y notificaciones</strong>.
               Los jugadores conservan su cuenta pero empezarán con 50.000 de oro.
             </p>
             <div class="reset-confirm-actions">
@@ -612,7 +611,7 @@ const handleDeleteAgent = async (agent) => {
   if (deletingId.value) return;
   const confirmed = confirm(
     `¿Eliminar al agente "${agent.display_name}"?\n\n` +
-    `Se borrarán sus ejércitos, mensajes, edificios y se liberarán sus ${agent.territory_count} feudos. Esta acción no se puede deshacer.`
+    `Se borrarán sus ejércitos, mensajes, edificios y se liberarán sus ${agent.territory_count} territorios. Esta acción no se puede deshacer.`
   );
   if (!confirmed) return;
   deletingId.value = agent.player_id;

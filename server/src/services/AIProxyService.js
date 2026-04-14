@@ -12,6 +12,7 @@
  * Variables de entorno requeridas (solo si provider != 'procedural'):
  *   GEMINI_API_KEY  — clave API de Google Gemini
  *   OPENAI_API_KEY  — clave API de OpenAI
+ *   GROQ_API_KEY    — clave API de Groq (llama-3.1-8b-instant, free tier generoso)
  */
 
 'use strict';
@@ -21,11 +22,12 @@ const { Logger } = require('../utils/logger');
 
 // ── Costes por 1M de tokens (USD) ────────────────────────────────────────────
 const MODEL_COSTS = {
-    'gemini-2.0-flash': { input: 0.10, output: 0.40 },
-    'gpt-4o-mini':      { input: 0.150, output: 0.60 },
+    'gemini-2.0-flash':      { input: 0.10,  output: 0.40 },
+    'gpt-4o-mini':           { input: 0.150, output: 0.60 },
+    'llama-3.1-8b-instant':  { input: 0.05,  output: 0.08 },
 };
 
-const VALID_PROVIDERS = ['procedural', 'gemini', 'openai'];
+const VALID_PROVIDERS = ['procedural', 'gemini', 'openai', 'groq'];
 
 class AIProxyService {
 
@@ -37,9 +39,9 @@ class AIProxyService {
         this._lastApiError  = null; // { provider, message, timestamp }
 
         // ── Rate limiter en memoria (protege contra ráfagas con múltiples bots) ──
-        // El tier gratuito de Gemini permite 15 RPM y el de OpenAI varía.
-        // Usamos 12 RPM como límite conservador para dejar margen.
-        this._MAX_RPM         = parseInt(process.env.AI_MAX_RPM || '12', 10);
+        // Groq free tier: 30 RPM. Gemini: 15 RPM. OpenAI varía.
+        // Por defecto 25 RPM (conservador para Groq, suficiente para los demás).
+        this._MAX_RPM         = parseInt(process.env.AI_MAX_RPM || '25', 10);
         this._callsThisWindow = 0;
         this._windowStart     = Date.now();
     }
@@ -118,6 +120,8 @@ class AIProxyService {
                 response = await this._callGemini(prompt);
             } else if (provider === 'openai') {
                 response = await this._callOpenAI(prompt);
+            } else if (provider === 'groq') {
+                response = await this._callGroq(prompt, botId);
             } else {
                 return { mode: 'procedural' };
             }
@@ -246,6 +250,11 @@ class AIProxyService {
             this._setApiError(provider, msg);
             return { success: false, provider, message: msg };
         }
+        if (provider === 'groq' && !process.env.GROQ_API_KEY) {
+            const msg = 'GROQ_API_KEY no está configurada en .env';
+            this._setApiError(provider, msg);
+            return { success: false, provider, message: msg };
+        }
 
         const testPrompt = 'Responde SOLO con este JSON exacto, sin añadir nada más: {"action":"idle","params":{}}';
         try {
@@ -254,6 +263,8 @@ class AIProxyService {
                 response = await this._callGemini(testPrompt);
             } else if (provider === 'openai') {
                 response = await this._callOpenAI(testPrompt);
+            } else if (provider === 'groq') {
+                response = await this._callGroq(testPrompt);
             } else {
                 return { success: false, provider, message: `Proveedor desconocido: ${provider}` };
             }
@@ -363,9 +374,20 @@ Ejemplos: {"action":"build","params":{"building_type":"economic"}} | {"action":"
      */
     _parseAction(text) {
         try {
-            const match = (text || '').match(/\{[\s\S]*?"action"[\s\S]*?\}/);
-            if (!match) return null;
-            const parsed = JSON.parse(match[0]);
+            const str = (text || '').trim();
+
+            let parsed;
+            try {
+                // Groq con response_format json_object devuelve JSON puro — parse directo
+                parsed = JSON.parse(str);
+            } catch {
+                // Gemini/OpenAI pueden envolver el JSON en prosa — extraer entre { y último }
+                const start = str.indexOf('{');
+                const end   = str.lastIndexOf('}');
+                if (start === -1 || end <= start) return null;
+                parsed = JSON.parse(str.slice(start, end + 1));
+            }
+
             if (!['build', 'recruit', 'idle'].includes(parsed.action)) return null;
             return { action: parsed.action, params: parsed.params || {} };
         } catch {
@@ -473,6 +495,80 @@ Ejemplos: {"action":"build","params":{"building_type":"economic"}} | {"action":"
         return { text, inputTokens, outputTokens: outTokens, model: 'gpt-4o-mini' };
     }
 
+    /**
+     * Llama a Groq con llama-3.1-8b-instant.
+     * Groq expone una API compatible con OpenAI — el código es casi idéntico.
+     * Free tier: ~30 RPM, ~500k tokens/día.
+     * @returns {Promise<{ text, inputTokens, outputTokens, model }>}
+     */
+    async _callGroq(prompt, botId = null) {
+        const apiKey = process.env.GROQ_API_KEY;
+        if (!apiKey) throw new Error('GROQ_API_KEY no configurada en .env');
+
+        const log = (msg) => botId != null ? Logger.bot(botId, msg) : Logger.engine(msg);
+
+        log(`[GROQ] → PROMPT: ${prompt.slice(0, 300)}${prompt.length > 300 ? '…' : ''}`);
+
+        const body = JSON.stringify({
+            model:           'llama-3.1-8b-instant',
+            messages:        [{ role: 'user', content: prompt }],
+            temperature:     0.3,
+            max_tokens:      128,
+            response_format: { type: 'json_object' },
+        });
+
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body,
+        });
+
+        if (response.status === 429) {
+            log('⚠️ [GROQ] 429 rate limit — esperando 3 s antes de reintentar...');
+            await new Promise(r => setTimeout(r, 3_000));
+            const retry = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method:  'POST',
+                headers: {
+                    'Content-Type':  'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+                body,
+            });
+            if (!retry.ok) {
+                const err = await retry.text();
+                log(`[GROQ] ✗ Retry falló ${retry.status}: ${err.slice(0, 200)}`);
+                throw new Error(`Groq ${retry.status}: ${err.slice(0, 200)}`);
+            }
+            const retryData = await retry.json();
+            const retryText = retryData.choices?.[0]?.message?.content || '';
+            log(`[GROQ] ← RETRY: ${retryText} | tokens: in=${retryData.usage?.prompt_tokens} out=${retryData.usage?.completion_tokens}`);
+            return {
+                text:         retryText,
+                inputTokens:  retryData.usage?.prompt_tokens     || 0,
+                outputTokens: retryData.usage?.completion_tokens || 0,
+                model:        'llama-3.1-8b-instant',
+            };
+        }
+
+        if (!response.ok) {
+            const err = await response.text();
+            log(`[GROQ] ✗ Error ${response.status}: ${err.slice(0, 200)}`);
+            throw new Error(`Groq ${response.status}: ${err.slice(0, 200)}`);
+        }
+
+        const data        = await response.json();
+        const text        = data.choices?.[0]?.message?.content || '';
+        const inputTokens = data.usage?.prompt_tokens     || 0;
+        const outTokens   = data.usage?.completion_tokens || 0;
+
+        log(`[GROQ] ← RESPUESTA: ${text} | tokens: in=${inputTokens} out=${outTokens}`);
+
+        return { text, inputTokens, outputTokens: outTokens, model: 'llama-3.1-8b-instant' };
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // PRIVADO: Registro de uso
     // ─────────────────────────────────────────────────────────────────────────
@@ -481,6 +577,7 @@ Ejemplos: {"action":"build","params":{"building_type":"economic"}} | {"action":"
         const totalTokens = (inputTokens || 0) + (outputTokens || 0);
         const modelName   = provider === 'gemini' ? 'gemini-2.0-flash'
                           : provider === 'openai'  ? 'gpt-4o-mini'
+                          : provider === 'groq'    ? 'llama-3.1-8b-instant'
                           : provider;
 
         const costs         = MODEL_COSTS[modelName];
