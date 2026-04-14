@@ -354,17 +354,27 @@ class ArmyModel {
                 ) AS enemy_count,
                 COALESCE(td.grace_turns, 0)::int AS fief_grace_turns,
                 (m.player_id = a.player_id) AS is_own_fief,
-                a.is_garrison
+                a.is_garrison,
+                pl.capital_h3,
+                EXISTS (
+                    SELECT 1 FROM fief_buildings fb
+                    JOIN buildings b ON fb.building_id = b.id
+                    JOIN building_types bt ON b.type_id = bt.building_type_id
+                    WHERE fb.h3_index = a.h3_index
+                      AND bt.name = 'military'
+                      AND NOT fb.is_under_construction
+                ) AS fief_has_military
             FROM armies a
             LEFT JOIN h3_map m ON a.h3_index = m.h3_index
             LEFT JOIN territory_details td ON a.h3_index = td.h3_index
             LEFT JOIN settlements s ON a.h3_index = s.h3_index
             LEFT JOIN troops t ON t.army_id = a.army_id
             LEFT JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
+            LEFT JOIN players pl ON a.player_id = pl.player_id
             WHERE a.player_id = $1
               AND (a.is_naval = FALSE OR a.is_naval IS NULL)
               AND a.transported_by IS NULL
-            GROUP BY a.army_id, a.name, a.h3_index, a.destination, m.coord_x, m.coord_y, td.custom_name, s.name, td.grace_turns, m.player_id, a.is_garrison
+            GROUP BY a.army_id, a.name, a.h3_index, a.destination, m.coord_x, m.coord_y, td.custom_name, s.name, td.grace_turns, m.player_id, a.is_garrison, pl.capital_h3
             ORDER BY a.name
         `;
         const result = await db.query(query, [player_id]);

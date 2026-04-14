@@ -132,8 +132,9 @@
                     :title="`Atacar (${army.enemy_count} ejército(s) enemigo(s))`"
                   >{{ attackingArmies.has(army.army_id) ? '⏳' : '⚔️' }}</button>
                   <button
+                    v-if="army.is_own_fief && (army.h3_index === army.capital_h3 || army.fief_has_military)"
                     class="btn-icon btn-icon-reinforce"
-                    :disabled="!army.is_own_fief || army.fief_grace_turns > 0"
+                    :disabled="army.fief_grace_turns > 0"
                     :title="getReinforceTooltip(army)"
                     @click="openReinforce(army)"
                   >➕</button>
@@ -234,7 +235,6 @@ const openTransfer = (army) => {
 };
 
 const getReinforceTooltip = (army) => {
-  if (!army.is_own_fief)       return 'El ejército no está estacionado en un territorio propio';
   if (army.fief_grace_turns > 0) return `Territorio en período de ocupación (${army.fief_grace_turns} turnos restantes)`;
   return 'Reforzar ejército con nuevas tropas';
 };
