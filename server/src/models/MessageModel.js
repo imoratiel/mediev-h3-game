@@ -34,8 +34,22 @@ class MessageModel {
             `, [threadId, playerId]);
         return result;
     }
-    async SendMessage(sender_id, receiver_id, subject, body){
-        await pool.query('INSERT INTO messages (sender_id, receiver_id, subject, body) VALUES ($1, $2, $3, $4)', [sender_id, receiver_id, subject, body]);
+    async SendMessage(sender_id, receiver_id, subject, body, thread_id = null) {
+        if (thread_id) {
+            // Respuesta: usa el thread_id del mensaje original
+            await pool.query(
+                'INSERT INTO messages (sender_id, receiver_id, subject, body, thread_id) VALUES ($1, $2, $3, $4, $5)',
+                [sender_id, receiver_id, subject, body, thread_id]
+            );
+        } else {
+            // Nuevo hilo: insertar y luego fijar thread_id = id
+            const result = await pool.query(
+                'INSERT INTO messages (sender_id, receiver_id, subject, body) VALUES ($1, $2, $3, $4) RETURNING id',
+                [sender_id, receiver_id, subject, body]
+            );
+            const newId = result.rows[0].id;
+            await pool.query('UPDATE messages SET thread_id = $1 WHERE id = $1', [newId]);
+        }
     }
     async MarkMessageAsRead(messageId) {
         const result = await pool.query('UPDATE messages SET is_read = TRUE WHERE id = $1', [messageId]);

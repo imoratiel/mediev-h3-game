@@ -1,6 +1,7 @@
 const { Logger } = require('../utils/logger');
 const MessageModel = require('../models/MessageModel.js');
 const PlayerModel = require('../models/PlayerModel.js');
+const pool = require('../../db.js');
 
 class MessageService {
     async GetMessagesByUserId(req,res) {
@@ -19,25 +20,28 @@ class MessageService {
             res.status(500).json({ success: false, message: 'Error al obtener mensajes' });
         }        
     }
-    async SendMessage(req,res){
+    async SendMessage(req, res) {
         try {
-            const { recipient_display_name, subject, body } = req.body;
+            const { recipient_display_name, subject, body, parent_id } = req.body;
 
             const receiver = await PlayerModel.GetPlayerIdByDisplayName(recipient_display_name);
+            if (receiver.rows.length === 0)
+                return res.status(404).json({ success: false, message: 'Destinatario no encontrado' });
 
-            if (receiver.rows.length === 0) return res.status(404).json({ success: false, message: 'Destinatario no encontrado' });
+            // Si es una respuesta, heredar el thread_id del mensaje padre
+            let thread_id = null;
+            if (parent_id) {
+                const parent = await pool.query('SELECT thread_id FROM messages WHERE id = $1', [parent_id]);
+                thread_id = parent.rows[0]?.thread_id ?? null;
+            }
 
-            await MessageModel.SendMessage(req.user.player_id, receiver.rows[0].player_id, subject, body);
-            
+            await MessageModel.SendMessage(req.user.player_id, receiver.rows[0].player_id, subject, body, thread_id);
+
             res.json({ success: true, message: 'Mensaje enviado' });
         } catch (error) {
-            Logger.error(error, {
-                endpoint: '/messages',
-                method: 'POST',
-                userId: req.user?.player_id
-            });
-            res.status(500).json({ success: false, message: 'Error al obtener mensajes' });
-        }    
+            Logger.error(error, { endpoint: '/messages', method: 'POST', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al enviar mensaje' });
+        }
     }    
     async MarkMessageAsRead(req,res){
         try {
@@ -84,18 +88,16 @@ class MessageService {
             res.status(500).json({ success: false, message: 'Error al marcar mensaje como leído' });
         }
     }
-    async GetThread(req,res){
+    async GetThread(req, res) {
         try {
             const threadId = parseInt(req.params.thread_id);
             const playerId = req.user.player_id;
 
-            MessageModel.GetMessagesByThreadId(threadId, playerId);
+            const result = await MessageModel.GetMessagesByThreadId(threadId, playerId);
 
-            Logger.action(`Thread ${threadId} consultado`, playerId);
             res.json({ success: true, messages: result.rows });
         } catch (error) {
             Logger.error(error, {
-                context: 'api.getMessageThread',
                 endpoint: 'GET /api/messages/thread/:thread_id',
                 userId: req.user?.player_id,
                 threadId: req.params.thread_id
