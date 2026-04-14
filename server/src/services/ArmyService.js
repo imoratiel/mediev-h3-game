@@ -603,7 +603,7 @@ class ArmyService {
             const connectedH3s = await recruitmentNetwork.getConnectedNetwork(client, h3_index, player_id);
             // Read-only query (no FOR UPDATE) — just for display
             const popResult = connectedH3s.length > 0
-                ? await client.query('SELECT h3_index, population FROM territory_details WHERE h3_index = ANY($1::text[])', [connectedH3s])
+                ? await client.query('SELECT h3_index, population, division_id FROM territory_details WHERE h3_index = ANY($1::text[])', [connectedH3s])
                 : { rows: [] };
             const recruitable  = recruitmentNetwork.calcRecruitablePool(popResult.rows);
             const min_pop      = GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION;
@@ -1037,15 +1037,16 @@ class ArmyService {
                 totalQuantity += u.quantity;
             }
 
-            // 4. Validate population minimum
-            const MIN_POP = GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION;
-            const currentPop = parseInt(territory.population) || 0;
-            if (currentPop - totalQuantity < MIN_POP) {
+            // 4. Validate population via connected network (same criteria as BulkRecruit)
+            const connectedH3s = await recruitmentNetwork.getConnectedNetwork(client, h3_index, player_id);
+            const fiefPops = await recruitmentNetwork.getFiefPopulations(client, connectedH3s);
+            const recruitablePool = recruitmentNetwork.calcRecruitablePool(fiefPops);
+
+            if (recruitablePool < totalQuantity) {
                 await client.query('ROLLBACK');
-                const available = Math.max(0, currentPop - MIN_POP);
                 return res.status(400).json({
                     success: false,
-                    message: `Población insuficiente. Puedes reforzar como máximo ${available} unidades (mínimo de ${MIN_POP} habitantes garantizados).`
+                    message: `Población insuficiente. Tu red de territorios puede aportar ${recruitablePool} reclutas.`
                 });
             }
 
@@ -1075,8 +1076,8 @@ class ArmyService {
             if (totalCost.stone_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'stone_stored', totalCost.stone_stored);
             if (totalCost.iron_stored  > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'iron_stored',  totalCost.iron_stored);
 
-            // 7. Deduct population
-            await ArmyModel.DeductPopulation(client, h3_index, totalQuantity);
+            // 7. Deduct population from network (recruiting fief first, then neighbors in BFS order)
+            await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, totalQuantity);
 
             // 8. Add troops to the existing army (merge with existing unit type rows)
             for (const u of units) {

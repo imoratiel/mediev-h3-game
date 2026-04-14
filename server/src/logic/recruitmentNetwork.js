@@ -31,10 +31,25 @@ async function getConnectedNetwork(client, startH3, playerId) {
     const RIVER_ID  = GAME_CONFIG.MAP.RIVER_TERRAIN_TYPE_ID;
     const BRIDGE_ID = GAME_CONFIG.MAP.BRIDGE_TERRAIN_TYPE_ID;
 
-    // Hexes propios (excluyendo ríos — no transmiten abastecimiento)
+    // Obtener la comarca del feudo de origen
+    const divResult = await client.query(
+        'SELECT division_id FROM territory_details WHERE h3_index = $1',
+        [startH3]
+    );
+    const divisionId = divResult.rows[0]?.division_id ?? null;
+
+    // Solo hexes del jugador que pertenezcan a la misma comarca (o sin comarca si el origen es independiente)
+    // Excluir ríos — no transmiten abastecimiento
     const playerResult = await client.query(
-        'SELECT h3_index FROM h3_map WHERE player_id = $1 AND terrain_type_id != $2',
-        [playerId, RIVER_ID]
+        `SELECT m.h3_index FROM h3_map m
+         LEFT JOIN territory_details td ON td.h3_index = m.h3_index
+         WHERE m.player_id = $1
+           AND m.terrain_type_id != $2
+           AND (
+             ($3::int IS NULL AND (td.division_id IS NULL))
+             OR (td.division_id = $3)
+           )`,
+        [playerId, RIVER_ID, divisionId]
     );
     const playerHexSet = new Set(playerResult.rows.map(r => r.h3_index));
 
@@ -57,7 +72,7 @@ async function getConnectedNetwork(client, startH3, playerId) {
         for (const neighbor of neighbors) {
             if (visited.has(neighbor)) continue;
             visited.add(neighbor);
-            // Propagar por hexes propios o por puentes (conectores neutros)
+            // Propagar por hexes de la misma comarca o por puentes (conectores neutros)
             if (playerHexSet.has(neighbor) || bridgeSet.has(neighbor)) {
                 queue.push([neighbor, depth + 1]);
             }

@@ -174,7 +174,7 @@
               <div class="adm-reinforce-wrap">
                 <!-- Recursos disponibles -->
                 <div class="adm-reinforce-resources">
-                  <span>👥 Pob. disponible: <b>{{ Math.max(0, armyDetail.fief_population - 20) }}</b></span>
+                  <span>👥 Pob. disponible: <b>{{ reinforcePool !== null ? reinforcePool : '...' }}</b></span>
                   <!-- DISABLED: <span>🌲 Madera: <b>{{ armyDetail.fief_wood }}</b></span> -->
                   <!-- DISABLED: <span>⛰️ Piedra: <b>{{ armyDetail.fief_stone }}</b></span> -->
                   <!-- DISABLED: <span>⛏️ Hierro: <b>{{ armyDetail.fief_iron }}</b></span> -->
@@ -250,7 +250,7 @@
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue';
 import axios from 'axios';
-import { dismissTroops, reinforceArmy } from '../services/mapApi.js';
+import { dismissTroops, reinforceArmy, getRecruitablePool } from '../services/mapApi.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -277,6 +277,7 @@ const reinforceQty    = ref({});   // { [unit_type_id]: quantity }
 const reinforcing     = ref(false);
 const reinforceError  = ref('');
 const reinforceMsg    = ref('');
+const reinforcePool   = ref(null); // reclutas disponibles vía red de comarca
 
 // Unit types filtered by player culture
 const availableUnitTypes = computed(() => {
@@ -384,7 +385,20 @@ const toggleReinforce = () => {
   showReinforce.value = !showReinforce.value;
   reinforceError.value = '';
   reinforceMsg.value = '';
-  if (showReinforce.value) fetchUnitTypes();
+  if (showReinforce.value) {
+    fetchUnitTypes();
+    fetchReinforcePool();
+  }
+};
+
+const fetchReinforcePool = async () => {
+  const h3 = armyDetail.value?.h3_index;
+  if (!h3) return;
+  reinforcePool.value = null;
+  try {
+    const data = await getRecruitablePool(h3);
+    if (data?.success) reinforcePool.value = data.recruitable;
+  } catch (_) { /* silent */ }
 };
 
 const barColor = (val) => {
@@ -421,6 +435,7 @@ const fetchDetail = async (armyId) => {
       if (props.autoReinforce && data.army.is_own_fief && data.army.fief_grace_turns === 0) {
         showReinforce.value = true;
         fetchUnitTypes();
+        fetchReinforcePool();
       }
     } else {
       error.value = data.message || 'Error al cargar datos';
