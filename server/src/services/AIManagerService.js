@@ -624,15 +624,17 @@ class AIManagerService {
         if (state.gold < FARMER.GOLD_TO_BUILD) return;
         if (state.territoriesWithoutBuilding.length === 0) return;
 
-        // Obtener el Mercado (único edificio que construye el Agricultor)
+        // Obtener el edificio económico base de la cultura del bot (equivalente al Mercado)
         const marketResult = await client.query(`
             SELECT b.id, b.gold_cost
             FROM buildings b
             JOIN building_types bt ON bt.building_type_id = b.type_id
-            WHERE bt.name = 'economic' AND b.name = 'Mercado'
+            WHERE bt.name = 'economic'
               AND b.required_building_id IS NULL
+              AND (b.culture_id IS NULL OR b.culture_id = (SELECT culture_id FROM players WHERE player_id = $1))
+            ORDER BY b.gold_cost ASC
             LIMIT 1
-        `);
+        `, [playerId]);
         if (marketResult.rows.length === 0) return;
 
         const market = marketResult.rows[0];
@@ -1023,16 +1025,17 @@ class AIManagerService {
         const frontierNoBuild = state.frontierHexes.filter(t => !t.existing_building_id);
         if (frontierNoBuild.length === 0) return;
 
-        // Get base military building
+        // Get base military building for the bot's culture
         const bldResult = await client.query(`
             SELECT b.id, b.name, b.gold_cost, b.construction_time_turns
             FROM buildings b
             JOIN building_types bt ON bt.building_type_id = b.type_id
             WHERE bt.name = 'military'
               AND b.required_building_id IS NULL
+              AND (b.culture_id IS NULL OR b.culture_id = (SELECT culture_id FROM players WHERE player_id = $1))
             ORDER BY b.gold_cost ASC
             LIMIT 1
-        `);
+        `, [playerId]);
         if (bldResult.rows.length === 0) return;
 
         const building = bldResult.rows[0];
@@ -1246,9 +1249,10 @@ class AIManagerService {
             JOIN building_types bt ON bt.building_type_id = b.type_id
             WHERE bt.name = $1
               AND b.required_building_id IS NULL
+              AND (b.culture_id IS NULL OR b.culture_id = (SELECT culture_id FROM players WHERE player_id = $2))
             ORDER BY b.gold_cost ASC
             LIMIT 1
-        `, [buildingType]);
+        `, [buildingType, playerId]);
         if (bldResult.rows.length === 0) return;
 
         const building = bldResult.rows[0];
