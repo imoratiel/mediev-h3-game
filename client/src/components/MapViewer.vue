@@ -800,19 +800,20 @@
 
               <!-- Thread View -->
               <div v-if="threadMessages.length > 1" class="message-thread">
-                <h4 class="thread-title">🧵 Conversación ({{ threadMessages.length }} mensajes)</h4>
+                <h4 class="thread-title">🧵 Hilo ({{ threadMessages.length }} mensajes)</h4>
                 <div class="thread-messages">
                   <div
-                    v-for="msg in threadMessages"
+                    v-for="msg in threadMessagesReversed"
                     :key="msg.id"
-                    :class="['thread-message', { 'thread-message-current': msg.id === selectedMessage.id }]"
+                    :class="['thread-message', { 'thread-message-current': msg.id === selectedMessage.id, 'thread-message-expanded': msg.id === selectedThreadMsgId }]"
+                    @click="selectedThreadMsgId = msg.id"
                   >
                     <div class="thread-message-header">
                       <strong>{{ msg.sender_username }}</strong>
                       <span class="thread-message-date">{{ formatMessageDate(msg.sent_at) }}</span>
                     </div>
                     <div class="thread-message-subject">{{ msg.subject }}</div>
-                    <div class="thread-message-body">{{ msg.body }}</div>
+                    <div v-if="selectedThreadMsgId === msg.id" class="thread-message-body">{{ msg.body }}</div>
                   </div>
                 </div>
               </div>
@@ -1461,6 +1462,8 @@ const myMessages = ref([]);
 const loadingMessages = ref(false);
 const selectedMessage = ref(null); // Currently selected message for detail view
 const threadMessages = ref([]); // Messages in the current thread
+const threadMessagesReversed = computed(() => [...threadMessages.value].reverse());
+const selectedThreadMsgId = ref(null); // Expanded message in the thread
 const unreadCount = computed(() => myMessages.value.filter(m => !m.is_read && m.receiver_id === playerId.value).length);
 const unreadNotifCount = computed(() => notifications.value.filter(n => !n.is_read).length);
 const pendingRelationsCount = ref(0);
@@ -4675,6 +4678,7 @@ const selectMessage = async (message) => {
   selectedMessage.value = message;
 
   // Load thread messages
+  selectedThreadMsgId.value = message.id;
   if (message.thread_id) {
     try {
       const data = await mapApi.getMessageThread(message.thread_id);
@@ -12192,6 +12196,7 @@ onBeforeUnmount(() => {
   padding: 12px 15px;
   border-radius: 4px;
   transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .thread-message:hover {
@@ -12203,6 +12208,11 @@ onBeforeUnmount(() => {
   background: rgba(197, 160, 89, 0.15);
   border-left-color: #c5a059;
   box-shadow: 0 0 10px rgba(197, 160, 89, 0.2);
+}
+
+.thread-message-expanded {
+  background: rgba(197, 160, 89, 0.1);
+  border-left-color: #c5a059;
 }
 
 .thread-message-header {

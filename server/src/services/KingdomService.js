@@ -892,12 +892,24 @@ class KingdomService {
                     cascadedFiefs = await processCapitalCollapse(client, h3_index, player_id, previousOwner, turn);
                 } else if (previousOwner !== null) {
                     // Si no era la capital del jugador pero sí la capital de algún señorío,
-                    // transferir ese señorío al conquistador
-                    await client.query(`
-                        UPDATE political_divisions
-                        SET player_id = $1
-                        WHERE player_id = $2 AND capital_h3 = $3
-                    `, [player_id, previousOwner, h3_index]);
+                    // transferir ese señorío y todos sus feudos al conquistador
+                    const divRes = await client.query(
+                        `SELECT id FROM political_divisions WHERE player_id = $1 AND capital_h3 = $2`,
+                        [previousOwner, h3_index]
+                    );
+                    if (divRes.rows.length > 0) {
+                        const divId = divRes.rows[0].id;
+                        await client.query(
+                            `UPDATE political_divisions SET player_id = $1 WHERE id = $2`,
+                            [player_id, divId]
+                        );
+                        await client.query(`
+                            UPDATE h3_map SET player_id = $1
+                            WHERE h3_index IN (
+                                SELECT h3_index FROM territory_details WHERE division_id = $2
+                            ) AND player_id = $3
+                        `, [player_id, divId, previousOwner]);
+                    }
                 }
             }
 
