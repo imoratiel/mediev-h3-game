@@ -190,6 +190,106 @@ class CharacterService {
     }
 
     /**
+     * GET /api/characters/me/profile
+     * Ficha del personaje principal del jugador autenticado.
+     */
+    async GetMyCharacterProfile(req, res) {
+        try {
+            const playerId = req.user.player_id;
+            const mainChar = await pool.query(
+                'SELECT id FROM characters WHERE player_id = $1 AND is_main_character = TRUE AND health > 0 LIMIT 1',
+                [playerId]
+            );
+            if (!mainChar.rows[0]) {
+                return res.status(404).json({ success: false, message: 'Sin personaje principal' });
+            }
+            // Delegate to GetCharacterProfile logic by temporarily overriding params
+            req.params = { ...req.params, id: String(mainChar.rows[0].id) };
+            return this.GetCharacterProfile(req, res);
+        } catch (err) {
+            Logger.error(err, { endpoint: 'GET /characters/me/profile', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener perfil del personaje' });
+        }
+    }
+
+    /**
+     * GET /api/characters/:id/profile
+     * Ficha completa: datos base + linaje ascendente + hijos + stats del reino.
+     */
+    async GetCharacterProfile(req, res) {
+        try {
+            const playerId = req.user.player_id;
+            const id = parseInt(req.params.id, 10);
+
+            // 1. Character base + player info
+            const charResult = await pool.query(`
+                SELECT
+                    c.*,
+                    json_agg(
+                        json_build_object('ability_key', ca.ability_key, 'level', ca.level)
+                    ) FILTER (WHERE ca.id IS NOT NULL) AS abilities,
+                    p.last_name            AS dynasty,
+                    p.gender               AS player_gender,
+                    p.color                AS player_color,
+                    cu.name                AS culture_name,
+                    CASE WHEN p.gender = 'F' THEN nr.title_female ELSE nr.title_male END AS noble_rank_title,
+                    (SELECT COUNT(*)::int FROM political_divisions WHERE player_id = c.player_id) AS division_count,
+                    (SELECT COUNT(*)::int FROM h3_map WHERE player_id = c.player_id)              AS fief_count
+                FROM characters c
+                JOIN players p ON p.player_id = c.player_id
+                LEFT JOIN cultures cu ON cu.id = p.culture_id
+                LEFT JOIN noble_ranks nr ON nr.id = p.noble_rank_id
+                LEFT JOIN character_abilities ca ON ca.character_id = c.id
+                WHERE c.id = $1
+                GROUP BY c.id, p.last_name, p.gender, p.color, cu.name,
+                         nr.title_male, nr.title_female
+            `, [id]);
+
+            const char = charResult.rows[0];
+            if (!char || char.player_id !== playerId) {
+                return res.status(404).json({ success: false, message: 'Personaje no encontrado' });
+            }
+
+            // 2. Children
+            const childrenResult = await pool.query(`
+                SELECT id, name, age, health, is_heir, is_main_character
+                FROM characters
+                WHERE parent_character_id = $1 AND health > 0
+                ORDER BY age DESC
+            `, [id]);
+
+            // 3. Ancestors (walk parent chain, up to 3 levels)
+            const ancestors = [];
+            let nextParentId = char.parent_character_id;
+            while (nextParentId && ancestors.length < 3) {
+                const ancRow = await pool.query(
+                    'SELECT id, name, age, health, parent_character_id FROM characters WHERE id = $1',
+                    [nextParentId]
+                );
+                const anc = ancRow.rows[0];
+                if (!anc) break;
+                ancestors.unshift({ id: anc.id, name: anc.name, age: anc.age, is_alive: anc.health > 0 });
+                nextParentId = anc.parent_character_id;
+            }
+
+            res.json({
+                success: true,
+                character: {
+                    ...char,
+                    abilities:        char.abilities ?? [],
+                    combat_buff_pct:  this.calcCombatBuff(char.level),
+                    display_level:    Math.floor((char.level ?? 1) / 10),
+                    children:         childrenResult.rows,
+                    ancestors,
+                },
+            });
+        } catch (err) {
+            Logger.error(err, { endpoint: 'GET /characters/:id/profile', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener ficha del personaje' });
+        }
+    }
+
+    /**
      * POST /api/characters/:id/procreate
      * Genera un descendiente del personaje indicado.
      * Body: { name }

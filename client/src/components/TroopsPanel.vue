@@ -161,6 +161,15 @@
     :playerCultureId="props.playerCultureId"
     @close="inspectModalVisible = false; inspectAutoReinforce = false"
     @dismissed="(payload) => emit('armyDismissed', payload)"
+    @open-character-profile="openCharacterProfile"
+  />
+
+  <!-- Character Profile Modal (hosted here to avoid nested Teleport) -->
+  <CharacterProfileModal
+    :show="profileShow"
+    :characterId="profileCharId"
+    @close="profileShow = false"
+    @open-profile="(id) => { profileCharId = id; }"
   />
 
   <!-- Army Transfer Panel -->
@@ -181,6 +190,7 @@ import { cellToLatLng } from 'h3-js';
 import { stopArmy, attackArmy } from '../services/mapApi.js';
 import ArmyDetailModal from './ArmyDetailModal.vue';
 import ArmyTransferPanel from './ArmyTransferPanel.vue';
+import CharacterProfileModal from './CharacterProfileModal.vue';
 
 const props = defineProps({
   armies: {
@@ -198,6 +208,11 @@ const emit = defineEmits(['locate', 'armyStopped', 'armyStopFailed', 'armyAttack
 
 const stoppingArmies = ref(new Set());
 const attackingArmies = ref(new Set());
+
+// Character profile modal
+const profileShow   = ref(false);
+const profileCharId = ref(null);
+const openCharacterProfile = (id) => { profileCharId.value = id; profileShow.value = true; };
 
 // Army detail modal
 const inspectModalVisible   = ref(false);

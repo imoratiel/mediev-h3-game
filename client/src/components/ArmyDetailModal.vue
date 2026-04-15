@@ -31,25 +31,14 @@
                   </svg>
                 </div>
                 <div class="adm-commander-info">
-                  <div class="adm-commander-name">{{ commander.full_title }}</div>
-                  <div class="adm-commander-meta">
-                    <span class="adm-commander-level">Nivel {{ commander.level }}</span>
-                    <span class="adm-commander-buff">⚔️ +{{ commander.combat_buff_pct }}% combate</span>
-                    <span v-if="commander.is_captive" class="adm-commander-captive">⛓️ Cautivo</span>
-                  </div>
-                  <div class="adm-commander-guard-row">
-                    <span class="adm-commander-guard-label">Guardia personal</span>
-                    <div class="adm-commander-guard-bar-wrap">
-                      <div class="adm-commander-guard-bar-fill"
-                           :style="{ width: Math.round(commander.personal_guard / 25 * 100) + '%',
-                                     background: barColor(Math.round(commander.personal_guard / 25 * 100)) }">
-                      </div>
-                    </div>
-                    <span class="adm-commander-guard-count">{{ commander.personal_guard }}/25</span>
-                  </div>
+                  <button class="adm-commander-name adm-commander-link" @click="openCommanderProfile">
+                    {{ commander.full_title }}
+                  </button>
+                  <span v-if="commander.is_captive" class="adm-commander-captive">⛓️ Cautivo</span>
                 </div>
               </div>
             </template>
+
 
           <!-- Tabla de tropas -->
             <div class="adm-section-label">🗡 COMPOSICIÓN DE TROPAS</div>
@@ -251,7 +240,6 @@
 import { ref, computed, watch, onUnmounted } from 'vue';
 import axios from 'axios';
 import { dismissTroops, reinforceArmy, getRecruitablePool } from '../services/mapApi.js';
-
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 const props = defineProps({
@@ -260,13 +248,19 @@ const props = defineProps({
   autoReinforce:   { type: Boolean, default: false },  // auto-abre la sección de refuerzo
   playerCultureId: { type: Number,  default: null  },
 });
-const emit = defineEmits(['close', 'dismissed']);
+const emit = defineEmits(['close', 'dismissed', 'open-character-profile']);
 
 const loading    = ref(false);
 const error      = ref('');
 const armyDetail = ref(null);  // army con provisiones
 const troops     = ref([]);
 const commander  = ref(null);  // personaje comandante del ejército
+
+// ── Commander profile modal ──────────────────────────────────────────────────
+const openCommanderProfile = () => {
+  if (!commander.value?.id) return;
+  emit('open-character-profile', commander.value.id);
+};
 const dismissQty  = ref({});   // { [unit_type_id]: quantity }
 const dismissing  = ref(new Set());
 
@@ -813,6 +807,21 @@ onUnmounted(() => document.removeEventListener('keydown', handleEsc));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.adm-commander-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(251, 191, 36, 0.35);
+  text-underline-offset: 2px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.adm-commander-link:hover {
+  color: #fde68a;
+  text-decoration-color: rgba(253, 230, 138, 0.7);
 }
 .adm-commander-meta {
   display: flex;

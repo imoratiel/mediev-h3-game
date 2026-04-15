@@ -782,6 +782,16 @@ export async function getCharacter(id) {
   return response.data;
 }
 
+export async function getCharacterProfile(id) {
+  const response = await axios.get(`${API_URL}/api/characters/${id}/profile`);
+  return response.data;
+}
+
+export async function getMyCharacterProfile() {
+  const response = await axios.get(`${API_URL}/api/characters/me/profile`);
+  return response.data;
+}
+
 export async function captureCharacter(id) {
   const response = await axios.post(`${API_URL}/api/characters/${id}/capture`);
   return response.data;

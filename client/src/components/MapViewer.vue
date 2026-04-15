@@ -655,19 +655,67 @@
 
         <!-- Profile Panel -->
         <div v-if="activePanel === 'profile'" class="panel-section profile-panel">
-          <div class="profile-info">
-            <p class="profile-field-label">Usuario de acceso</p>
-            <p class="profile-username">{{ currentUser?.username }}</p>
-          </div>
-          <div class="profile-edit-section">
-            <p class="profile-field-label">Nombre de personaje</p>
-            <input
-              :value="profileDisplayName"
-              class="profile-input profile-input--readonly"
-              type="text"
-              readonly
-            />
-          </div>
+          <div v-if="profileCharLoading" class="profile-loading">Cargando personaje...</div>
+          <template v-else-if="profileCharData">
+            <!-- Hero -->
+            <div class="prf-hero">
+              <div class="prf-avatar">🧑‍⚔️</div>
+              <div class="prf-hero-info">
+                <div class="prf-name">{{ profileCharData.name }}</div>
+                <div v-if="profileCharData.noble_rank_title" class="prf-rank">{{ profileCharData.noble_rank_title }}</div>
+                <div class="prf-meta">
+                  <span v-if="profileCharData.dynasty">🏛 {{ profileCharData.dynasty }}</span>
+                  <span v-if="profileCharData.culture_name">· {{ profileCharData.culture_name }}</span>
+                </div>
+                <div class="prf-roles">
+                  <span class="prf-badge prf-badge-leader">Líder</span>
+                  <span v-if="profileCharData.is_captive" class="prf-badge prf-badge-captive">⛓️ Cautivo</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stats grid -->
+            <div class="prf-stats">
+              <div class="prf-stat"><span class="prf-stat-label">Edad</span><span class="prf-stat-val">{{ profileCharData.age }}</span></div>
+              <div class="prf-stat"><span class="prf-stat-label">Nivel</span><span class="prf-stat-val">{{ profileCharData.display_level }}</span></div>
+              <div class="prf-stat">
+                <span class="prf-stat-label">Salud</span>
+                <span class="prf-stat-val" :class="healthClass(profileCharData.health)">{{ profileCharData.health }}%</span>
+              </div>
+              <div class="prf-stat"><span class="prf-stat-label">Comarcas</span><span class="prf-stat-val">{{ profileCharData.division_count }}</span></div>
+              <div class="prf-stat"><span class="prf-stat-label">Feudos</span><span class="prf-stat-val">{{ profileCharData.fief_count }}</span></div>
+              <div class="prf-stat"><span class="prf-stat-label">Bono ⚔️</span><span class="prf-stat-val">+{{ profileCharData.combat_buff_pct }}%</span></div>
+            </div>
+
+            <!-- Children -->
+            <div v-if="profileCharData.children?.length" class="prf-section">
+              <div class="prf-section-title">Descendencia</div>
+              <div v-for="child in profileCharData.children" :key="child.id" class="prf-list-item">
+                <span>{{ child.name }}</span>
+                <span class="prf-list-sub">{{ child.age }} años</span>
+              </div>
+            </div>
+
+            <!-- Ancestors -->
+            <div v-if="profileCharData.ancestors?.length" class="prf-section">
+              <div class="prf-section-title">Linaje</div>
+              <div v-for="(anc, i) in profileCharData.ancestors" :key="anc.id" class="prf-list-item">
+                <span class="prf-list-sub">{{ ancestorLabel(i, profileCharData.ancestors.length) }}</span>
+                <span>{{ anc.name }}<span v-if="!anc.is_alive"> †</span></span>
+              </div>
+            </div>
+
+            <!-- Abilities -->
+            <div v-if="profileCharData.abilities?.length" class="prf-section">
+              <div class="prf-section-title">Habilidades</div>
+              <div class="prf-abilities">
+                <span v-for="ab in profileCharData.abilities" :key="ab.ability_key" class="prf-chip">
+                  {{ ab.ability_key }} {{ ab.level > 1 ? 'II' : 'I' }}
+                </span>
+              </div>
+            </div>
+          </template>
+          <div v-else class="profile-loading">Sin personaje principal.</div>
         </div>
       </div>
     </aside>
@@ -1812,6 +1860,10 @@ const NOTIF_POLL_INTERVAL = 45_000; // 45 segundos
 // Profile panel state
 const profileDisplayName = ref('');
 const savingProfile = ref(false);
+const profileCharData    = ref(null);
+const profileCharLoading = ref(false);
+const healthClass = (h) => h > 66 ? 'prf-health-green' : h > 33 ? 'prf-health-orange' : 'prf-health-red';
+const ancestorLabel = (i, total) => { const fromEnd = total - 1 - i; return ['Padre', 'Abuelo', 'Bisabuelo'][fromEnd] ?? ''; };
 
 // Battle summary modal state
 const battleSummaryVisible = ref(false);
@@ -6846,9 +6898,18 @@ const handleLogout = async () => {
 // Watchers
 watch(
   () => activePanel.value,
-  (newPanel) => {
+  async (newPanel) => {
     if (newPanel === 'profile') {
       profileDisplayName.value = currentUser.value?.display_name || currentUser.value?.username || '';
+      profileCharLoading.value = true;
+      try {
+        const result = await mapApi.getMyCharacterProfile();
+        profileCharData.value = result.success ? result.character : null;
+      } catch {
+        profileCharData.value = null;
+      } finally {
+        profileCharLoading.value = false;
+      }
     }
   }
 );
@@ -7801,10 +7862,106 @@ onBeforeUnmount(() => {
 
 /* Profile panel */
 .profile-panel {
-  padding: 20px 16px;
+  padding: 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+/* ── Profile character card ── */
+.prf-hero {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(197,160,89,0.25);
+  border-radius: 6px;
+  padding: 10px;
+}
+.prf-avatar {
+  font-size: 2rem;
+  line-height: 1;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(197,160,89,0.1);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.prf-hero-info { flex: 1; min-width: 0; }
+.prf-name { font-size: 0.95rem; font-weight: 700; color: #e8d5b5; }
+.prf-rank { font-size: 0.72rem; color: #c5a059; font-style: italic; margin-top: 1px; }
+.prf-meta { font-size: 0.7rem; color: #a89875; margin-top: 2px; }
+.prf-roles { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.prf-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.prf-badge-leader { background: rgba(197,160,89,0.2); color: #c5a059; border: 1px solid rgba(197,160,89,0.4); }
+.prf-badge-captive { background: rgba(180,60,60,0.2); color: #d98080; border: 1px solid rgba(180,60,60,0.4); }
+
+.prf-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.prf-stat {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(197,160,89,0.15);
+  border-radius: 4px;
+  padding: 5px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.prf-stat-label { font-size: 0.6rem; color: #a89875; text-transform: uppercase; letter-spacing: 0.5px; }
+.prf-stat-val   { font-size: 0.82rem; font-weight: 700; color: #e8d5b5; }
+.prf-health-green  { color: #6dbf67; }
+.prf-health-orange { color: #d4a44c; }
+.prf-health-red    { color: #c05050; }
+
+.prf-section { display: flex; flex-direction: column; gap: 4px; }
+.prf-section-title {
+  font-size: 0.65rem;
+  color: #a89875;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border-bottom: 1px solid rgba(197,160,89,0.15);
+  padding-bottom: 3px;
+}
+.prf-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: #e8d5b5;
+  padding: 2px 0;
+}
+.prf-list-sub { font-size: 0.7rem; color: #a89875; }
+
+.prf-abilities { display: flex; flex-wrap: wrap; gap: 4px; }
+.prf-chip {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  background: rgba(197,160,89,0.12);
+  border: 1px solid rgba(197,160,89,0.3);
+  border-radius: 10px;
+  color: #c5a059;
+}
+
+.profile-loading {
+  font-size: 0.8rem;
+  color: #a89875;
+  text-align: center;
+  padding: 20px 0;
 }
 
 .profile-info {

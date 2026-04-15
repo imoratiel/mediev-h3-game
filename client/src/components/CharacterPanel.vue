@@ -27,7 +27,7 @@
         <div
           class="tree-node node-leader"
           :class="{ 'node-deployed': mainCharacter.army_id }"
-          @click="selectChar(mainCharacter)"
+          @click="openProfile(mainCharacter)"
           :data-selected="selectedId === mainCharacter.id"
         >
           <div class="node-crown">👑</div>
@@ -56,7 +56,7 @@
             class="tree-node"
             :class="nodeClass(char)"
             :data-selected="selectedId === char.id"
-            @click="selectChar(char)"
+            @click="openProfile(char)"
           >
             <div class="node-icon">{{ nodeIcon(char) }}</div>
             <div class="node-fullname">{{ char.name }}</div>
@@ -174,6 +174,14 @@
       </div>
     </div>
 
+    <!-- ── CHARACTER PROFILE MODAL ───────────────────────── -->
+    <CharacterProfileModal
+      :show="profileShow"
+      :characterId="profileCharId"
+      @close="closeProfile"
+      @open-profile="(id) => { profileCharId.value = id; }"
+    />
+
     <!-- ── RANSOM MODAL ───────────────────────────────────── -->
     <div v-if="showRansomModal" class="char-modal-overlay" @click.self="showRansomModal = false">
       <div class="char-modal">
@@ -274,6 +282,7 @@ import {
   payRansom,
   rejectRansom,
 } from '@/services/mapApi.js';
+import CharacterProfileModal from './CharacterProfileModal.vue';
 
 const props = defineProps({
   armies: { type: Array, default: () => [] },
@@ -286,6 +295,19 @@ const characters  = ref([]);
 const loading     = ref(false);
 const error       = ref(null);
 const selectedId  = ref(null);
+
+// ── Profile modal ────────────────────────────────────────
+const profileShow    = ref(false);
+const profileCharId  = ref(null);
+
+const openProfile = (char) => {
+  profileCharId.value = char.id;
+  profileShow.value   = true;
+};
+const closeProfile = () => {
+  profileShow.value  = false;
+  profileCharId.value = null;
+};
 
 // Cautivos y rescates
 const captives          = ref([]);
