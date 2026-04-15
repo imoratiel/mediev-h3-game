@@ -2776,44 +2776,37 @@ const renderWorkerMarkers = (workers, currentPlayerId) => {
       const canBuildBridge  = isOwn && BRIDGE_TERRAINS.includes(data.terrain_type);
       const canBuildEdificio = isOwn && !BRIDGE_TERRAINS.includes(data.terrain_type);
 
-      const terrainLabel = data.terrain_type
-        ? `<span style="color:#6b7280;font-size:11px;">🌍 ${data.terrain_type}</span><br>`
-        : '';
+      const terrainMeta = data.terrain_type ? ` · 🌍 ${data.terrain_type}` : '';
 
       const buildBtn = isOwn
         ? canBuildBridge
-          ? `<button id="worker-build-btn-${h3_index}"
-               style="flex:1;padding:4px 6px;border:none;border-radius:4px;
-                      background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;"
-               title="Construir puente (consume trabajadores)">🌉 Puente</button>`
-          : `<button id="worker-build-btn-${h3_index}"
-               style="flex:1;padding:4px 6px;border:none;border-radius:4px;
-                      background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;"
-               title="Construir edificio en este territorio">🏛️ Edificio</button>`
+          ? `<button id="worker-build-btn-${h3_index}" class="worker-popup-btn" title="Construir puente (consume trabajadores)">🌉 Puente</button>`
+          : `<button id="worker-build-btn-${h3_index}" class="worker-popup-btn" title="Construir edificio en este territorio">🏛️ Edificio</button>`
         : '';
 
       const ownActions = isOwn ? `
-        <div style="display:flex;gap:6px;margin-top:8px;">
+        <div class="char-popup-actions" style="margin-top:4px;">
           ${buildBtn}
-          <button
-            id="worker-move-btn-${h3_index}"
-            data-worker-id="${data.first_worker_id}"
-            style="flex:1;padding:4px 6px;border:none;border-radius:4px;
-                   background:#f59e0b;color:#1c1917;font-size:12px;font-weight:600;cursor:pointer;"
-            >➡️ Mover</button>
+          <button id="worker-move-btn-${h3_index}" data-worker-id="${data.first_worker_id}" class="worker-popup-btn" title="Mover trabajador">➡️ Mover</button>
         </div>` : '';
 
       const marker = L.marker([lat, lng], { icon, pane: 'workerPane' });
       marker.bindPopup(
-        `<div style="font-family:sans-serif;font-size:13px;min-width:160px;">
-          <strong>⛏️ Trabajadores</strong><br>
-          <span style="color:#d1d5db;">${data.worker_count} ${data.worker_type}(s)</span><br>
-          <span style="color:#6b7280;">👤 ${data.player_name}</span><br>
-          <span style="color:#6b7280;font-size:11px;">📍 ${h3_index}</span><br>
-          ${terrainLabel}
+        `<div class="char-popup">
+          <div class="char-popup-header">
+            <span class="char-popup-icon">⛏️</span>
+            <div>
+              <div class="char-popup-name">Trabajadores</div>
+              <div class="char-popup-meta">${data.worker_count} ${data.worker_type}(s)</div>
+            </div>
+          </div>
+          <div class="char-popup-meta" style="margin-bottom:6px;">
+            👤 ${data.player_name}<br>
+            <span style="font-size:0.63rem;opacity:0.75;">📍 ${h3_index}${terrainMeta}</span>
+          </div>
           ${ownActions}
         </div>`,
-        { maxWidth: 220 }
+        { maxWidth: 240, className: 'worker-leaflet-popup' }
       );
 
       // Wire up popup buttons after it opens
@@ -3472,34 +3465,37 @@ const openWorkerPopup = (h3Index, latlng) => {
   const canBuildBridge   = isOwn && BRIDGE_TERRAINS.includes(workerData.terrain_type);
   const canBuildEdificio = isOwn && !BRIDGE_TERRAINS.includes(workerData.terrain_type);
 
-  const terrainLabel = workerData.terrain_type
-    ? `<span style="color:#6b7280;font-size:11px;">🌍 ${workerData.terrain_type}</span><br>`
-    : '';
+  const terrainMeta = workerData.terrain_type ? ` · 🌍 ${workerData.terrain_type}` : '';
 
   const buildBtn = isOwn
     ? canBuildBridge
-      ? `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir puente (consume trabajadores)">🌉 Puente</button>`
-      : `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir edificio en este territorio">🏛️ Edificio</button>`
+      ? `<button id="worker-build-btn-${h3Index}" class="worker-popup-btn" title="Construir puente (consume trabajadores)">🌉 Puente</button>`
+      : `<button id="worker-build-btn-${h3Index}" class="worker-popup-btn" title="Construir edificio en este territorio">🏛️ Edificio</button>`
     : '';
 
   const ownActions = isOwn ? `
-    <div style="display:flex;gap:6px;margin-top:8px;">
+    <div class="char-popup-actions" style="margin-top:4px;">
       ${buildBtn}
-      <button id="worker-move-btn-${h3Index}" data-worker-id="${workerData.first_worker_id}"
-        style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#f59e0b;color:#1c1917;font-size:12px;font-weight:600;cursor:pointer;">➡️ Mover</button>
+      <button id="worker-move-btn-${h3Index}" data-worker-id="${workerData.first_worker_id}" class="worker-popup-btn" title="Mover trabajador">➡️ Mover</button>
     </div>` : '';
 
   const popupHtml = `
-    <div style="font-family:sans-serif;font-size:13px;min-width:160px;">
-      <strong>⛏️ Trabajadores</strong><br>
-      <span style="color:#d1d5db;">${workerData.worker_count} ${workerData.worker_type}(s)</span><br>
-      <span style="color:#6b7280;">👤 ${workerData.player_name}</span><br>
-      <span style="color:#6b7280;font-size:11px;">📍 ${h3Index}</span><br>
-      ${terrainLabel}
+    <div class="char-popup">
+      <div class="char-popup-header">
+        <span class="char-popup-icon">⛏️</span>
+        <div>
+          <div class="char-popup-name">Trabajadores</div>
+          <div class="char-popup-meta">${workerData.worker_count} ${workerData.worker_type}(s)</div>
+        </div>
+      </div>
+      <div class="char-popup-meta" style="margin-bottom:6px;">
+        👤 ${workerData.player_name}<br>
+        <span style="font-size:0.63rem;opacity:0.75;">📍 ${h3Index}${terrainMeta}</span>
+      </div>
       ${ownActions}
     </div>`;
 
-  L.popup({ maxWidth: 220 })
+  L.popup({ maxWidth: 240, className: 'worker-leaflet-popup' })
     .setLatLng(latlng)
     .setContent(popupHtml)
     .openOn(map);
@@ -13325,6 +13321,49 @@ onBeforeUnmount(() => {
   color: #ffd93d;
   font-weight: 600;
   vertical-align: middle;
+}
+
+/* Worker popup — dark medieval wrapper */
+:deep(.worker-leaflet-popup .leaflet-popup-content-wrapper) {
+  background: #1a1008;
+  border: 1px solid rgba(197,160,89,0.4);
+  border-radius: 8px;
+  color: #e8d5a3;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  padding: 0;
+}
+:deep(.worker-leaflet-popup .leaflet-popup-tip) {
+  background: #1a1008;
+}
+:deep(.worker-leaflet-popup .leaflet-popup-content) {
+  margin: 0;
+}
+
+/* Worker action buttons (text + icon) */
+:deep(.worker-popup-btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #f4e4bc, #e8d5b5);
+  border: 2px solid #c5a059;
+  border-radius: 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #1a1612;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+:deep(.worker-popup-btn:hover) {
+  background: linear-gradient(135deg, #ffd700, #f4e4bc);
+  border-color: #8B6914;
+  transform: translateY(-1px);
+}
+:deep(.worker-popup-btn:active) {
+  transform: translateY(0);
 }
 
 /* Strip Leaflet's default divIcon styles so our container is clean */
