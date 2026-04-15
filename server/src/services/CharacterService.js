@@ -233,6 +233,9 @@ class CharacterService {
                     p.color                AS player_color,
                     cu.name                AS culture_name,
                     CASE WHEN p.gender = 'F' THEN nr.title_female ELSE nr.title_male END AS noble_rank_title,
+                    nr.territory_name      AS noble_rank_name,
+                    COALESCE(td_cap.custom_name, s_cap.name, p.capital_h3) AS capital_name,
+                    p.capital_h3,
                     (SELECT COUNT(*)::int FROM political_divisions WHERE player_id = c.player_id) AS division_count,
                     (SELECT COUNT(*)::int FROM h3_map WHERE player_id = c.player_id)              AS fief_count
                 FROM characters c
@@ -240,9 +243,12 @@ class CharacterService {
                 LEFT JOIN cultures cu ON cu.id = p.culture_id
                 LEFT JOIN noble_ranks nr ON nr.id = p.noble_rank_id
                 LEFT JOIN character_abilities ca ON ca.character_id = c.id
+                LEFT JOIN territory_details td_cap ON td_cap.h3_index = p.capital_h3
+                LEFT JOIN settlements s_cap ON s_cap.h3_index = p.capital_h3
                 WHERE c.id = $1
                 GROUP BY c.id, p.last_name, p.gender, p.color, cu.name,
-                         nr.title_male, nr.title_female
+                         nr.title_male, nr.title_female, nr.territory_name,
+                         td_cap.custom_name, s_cap.name, p.capital_h3
             `, [id]);
 
             const char = charResult.rows[0];

@@ -28,6 +28,9 @@ notes.txt
 # Tiles generados
 server/tiles/
 
+# Player uploaded avatars (persisted via Docker volume)
+server/uploads/
+
 # Large Geospatial Data
 data/
 *.tif

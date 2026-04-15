@@ -31,6 +31,16 @@
 - Fix CORRECTO: `docker compose down -v && docker compose build --no-cache backend && docker compose up -d`
 - El flag `-v` borra solo volúmenes anónimos (node_modules). El volumen nombrado `pgdata` NO se borra.
 
+## `sharp` en Alpine Linux — package-lock.json generado en Windows
+- **Síntoma**: contenedor arranca y falla inmediatamente con `Could not load the "sharp" module using the linux-x64 runtime` o `invalid ELF header`
+- **Causa combinada**: (1) volumen anónimo `/app/node_modules` tapa los binarios instalados en la imagen; (2) `package-lock.json` generado en Windows no incluye `"libc": ["musl"]` en las entradas `@img/sharp-linuxmusl-*`, por lo que npm instala el binario glibc (`sharp-linux-x64`) en lugar del musl (`sharp-linuxmusl-x64`)
+- **Fix CORRECTO** (3 pasos en orden):
+  1. `docker compose down -v` — borra volumen anónimo node_modules
+  2. `docker run --rm -v "$(pwd)/server:/app" -w /app node:18-alpine npm install` — regenera package-lock.json con entradas musl correctas
+  3. `docker compose up --build` — reconstruye imagen con lockfile correcto
+- **Alternativa Dockerfile**: añadir `RUN npm install && npm rebuild sharp --platform=linux --libc=musl --arch=x64` en lugar del `RUN npm install` simple
+- `pgdata` (volumen nombrado) NO se borra con `-v`
+
 ## Migraciones SQL Pendientes de Aplicar
 - Patrón recurrente: el código usa columnas nuevas pero la migración SQL existe pero NO fue ejecutada en la DB
 - `066_noble_rank_promotion.sql`: añade `players.last_rank_promotion VARCHAR(20)` — ver error 2026-03-20

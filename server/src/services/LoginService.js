@@ -109,7 +109,8 @@ class LoginService {
         try {
             // Fetch is_initialized from DB (not in JWT payload)
             const result = await pool.query(
-                `SELECT p.is_initialized, p.gender, p.culture_id, p.display_name, c.name AS culture_name,
+                `SELECT p.is_initialized, p.gender, p.culture_id, p.display_name, p.avatar_version,
+                        c.name AS culture_name,
                         CASE WHEN p.gender = 'F' THEN nr.title_female ELSE nr.title_male END AS noble_title
                  FROM players p
                  LEFT JOIN cultures c    ON c.id  = p.culture_id
@@ -117,12 +118,14 @@ class LoginService {
                  WHERE p.player_id = $1`,
                 [req.user.player_id]
             );
-            const is_initialized = result.rows[0]?.is_initialized ?? false;
-            const gender         = result.rows[0]?.gender ?? 'M';
-            const culture_id     = result.rows[0]?.culture_id ?? null;
-            const culture_name   = result.rows[0]?.culture_name ?? null;
-            const display_name   = result.rows[0]?.display_name ?? req.user.display_name;
-            const noble_title    = result.rows[0]?.noble_title ?? null;
+            const row            = result.rows[0];
+            const is_initialized = row?.is_initialized ?? false;
+            const gender         = row?.gender ?? 'M';
+            const culture_id     = row?.culture_id ?? null;
+            const culture_name   = row?.culture_name ?? null;
+            const display_name   = row?.display_name ?? req.user.display_name;
+            const noble_title    = row?.noble_title ?? null;
+            const avatar_version = row?.avatar_version ?? 0;
             res.json({
                 success: true,
                 user: {
@@ -135,6 +138,7 @@ class LoginService {
                     culture_id,
                     culture_name,
                     noble_title,
+                    avatar_version,
                 }
             });
         } catch (error) {

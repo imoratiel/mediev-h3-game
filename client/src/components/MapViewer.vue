@@ -210,11 +210,14 @@
           class="user-info-footer"
           :class="{ active: activePanel === 'profile' }"
           @click="togglePanel('profile')"
-          title="Editar perfil"
+          title="Ver perfil"
         >
-          <span class="username">{{ currentUser.culture_id === 1 ? 'Gens' : 'Casa' }} {{ currentUser.display_name || currentUser.username }}</span>
-          <span v-if="currentUser.noble_title" class="noble-title-badge">{{ currentUser.noble_title }}</span>
-          <span v-if="currentUser.culture_name" class="culture-badge">{{ currentUser.culture_name }}</span>
+          <img :src="playerAvatarUrl" class="footer-avatar" alt="avatar" />
+          <div class="footer-user-text">
+            <span class="username">{{ currentUser.culture_id === 1 ? 'Gens' : 'Casa' }} {{ currentUser.display_name || currentUser.username }}</span>
+            <span v-if="currentUser.noble_title" class="noble-title-badge">{{ currentUser.noble_title }}</span>
+            <span v-if="currentUser.culture_name" class="culture-badge">{{ currentUser.culture_name }}</span>
+          </div>
         </button>
         <div v-if="currentUser" class="footer-actions">
           <button
@@ -659,7 +662,19 @@
           <template v-else-if="profileCharData">
             <!-- Hero -->
             <div class="prf-hero">
-              <div class="prf-avatar">🧑‍⚔️</div>
+              <!-- Avatar with upload overlay -->
+              <div class="prf-avatar-wrap">
+                <img :src="playerAvatarUrl" class="prf-avatar-img" alt="avatar" />
+                <label class="prf-avatar-upload" title="Cambiar imagen">
+                  <span>📷</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    style="display:none"
+                    @change="handleAvatarUpload"
+                  />
+                </label>
+              </div>
               <div class="prf-hero-info">
                 <div class="prf-name">{{ profileCharData.name }}</div>
                 <div v-if="profileCharData.noble_rank_title" class="prf-rank">{{ profileCharData.noble_rank_title }}</div>
@@ -667,11 +682,24 @@
                   <span v-if="profileCharData.dynasty">🏛 {{ profileCharData.dynasty }}</span>
                   <span v-if="profileCharData.culture_name">· {{ profileCharData.culture_name }}</span>
                 </div>
+                <div class="prf-info-rows">
+                  <div v-if="profileCharData.noble_rank_name" class="prf-info-row">
+                    <span class="prf-info-label">Rango</span>
+                    <span class="prf-info-val">{{ profileCharData.noble_rank_name }}</span>
+                  </div>
+                  <div v-if="profileCharData.capital_name" class="prf-info-row">
+                    <span class="prf-info-label">Capital</span>
+                    <span class="prf-info-val">{{ profileCharData.capital_name }}</span>
+                  </div>
+                </div>
                 <div class="prf-roles">
                   <span class="prf-badge prf-badge-leader">Líder</span>
                   <span v-if="profileCharData.is_captive" class="prf-badge prf-badge-captive">⛓️ Cautivo</span>
                 </div>
               </div>
+            </div>
+            <div v-if="avatarUploadMsg" class="prf-upload-msg" :class="avatarUploadError ? 'prf-upload-err' : 'prf-upload-ok'">
+              {{ avatarUploadMsg }}
             </div>
 
             <!-- Stats grid -->
@@ -1862,8 +1890,61 @@ const profileDisplayName = ref('');
 const savingProfile = ref(false);
 const profileCharData    = ref(null);
 const profileCharLoading = ref(false);
+const avatarUploadMsg    = ref('');
+const avatarUploadError  = ref(false);
 const healthClass = (h) => h > 66 ? 'prf-health-green' : h > 33 ? 'prf-health-orange' : 'prf-health-red';
 const ancestorLabel = (i, total) => { const fromEnd = total - 1 - i; return ['Padre', 'Abuelo', 'Bisabuelo'][fromEnd] ?? ''; };
+
+const CULTURE_AVATAR = { 1: 'romano', 2: 'cartagines', 3: 'celta', 4: 'ibero' };
+const playerAvatarUrl = computed(() => {
+  if (!currentUser.value) return '';
+  if (currentUser.value.avatar_version > 0) {
+    return `/avatars/player_${currentUser.value.player_id}.webp?v=${currentUser.value.avatar_version}`;
+  }
+  const name = CULTURE_AVATAR[currentUser.value.culture_id] || 'ibero';
+  return `/images_default/default_${name}.png`;
+});
+
+async function handleAvatarUpload(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  avatarUploadMsg.value = '';
+  avatarUploadError.value = false;
+
+  const MAX_MB = 2;
+  if (file.size > MAX_MB * 1024 * 1024) {
+    avatarUploadError.value = true;
+    avatarUploadMsg.value = `La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El límite es ${MAX_MB} MB.`;
+    e.target.value = '';
+    setTimeout(() => { avatarUploadMsg.value = ''; }, 5000);
+    return;
+  }
+
+  const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  if (!ALLOWED.includes(file.type)) {
+    avatarUploadError.value = true;
+    avatarUploadMsg.value = 'Formato no permitido. Usa JPG, PNG, WebP o GIF.';
+    e.target.value = '';
+    setTimeout(() => { avatarUploadMsg.value = ''; }, 5000);
+    return;
+  }
+
+  try {
+    const result = await mapApi.uploadAvatar(file);
+    if (result.success) {
+      currentUser.value = { ...currentUser.value, avatar_version: result.avatar_version };
+      localStorage.setItem('user', JSON.stringify(currentUser.value));
+      avatarUploadMsg.value = 'Imagen actualizada correctamente.';
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (err) {
+    avatarUploadError.value = true;
+    avatarUploadMsg.value = err?.response?.data?.message || err.message || 'Error al subir la imagen.';
+  }
+  e.target.value = '';
+  setTimeout(() => { avatarUploadMsg.value = ''; }, 4000);
+}
 
 // Battle summary modal state
 const battleSummaryVisible = ref(false);
@@ -7869,33 +7950,91 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
+/* ── Footer avatar ── */
+.user-info-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(197,160,89,0.4);
+  flex-shrink: 0;
+}
+.footer-user-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
 /* ── Profile character card ── */
 .prf-hero {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 10px;
-  align-items: flex-start;
   background: rgba(0,0,0,0.3);
   border: 1px solid rgba(197,160,89,0.25);
   border-radius: 6px;
-  padding: 10px;
+  padding: 14px 10px;
 }
-.prf-avatar {
-  font-size: 2rem;
-  line-height: 1;
-  width: 42px;
-  height: 42px;
+.prf-hero-info {
+  text-align: center;
+  width: 100%;
+}
+.prf-roles {
+  justify-content: center;
+}
+.prf-avatar-wrap {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  flex-shrink: 0;
+}
+.prf-avatar-img {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(197,160,89,0.5);
+  display: block;
+}
+.prf-avatar-upload {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(197,160,89,0.1);
-  border-radius: 50%;
-  flex-shrink: 0;
+  font-size: 1.2rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+  cursor: pointer;
 }
+.prf-avatar-wrap:hover .prf-avatar-upload { opacity: 1; }
+
+.prf-upload-msg {
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+.prf-upload-ok  { background: rgba(80,160,80,0.2);  color: #7ecf7e; border: 1px solid rgba(80,160,80,0.3); }
+.prf-upload-err { background: rgba(180,60,60,0.2);  color: #d98080; border: 1px solid rgba(180,60,60,0.3); }
 .prf-hero-info { flex: 1; min-width: 0; }
 .prf-name { font-size: 0.95rem; font-weight: 700; color: #e8d5b5; }
 .prf-rank { font-size: 0.72rem; color: #c5a059; font-style: italic; margin-top: 1px; }
 .prf-meta { font-size: 0.7rem; color: #a89875; margin-top: 2px; }
-.prf-roles { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.prf-info-rows { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; width: 100%; }
+.prf-info-row  { display: flex; justify-content: center; gap: 6px; font-size: 0.75rem; }
+.prf-info-label { color: #a89875; }
+.prf-info-val   { color: #e8d5b5; font-weight: 600; }
+.prf-roles { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .prf-badge {
   font-size: 0.62rem;
   font-weight: 700;

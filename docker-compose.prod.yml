@@ -27,6 +27,7 @@ services:
     volumes:
       - ./CHANGELOG.md:/app/CHANGELOG.md:ro
       - ./tiles:/app/tiles:ro
+      - avatars_data:/app/uploads/avatars
     networks:
       - game-network
 
@@ -41,6 +42,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    volumes:
+      - avatars_data:/usr/share/nginx/html/avatars:ro
     networks:
       - game-network
 
@@ -73,4 +76,6 @@ networks:
 
 volumes:
   pgdata:
+    driver: local
+  avatars_data:
     driver: local

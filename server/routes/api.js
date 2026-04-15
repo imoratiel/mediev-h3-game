@@ -28,10 +28,11 @@ module.exports = function () {
     const CharacterService = require('../src/services/CharacterService.js');
     const OAuthService = require('../src/services/OAuthService.js');
     const NavalService = require('../src/services/NavalService.js');
+    const ProfileService = require('../src/services/ProfileService.js');
 
     // ── Turn lock: bloquea escrituras durante el procesamiento de turno ──────────
     // Excluye: auth (login/logout), rutas de solo lectura (GET) y admin (fuerza turno manual).
-    const TURN_LOCK_EXEMPT = new Set(['/auth/login', '/auth/logout', '/auth/google', '/auth/google/callback']);
+    const TURN_LOCK_EXEMPT = new Set(['/auth/login', '/auth/logout', '/auth/google', '/auth/google/callback', '/profile/avatar']);
     router.use((req, res, next) => {
         if (req.method === 'GET' || req.method === 'HEAD') return next();
         if (TURN_LOCK_EXEMPT.has(req.path)) return next();
@@ -46,6 +47,7 @@ module.exports = function () {
     router.post('/auth/logout', authenticateToken, LoginService.Logout);
     router.get('/auth/me', authenticateToken, LoginService.AuthMe);
     router.put('/auth/profile', authenticateToken, (req, res) => LoginService.UpdateProfile(req, res));
+    router.post('/profile/avatar', authenticateToken, (req, res) => ProfileService.UploadAvatar(req, res));
 
     // OAuth — Google
     router.get('/auth/google',          OAuthService.redirectToGoogle);

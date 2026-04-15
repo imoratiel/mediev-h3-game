@@ -792,6 +792,15 @@ export async function getMyCharacterProfile() {
   return response.data;
 }
 
+export async function uploadAvatar(file) {
+  const form = new FormData();
+  form.append('avatar', file);
+  const response = await axios.post(`${API_URL}/api/profile/avatar`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+}
+
 export async function captureCharacter(id) {
   const response = await axios.post(`${API_URL}/api/characters/${id}/capture`);
   return response.data;

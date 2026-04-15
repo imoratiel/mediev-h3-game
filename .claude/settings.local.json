@@ -102,7 +102,8 @@
       "Bash(\"C:/Users/Usuario/miniconda3/python.exe\" tools/gen_tiles/gen_tiles.py)",
       "Bash(C:/Users/Usuario/miniconda3/python.exe -m pip list)",
       "Bash(find d:/claude/mediev-h3-game -name mapApi.js -o -name *mapApi*)",
-      "Bash(find d:/claude/mediev-h3-game/server -name *route* -o -name *router*)"
+      "Bash(find d:/claude/mediev-h3-game/server -name *route* -o -name *router*)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }
