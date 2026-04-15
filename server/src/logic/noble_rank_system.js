@@ -143,9 +143,9 @@ async function _evaluatePlayerRank(client, player, allRanks, idempotencyKey, cur
 
 function _promotionMessage(newTitle, linaje) {
     const templates = [
-        `⚜️ **¡Que los dioses sean testigos!**\n\nTus conquistas han extendido la gloria de ${linaje} más allá de toda frontera conocida. Las gentes se postran y susurran tu nuevo nombre: a partir de este día, serás conocido como **${newTitle}**.`,
+        `⚜️ **¡Que los dioses sean testigos!**\n\nTus conquistas han extendido la gloria de ${linaje} más allá de toda frontera conocida. Las gentes se postran y susurran tu nuevo título: a partir de este día, serás conocido como **${newTitle}**.`,
         `🏛️ **El pueblo ha hablado.**\n\nNadie que haya visto el alcance de tu poder puede seguir llamándote por tu antiguo título. Desde hoy y para siempre, el mundo te reconocerá como **${newTitle}**.`,
-        `⚔️ **La historia recuerda a los grandes.**\n\nTus hazañas han cincelado tu nombre en piedra. Que tiemblen los que aún no conocen el nombre de **${newTitle}**.`,
+        `⚔️ **La historia recuerda a los grandes.**\n\nTus hazañas han cincelado tu título en piedra. Que tiemblen los que aún no conocen el título de **${newTitle}**.`,
     ];
     return templates[Math.floor(Math.random() * templates.length)];
 }
