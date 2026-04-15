@@ -42,11 +42,11 @@
                   <span class="pstat-lbl">Edad</span>
                 </div>
                 <div class="pstat">
-                  <span class="pstat-val">Nv.{{ profile.display_level }}</span>
+                  <span class="pstat-val">{{ profile.display_level == null ? '—' : 'Nv.' + profile.display_level }}</span>
                   <span class="pstat-lbl">Nivel</span>
                 </div>
                 <div class="pstat">
-                  <span class="pstat-val" :class="healthClass(profile.health)">{{ profile.health }}%</span>
+                  <span class="pstat-val" :class="profile.health != null ? healthClass(profile.health) : ''">{{ profile.health == null ? '—' : profile.health + '%' }}</span>
                   <span class="pstat-lbl">Salud</span>
                 </div>
                 <div class="pstat">
@@ -61,7 +61,7 @@
                   <span class="pstat-val text-purple">+{{ profile.combat_buff_pct }}%</span>
                   <span class="pstat-lbl">Combate</span>
                 </div>
-                <div class="pstat">
+                <div class="pstat" v-if="profile.personal_guard != null">
                   <span class="pstat-val">{{ profile.personal_guard }}/25</span>
                   <span class="pstat-lbl">Guardia</span>
                 </div>
@@ -75,8 +75,8 @@
           <!-- ── BODY ───────────────────────────────────────── -->
           <div class="profile-body">
 
-            <!-- Children -->
-            <div class="profile-section">
+            <!-- Children (solo propio personaje) -->
+            <div class="profile-section" v-if="profile.is_own_character !== false">
               <h3 class="section-title">👶 Hijos ({{ profile.children.length }})</h3>
               <div v-if="profile.children.length === 0" class="section-empty">Sin descendencia</div>
               <div v-else class="children-list">

@@ -136,6 +136,7 @@ class TerrainService {
                     } : null,
                 } : null,
                 settlement_name: cell.settlement_name,
+                owner_main_character_id: cell.owner_main_character_id || null,
                 coord_x: cell.coord_x,
                 coord_y: cell.coord_y,
                 culture: cultureRow ? {

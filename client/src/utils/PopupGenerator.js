@@ -71,7 +71,9 @@ export function generateCellPopupContent(cell, config) {
 
   // OWNER - Player name or "Sin reclamar"
   const ownerText = cell.player_name
-    ? `<span class="popup-owner-name" style="color: #1a1612; border-bottom: 2px solid ${cell.player_color}">⚔️ ${cell.player_name}</span>`
+    ? cell.owner_main_character_id
+      ? `<button id="char-owner-btn-${h3_index}" data-char-id="${cell.owner_main_character_id}" class="popup-owner-name popup-owner-btn" style="border-bottom: 2px solid ${cell.player_color}">⚔️ ${cell.player_name}</button>`
+      : `<span class="popup-owner-name" style="color: #1a1612; border-bottom: 2px solid ${cell.player_color}">⚔️ ${cell.player_name}</span>`
     : '<span class="unclaimed-text">🌿 Sin reclamar</span>';
   popupContent += `<p class="popup-stat-row"><strong>Dueño:</strong> ${ownerText}</p>`;
 
@@ -379,7 +381,7 @@ export function generateArmyPopup(armyData, config) {
               <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
             </svg>
           </span>`;
-          popupContent += `<span class="troop-name" style="flex:1;">${c.full_title || c.name}</span>`;
+          popupContent += `<button id="char-army-btn-${army.army_id}" data-char-id="${c.id}" class="popup-char-link" style="flex:1;text-align:left;" title="Ver ficha del personaje">${c.full_title || c.name}</button>`;
           popupContent += `<span class="troop-quantity" style="color:#c5a059;font-size:0.72rem;" title="Bono de combate al ejército">⚔️+${c.combat_buff_pct}%</span>`;
           popupContent += `<div class="guard-bar-mini" title="Guardia ${c.personal_guard}/25">
             <div style="width:${guardFill}%;background:${guardColor};height:100%;border-radius:2px;"></div>

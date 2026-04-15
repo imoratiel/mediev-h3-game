@@ -231,6 +231,8 @@ class CharacterService {
                     p.last_name            AS dynasty,
                     p.gender               AS player_gender,
                     p.color                AS player_color,
+                    p.culture_id           AS player_culture_id,
+                    p.avatar_version       AS player_avatar_version,
                     cu.name                AS culture_name,
                     CASE WHEN p.gender = 'F' THEN nr.title_female ELSE nr.title_male END AS noble_rank_title,
                     nr.territory_name      AS noble_rank_name,
@@ -246,23 +248,33 @@ class CharacterService {
                 LEFT JOIN territory_details td_cap ON td_cap.h3_index = p.capital_h3
                 LEFT JOIN settlements s_cap ON s_cap.h3_index = p.capital_h3
                 WHERE c.id = $1
-                GROUP BY c.id, p.last_name, p.gender, p.color, cu.name,
-                         nr.title_male, nr.title_female, nr.territory_name,
+                GROUP BY c.id, p.last_name, p.gender, p.color, p.culture_id, p.avatar_version,
+                         cu.name, nr.title_male, nr.title_female, nr.territory_name,
                          td_cap.custom_name, s_cap.name, p.capital_h3
             `, [id]);
 
             const char = charResult.rows[0];
-            if (!char || char.player_id !== playerId) {
+            if (!char) {
                 return res.status(404).json({ success: false, message: 'Personaje no encontrado' });
             }
+            const isOwn = char.player_id === playerId;
+            if (!isOwn) {
+                // Mask private fields for non-owner viewers
+                char.level          = null;
+                char.health         = null;
+                char.capital_name   = null;
+                char.capital_h3     = null;
+                char.personal_guard = null;
+                char.h3_index       = null;
+            }
 
-            // 2. Children
-            const childrenResult = await pool.query(`
+            // 2. Children — solo visibles para el propio jugador
+            const childrenResult = isOwn ? await pool.query(`
                 SELECT id, name, age, health, is_heir, is_main_character
                 FROM characters
                 WHERE parent_character_id = $1 AND health > 0
                 ORDER BY age DESC
-            `, [id]);
+            `, [id]) : { rows: [] };
 
             // 3. Ancestors (walk parent chain, up to 3 levels)
             const ancestors = [];
@@ -282,9 +294,10 @@ class CharacterService {
                 success: true,
                 character: {
                     ...char,
+                    is_own_character: isOwn,
                     abilities:        char.abilities ?? [],
-                    combat_buff_pct:  this.calcCombatBuff(char.level),
-                    display_level:    Math.floor((char.level ?? 1) / 10),
+                    combat_buff_pct:  isOwn ? this.calcCombatBuff(char.level) : null,
+                    display_level:    isOwn ? Math.floor((char.level ?? 1) / 10) : null,
                     children:         childrenResult.rows,
                     ancestors,
                 },

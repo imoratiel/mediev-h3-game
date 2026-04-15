@@ -208,8 +208,8 @@
         <button
           v-if="currentUser"
           class="user-info-footer"
-          :class="{ active: activePanel === 'profile' }"
-          @click="togglePanel('profile')"
+          :class="{ active: activePanel === 'profile' && !profileViewCharId }"
+          @click="profileViewCharId = null; togglePanel('profile')"
           title="Ver perfil"
         >
           <img :src="playerAvatarUrl" class="footer-avatar" alt="avatar" />
@@ -662,10 +662,10 @@
           <template v-else-if="profileCharData">
             <!-- Hero -->
             <div class="prf-hero">
-              <!-- Avatar with upload overlay -->
+              <!-- Avatar with upload overlay (solo propio personaje) -->
               <div class="prf-avatar-wrap">
-                <img :src="playerAvatarUrl" class="prf-avatar-img" alt="avatar" />
-                <label class="prf-avatar-upload" title="Cambiar imagen">
+                <img :src="profilePanelAvatarUrl" class="prf-avatar-img" alt="avatar" />
+                <label v-if="!profileViewCharId" class="prf-avatar-upload" title="Cambiar imagen">
                   <span>📷</span>
                   <input
                     type="file"
@@ -677,24 +677,9 @@
               </div>
               <div class="prf-hero-info">
                 <div class="prf-name">{{ profileCharData.name }}</div>
-                <div v-if="profileCharData.noble_rank_title" class="prf-rank">{{ profileCharData.noble_rank_title }}</div>
-                <div class="prf-meta">
-                  <span v-if="profileCharData.dynasty">🏛 {{ profileCharData.dynasty }}</span>
-                  <span v-if="profileCharData.culture_name">· {{ profileCharData.culture_name }}</span>
-                </div>
-                <div class="prf-info-rows">
-                  <div v-if="profileCharData.noble_rank_name" class="prf-info-row">
-                    <span class="prf-info-label">Rango</span>
-                    <span class="prf-info-val">{{ profileCharData.noble_rank_name }}</span>
-                  </div>
-                  <div v-if="profileCharData.capital_name" class="prf-info-row">
-                    <span class="prf-info-label">Capital</span>
-                    <span class="prf-info-val">{{ profileCharData.capital_name }}</span>
-                  </div>
-                </div>
-                <div class="prf-roles">
-                  <span class="prf-badge prf-badge-leader">Líder</span>
-                  <span v-if="profileCharData.is_captive" class="prf-badge prf-badge-captive">⛓️ Cautivo</span>
+                <div v-if="profileCharData.dynasty" class="prf-meta">🏛 {{ profileCharData.dynasty }}</div>
+                <div v-if="profileCharData.is_captive" class="prf-roles">
+                  <span class="prf-badge prf-badge-captive">⛓️ Cautivo</span>
                 </div>
               </div>
             </div>
@@ -705,14 +690,17 @@
             <!-- Stats grid -->
             <div class="prf-stats">
               <div class="prf-stat"><span class="prf-stat-label">Edad</span><span class="prf-stat-val">{{ profileCharData.age }}</span></div>
-              <div class="prf-stat"><span class="prf-stat-label">Nivel</span><span class="prf-stat-val">{{ profileCharData.display_level }}</span></div>
+              <div class="prf-stat"><span class="prf-stat-label">Nivel</span><span class="prf-stat-val">{{ profileCharData.display_level ?? '—' }}</span></div>
               <div class="prf-stat">
                 <span class="prf-stat-label">Salud</span>
-                <span class="prf-stat-val" :class="healthClass(profileCharData.health)">{{ profileCharData.health }}%</span>
+                <span class="prf-stat-val" :class="profileCharData.health != null ? healthClass(profileCharData.health) : ''">{{ profileCharData.health != null ? profileCharData.health + '%' : '—' }}</span>
               </div>
               <div class="prf-stat"><span class="prf-stat-label">Comarcas</span><span class="prf-stat-val">{{ profileCharData.division_count }}</span></div>
               <div class="prf-stat"><span class="prf-stat-label">Feudos</span><span class="prf-stat-val">{{ profileCharData.fief_count }}</span></div>
-              <div class="prf-stat"><span class="prf-stat-label">Bono ⚔️</span><span class="prf-stat-val">+{{ profileCharData.combat_buff_pct }}%</span></div>
+              <div class="prf-stat" v-if="profileCharData.combat_buff_pct != null"><span class="prf-stat-label">Bono ⚔️</span><span class="prf-stat-val">+{{ profileCharData.combat_buff_pct }}%</span></div>
+              <div class="prf-stat prf-stat--wide"><span class="prf-stat-label">Cultura</span><span class="prf-stat-val prf-stat-val--text">{{ profileCharData.culture_name || '—' }}</span></div>
+              <div class="prf-stat prf-stat--wide"><span class="prf-stat-label">Capital</span><span class="prf-stat-val prf-stat-val--text">{{ profileCharData.capital_name || '—' }}</span></div>
+              <div class="prf-stat prf-stat--wide"><span class="prf-stat-label">Rango</span><span class="prf-stat-val prf-stat-val--text">{{ profileCharData.noble_rank_title || '—' }}</span></div>
             </div>
 
             <!-- Children -->
@@ -1290,6 +1278,7 @@
       :battle="battleSummaryData"
       @close="battleSummaryVisible = false"
     />
+
 
     <!-- Army Transfer Panel (opened from map popup split button) -->
     <ArmyTransferPanel
@@ -1890,6 +1879,13 @@ const profileDisplayName = ref('');
 const savingProfile = ref(false);
 const profileCharData    = ref(null);
 const profileCharLoading = ref(false);
+// null = own character; a number = viewing another player's character
+const profileViewCharId  = ref(null);
+
+window.__openCharacterProfile = (id) => {
+  profileViewCharId.value = Number(id);
+  activePanel.value = 'profile';
+};
 const avatarUploadMsg    = ref('');
 const avatarUploadError  = ref(false);
 const healthClass = (h) => h > 66 ? 'prf-health-green' : h > 33 ? 'prf-health-orange' : 'prf-health-red';
@@ -1903,6 +1899,17 @@ const playerAvatarUrl = computed(() => {
   }
   const name = CULTURE_AVATAR[currentUser.value.culture_id] || 'ibero';
   return `/images_default/default_${name}.png`;
+});
+
+// Avatar para el panel de perfil: propio o de otro jugador
+const profilePanelAvatarUrl = computed(() => {
+  if (!profileViewCharId.value) return playerAvatarUrl.value;
+  if (!profileCharData.value) return '/images_default/default_ibero.png';
+  const pid     = profileCharData.value.player_id;
+  const version = profileCharData.value.player_avatar_version ?? 0;
+  if (version > 0) return `/avatars/player_${pid}.webp?v=${version}`;
+  const cName = CULTURE_AVATAR[profileCharData.value.player_culture_id] || 'ibero';
+  return `/images_default/default_${cName}.png`;
 });
 
 async function handleAvatarUpload(e) {
@@ -5209,6 +5216,19 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       .setContent(popupContent)
       .openOn(map);
 
+    // Character profile link (owner's main character)
+    if (cell.owner_main_character_id) {
+      setTimeout(() => {
+        const charBtn = document.getElementById(`char-owner-btn-${h3_index}`);
+        if (charBtn) {
+          charBtn.addEventListener('click', () => {
+            map.closePopup();
+            window.__openCharacterProfile(charBtn.dataset.charId);
+          });
+        }
+      }, 100);
+    }
+
     // Add event listener to colonize button (if exists)
     if (!cell.player_id) {
       setTimeout(() => {
@@ -5504,6 +5524,12 @@ const attachArmyListeners = (army, h3_index) => {
 
   const commanderBtn = document.getElementById(`army-commander-${army.army_id}`);
   if (commanderBtn && !commanderBtn.disabled) commanderBtn.addEventListener('click', () => handleArmyCommander(army, h3_index));
+
+  const charArmyBtn = document.getElementById(`char-army-btn-${army.army_id}`);
+  if (charArmyBtn) charArmyBtn.addEventListener('click', () => {
+    map.closePopup();
+    window.__openCharacterProfile(charArmyBtn.dataset.charId);
+  });
 };
 
 /** Retorna si hay un ejército propio con Exploradores en el hex y su army_id, y el primer ejército propio para atacar. */
@@ -6978,13 +7004,17 @@ const handleLogout = async () => {
 
 // Watchers
 watch(
-  () => activePanel.value,
-  async (newPanel) => {
+  () => [activePanel.value, profileViewCharId.value],
+  async ([newPanel]) => {
     if (newPanel === 'profile') {
       profileDisplayName.value = currentUser.value?.display_name || currentUser.value?.username || '';
       profileCharLoading.value = true;
+      profileCharData.value = null;
       try {
-        const result = await mapApi.getMyCharacterProfile();
+        const charId = profileViewCharId.value;
+        const result = charId
+          ? await mapApi.getCharacterProfile(charId)
+          : await mapApi.getMyCharacterProfile();
         profileCharData.value = result.success ? result.character : null;
       } catch {
         profileCharData.value = null;
@@ -8030,10 +8060,6 @@ onBeforeUnmount(() => {
 .prf-name { font-size: 0.95rem; font-weight: 700; color: #e8d5b5; }
 .prf-rank { font-size: 0.72rem; color: #c5a059; font-style: italic; margin-top: 1px; }
 .prf-meta { font-size: 0.7rem; color: #a89875; margin-top: 2px; }
-.prf-info-rows { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; width: 100%; }
-.prf-info-row  { display: flex; justify-content: center; gap: 6px; font-size: 0.75rem; }
-.prf-info-label { color: #a89875; }
-.prf-info-val   { color: #e8d5b5; font-weight: 600; }
 .prf-roles { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .prf-badge {
   font-size: 0.62rem;
@@ -8063,6 +8089,7 @@ onBeforeUnmount(() => {
 }
 .prf-stat-label { font-size: 0.6rem; color: #a89875; text-transform: uppercase; letter-spacing: 0.5px; }
 .prf-stat-val   { font-size: 0.82rem; font-weight: 700; color: #e8d5b5; }
+.prf-stat-val--text { font-size: 0.72rem; font-weight: 600; text-align: center; line-height: 1.2; }
 .prf-health-green  { color: #6dbf67; }
 .prf-health-orange { color: #d4a44c; }
 .prf-health-red    { color: #c05050; }
@@ -13424,4 +13451,26 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .staging-notice-btn:hover { background: #d4b97e; }
+</style>
+
+<style>
+/* Leaflet popup — character profile link buttons (non-scoped, injected HTML) */
+.popup-char-link {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 0.9em;
+  color: #c5a059;
+  border-radius: 3px;
+  transition: background 0.12s, color 0.12s;
+  vertical-align: middle;
+  line-height: 1;
+}
+.popup-char-link:hover {
+  background: rgba(197, 160, 89, 0.15);
+  color: #f4e4bc;
+}
 </style>
