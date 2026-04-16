@@ -281,7 +281,7 @@ export function generateCellPopupContent(cell, config) {
 
   // Market button — own Capital or fief with active economic building
   if (isCapitalHex || hasMarket) {
-    popupContent += `<button id="open-market-btn-${h3_index}" class="btn-popup btn-market" title="Abrir panel de comercio">🏪 Comprar aquí</button>`;
+    popupContent += `<button id="open-market-btn-${h3_index}" class="btn-popup btn-market" title="Abrir panel de comercio">🏪 Mercado</button>`;
   }
 
   // Bridge destruction — shown when it's a bridge hex
