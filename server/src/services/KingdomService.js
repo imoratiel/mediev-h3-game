@@ -247,9 +247,9 @@ class KingdomService {
             }
 
             await client.query('BEGIN');
-            // Consume workers at this fief
+            // Consume un constructor en este feudo
             await client.query(
-                'DELETE FROM workers WHERE player_id = $1 AND h3_index = $2',
+                'DELETE FROM workers WHERE id = (SELECT id FROM workers WHERE player_id = $1 AND h3_index = $2 LIMIT 1)',
                 [player_id, h3_index]
             );
             await KingdomModel.DeductGold(client, player_id, next.gold_cost);

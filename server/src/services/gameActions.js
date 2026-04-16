@@ -323,9 +323,9 @@ async function executeConstruction(client, playerId, { h3_index, building_id }, 
         if (workerCheck.rows.length === 0) {
             throw new GameActionError('Necesitas un constructor en este feudo para iniciar la obra');
         }
-        // Consumir todos los constructores del jugador en ese feudo
+        // Consumir un constructor del jugador en ese feudo
         await client.query(
-            'DELETE FROM workers WHERE player_id = $1 AND h3_index = $2',
+            'DELETE FROM workers WHERE id = (SELECT id FROM workers WHERE player_id = $1 AND h3_index = $2 LIMIT 1)',
             [playerId, h3_index]
         );
     }
