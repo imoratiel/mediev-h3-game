@@ -69,6 +69,8 @@ module.exports = function () {
     router.get('/map/cell-details/:h3_index', authenticateToken, (req, res) => TerrainService.GetCellDetails(req, res));
     router.post('/map/destroy-bridge', authenticateToken, (req, res) => TerrainService.StartBridgeDestruction(req, res));
     router.get('/map/bridge-destructions', authenticateToken, (req, res) => TerrainService.GetBridgeDestructions(req, res));
+    router.post('/map/demolish-building', authenticateToken, (req, res) => TerrainService.StartBuildingDemolition(req, res));
+    router.get('/map/building-demolitions', authenticateToken, (req, res) => TerrainService.GetBuildingDemolitions(req, res));
 
     // Get armies in visible extent (for map icons)
     router.get('/map/armies', authenticateToken, ArmyService.GetArmiesInRegion);

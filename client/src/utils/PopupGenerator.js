@@ -47,6 +47,8 @@ export function generateCellPopupContent(cell, config) {
   } = config;
   const canDestroyBridge  = cell.can_destroy_bridge  ?? false;
   const bridgeDestruction = cell.bridge_destruction  ?? null;
+  const canDemolishBuilding  = cell.can_demolish_building  ?? false;
+  const buildingDemolition   = cell.building_demolition    ?? null;
 
   let popupContent = '<div class="cell-inspector">';
 
@@ -294,6 +296,15 @@ export function generateCellPopupContent(cell, config) {
       popupContent += `<div class="popup-building-status ${statusClass}" style="margin-top:6px;">${label}</div>`;
     } else if (canDestroyBridge) {
       popupContent += `<button id="destroy-bridge-btn-${h3_index}" class="btn-popup btn-destroy-bridge" title="Ordenar la demolición del puente (requiere ejército adyacente con 1000+ tropas)">💥 Destruir puente</button>`;
+    }
+  }
+
+  // Building demolition — shown when own fief has a completed building
+  if (cell.fief_building && !cell.fief_building.is_under_construction) {
+    if (buildingDemolition) {
+      popupContent += `<div class="popup-building-status popup-building-progress" style="margin-top:6px;">🔨 Derribo en curso: <strong>${buildingDemolition.turns_remaining}</strong> turno${buildingDemolition.turns_remaining !== 1 ? 's' : ''} restante${buildingDemolition.turns_remaining !== 1 ? 's' : ''}</div>`;
+    } else if (canDemolishBuilding) {
+      popupContent += `<button id="demolish-building-btn-${h3_index}" class="btn-popup btn-destroy-bridge" title="Demoler el edificio (requiere 1000+ tropas en el feudo)">🔨 Demoler edificio</button>`;
     }
   }
 

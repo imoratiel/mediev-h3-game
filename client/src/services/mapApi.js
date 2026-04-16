@@ -1076,3 +1076,13 @@ export async function getMapBridgeDestructions() {
   return response.data;
 }
 
+export async function getMapBuildingDemolitions() {
+  const response = await axios.get(`${API_URL}/api/map/building-demolitions`);
+  return response.data;
+}
+
+export async function startBuildingDemolition(h3_index) {
+  const response = await axios.post(`${API_URL}/api/map/demolish-building`, { h3_index });
+  return response.data;
+}
+

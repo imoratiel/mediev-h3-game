@@ -54,6 +54,7 @@ class TerrainModel {
                 fb.remaining_construction_turns AS fief_building_turns_left,
                 fb.conservation           AS fief_building_conservation,
                 bld.name                  AS fief_building_name,
+                bld.construction_time_turns AS fief_building_construction_time,
                 bt.name                   AS fief_building_type_name,
                 upgrade_bld.id            AS upgrade_building_id,
                 upgrade_bld.name          AS upgrade_building_name,

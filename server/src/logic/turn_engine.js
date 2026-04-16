@@ -24,6 +24,9 @@ function fmtHex(h3_index) {
     return `${lat.toFixed(3)}, ${lng.toFixed(3)} (${h3_index})`;
 }
 
+/** Returns a random element from an array */
+function _pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
 /**
  * Process harvest for all players
  * @param {Object} client - PostgreSQL client (within transaction)
@@ -1126,6 +1129,78 @@ async function processBridgeDestructions(client, turn) {
     }
 }
 
+const _demolishStartMsgs = [
+    coords => `⛏️ **Derribo en marcha — ${coords}**\n\nVuestras huestes han iniciado la demolición del edificio. Las piedras comenzarán a caer cuando el tiempo lo permita.`,
+    coords => `🔨 **Comenzó el derribo — ${coords}**\n\nLos hombres se afanan en desmantelar la obra. Pronto no quedará piedra sobre piedra.`,
+    coords => `🪓 **Orden de demolición ejecutada — ${coords}**\n\nEl edificio será reducido a escombros. Vuestras tropas velan por que la labor concluya.`,
+];
+const _demolishCancelMsgs = [
+    coords => `⚠️ **Derribo cancelado — ${coords}**\n\nSin tropas que supervisen la demolición, los trabajos se han detenido y la orden ha sido revocada.`,
+    coords => `🚫 **Demolición interrumpida — ${coords}**\n\nAl retirarse el ejército, los obreros abandonaron la faena. El edificio permanece en pie.`,
+    coords => `↩️ **Orden retirada — ${coords}**\n\nLa ausencia de vuestra guarnición ha obligado a suspender el derribo en ${coords}.`,
+];
+const _demolishCompleteMsgs = [
+    coords => `🏚️ **Edificio demolido — ${coords}**\n\nLas murallas han caído. El solar queda libre para ser usado a vuestro criterio.`,
+    coords => `💨 **Reducido a escombros — ${coords}**\n\nDonde antes se alzaba el edificio en ${coords} sólo quedan ruinas y polvo.`,
+    coords => `🧱 **Obra derrumbada — ${coords}**\n\nTras el esfuerzo de vuestras tropas, el edificio en ${coords} ha sido completamente demolido.`,
+];
+
+/**
+ * Procesa las órdenes de demolición de edificios de feudo.
+ * Cada turno decrementa el contador; al llegar a 0 elimina el edificio.
+ * Si el ejército se retira del hex, la orden se cancela.
+ */
+async function processBuildingDemolitions(client, turn) {
+    try {
+        const activeRes = await client.query('SELECT * FROM building_demolitions');
+        if (activeRes.rows.length === 0) return;
+
+        for (const bd of activeRes.rows) {
+            try {
+                // Check: player must still have 1000+ non-garrison troops in the SAME hex
+                const armyRes = await client.query(`
+                    SELECT a.army_id
+                    FROM armies a
+                    JOIN (SELECT army_id, SUM(quantity)::int AS total FROM troops GROUP BY army_id) t
+                         ON t.army_id = a.army_id
+                    WHERE a.h3_index = $1
+                      AND a.player_id = $2
+                      AND t.total >= 1000
+                      AND NOT a.is_garrison
+                    LIMIT 1
+                `, [bd.h3_index, bd.player_id]);
+
+                if (armyRes.rows.length === 0) {
+                    // Army left — cancel demolition
+                    await client.query('DELETE FROM building_demolitions WHERE h3_index = $1', [bd.h3_index]);
+                    const msg = _pick(_demolishCancelMsgs)(fmtHex(bd.h3_index));
+                    await NotificationService.createSystemNotification(bd.player_id, 'Militar', msg, turn);
+                    Logger.engine(`[TURN ${turn}] Demolición de edificio cancelada: ${bd.h3_index} (jugador ${bd.player_id}, sin ejército en el hex)`);
+                    continue;
+                }
+
+                if (bd.turns_remaining <= 1) {
+                    // Demolition complete — remove the building
+                    await client.query('DELETE FROM fief_buildings WHERE h3_index = $1', [bd.h3_index]);
+                    await client.query('DELETE FROM building_demolitions WHERE h3_index = $1', [bd.h3_index]);
+                    const msg = _pick(_demolishCompleteMsgs)(fmtHex(bd.h3_index));
+                    await NotificationService.createSystemNotification(bd.player_id, 'Militar', msg, turn);
+                    Logger.engine(`[TURN ${turn}] Edificio demolido: ${bd.h3_index} (jugador ${bd.player_id}, edificio: ${bd.building_name})`);
+                } else {
+                    await client.query(
+                        'UPDATE building_demolitions SET turns_remaining = turns_remaining - 1 WHERE h3_index = $1',
+                        [bd.h3_index]
+                    );
+                }
+            } catch (innerErr) {
+                Logger.error(innerErr, { context: 'processBuildingDemolitions.building', h3_index: bd.h3_index, turn });
+            }
+        }
+    } catch (err) {
+        Logger.error(err, { context: 'processBuildingDemolitions', turn });
+    }
+}
+
 /**
  * Procesa intentos de escape de personajes cautivos (2% por turno)
  * y decrementa el cooldown de captura.
@@ -1564,6 +1639,16 @@ async function processGameTurn(pool, config) {
         } catch (bridgeErr) {
             await client.query('ROLLBACK TO SAVEPOINT bridge_destructions');
             Logger.error(bridgeErr, { context: 'processGameTurn.bridge_destructions', turn: newTurn });
+        }
+
+        // Building demolition orders (demolición de edificios de feudo)
+        await client.query('SAVEPOINT building_demolitions');
+        try {
+            await processBuildingDemolitions(client, newTurn);
+            await client.query('RELEASE SAVEPOINT building_demolitions');
+        } catch (demolErr) {
+            await client.query('ROLLBACK TO SAVEPOINT building_demolitions');
+            Logger.error(demolErr, { context: 'processGameTurn.building_demolitions', turn: newTurn });
         }
 
         // Process completed explorations (every turn)

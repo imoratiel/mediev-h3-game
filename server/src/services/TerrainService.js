@@ -153,6 +153,38 @@ class TerrainService {
                 }
             }
 
+            // Building demolition data (only for own fiefs with a completed building)
+            let building_demolition = null;
+            let can_demolish_building = false;
+            const isOwnFief = cell.player_id === playerId;
+            const hasCompletedBuilding = cell.fief_building_id && !cell.fief_building_constructing;
+            if (isOwnFief && hasCompletedBuilding && playerId) {
+                // Active demolition order for this hex
+                const demRes = await pool.query(
+                    'SELECT turns_remaining FROM building_demolitions WHERE h3_index = $1',
+                    [h3_index]
+                );
+                if (demRes.rows.length > 0) {
+                    building_demolition = { turns_remaining: demRes.rows[0].turns_remaining };
+                }
+
+                // Can start demolition? Need 1000+ non-garrison troops in the same hex
+                if (!building_demolition) {
+                    const armyRes = await pool.query(`
+                        SELECT a.army_id
+                        FROM armies a
+                        JOIN (SELECT army_id, SUM(quantity)::int AS total FROM troops GROUP BY army_id) t
+                             ON t.army_id = a.army_id
+                        WHERE a.h3_index = $1
+                          AND a.player_id = $2
+                          AND t.total >= 1000
+                          AND NOT a.is_garrison
+                        LIMIT 1
+                    `, [h3_index, playerId]);
+                    can_demolish_building = armyRes.rows.length > 0;
+                }
+            }
+
             res.json({
                 h3_index,
                 terrain_type: cell.terrain_type,
@@ -174,6 +206,7 @@ class TerrainService {
                     is_under_construction: cell.fief_building_constructing,
                     turns_left:       cell.fief_building_constructing ? cell.fief_building_turns_left : null,
                     conservation:     cell.fief_building_conservation ?? 100,
+                    construction_time_turns: cell.fief_building_construction_time ?? 0,
                     upgrade: (!cell.fief_building_constructing && cell.upgrade_building_id) ? {
                         id:        cell.upgrade_building_id,
                         name:      cell.upgrade_building_name,
@@ -193,6 +226,8 @@ class TerrainService {
                 } : null,
                 bridge_destruction,
                 can_destroy_bridge,
+                building_demolition,
+                can_demolish_building,
                 territory: cell.population ? {
                     population: cell.population,
                     happiness: cell.division_id
@@ -309,6 +344,113 @@ class TerrainService {
         } catch (error) {
             Logger.error(error, { endpoint: '/map/destroy-bridge', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al iniciar la demolición' });
+        }
+    }
+
+    async GetBuildingDemolitions(req, res) {
+        try {
+            const result = await pool.query(`
+                SELECT bd.h3_index, bd.player_id, bd.building_name, bd.turns_remaining,
+                       COALESCE(p.display_name, p.username) AS player_name
+                FROM building_demolitions bd
+                JOIN players p ON p.player_id = bd.player_id
+                ORDER BY bd.turns_remaining ASC
+            `);
+            res.json({ success: true, demolitions: result.rows });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/building-demolitions' });
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async StartBuildingDemolition(req, res) {
+        try {
+            const playerId = req.user.player_id;
+            const { h3_index } = req.body;
+            if (!h3_index) return res.status(400).json({ success: false, message: 'h3_index requerido' });
+
+            // Verify player owns the fief
+            const fiefRes = await pool.query(
+                'SELECT player_id FROM h3_map WHERE h3_index = $1',
+                [h3_index]
+            );
+            if (fiefRes.rows.length === 0 || fiefRes.rows[0].player_id !== playerId) {
+                return res.status(403).json({ success: false, message: 'No eres el propietario de este feudo' });
+            }
+
+            // Get the completed building
+            const buildingRes = await pool.query(`
+                SELECT fb.building_id, fb.conservation, b.name, b.construction_time_turns
+                FROM fief_buildings fb
+                JOIN buildings b ON b.id = fb.building_id
+                WHERE fb.h3_index = $1 AND fb.is_under_construction = FALSE
+            `, [h3_index]);
+            if (buildingRes.rows.length === 0) {
+                return res.status(400).json({ success: false, message: 'No hay ningún edificio completado en este feudo' });
+            }
+            const building = buildingRes.rows[0];
+
+            // No active demolition already
+            const existing = await pool.query(
+                'SELECT id FROM building_demolitions WHERE h3_index = $1',
+                [h3_index]
+            );
+            if (existing.rows.length > 0) {
+                return res.status(409).json({ success: false, message: 'Ya hay una orden de demolición en curso' });
+            }
+
+            // Need 1000+ non-garrison troops IN the same hex
+            const armyRes = await pool.query(`
+                SELECT a.army_id
+                FROM armies a
+                JOIN (SELECT army_id, SUM(quantity)::int AS total FROM troops GROUP BY army_id) t
+                     ON t.army_id = a.army_id
+                WHERE a.h3_index = $1
+                  AND a.player_id = $2
+                  AND t.total >= 1000
+                  AND NOT a.is_garrison
+                LIMIT 1
+            `, [h3_index, playerId]);
+            if (armyRes.rows.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Necesitas un ejército con al menos 1.000 tropas en este feudo para iniciar la demolición'
+                });
+            }
+
+            // Turns = ceil(construction_time * 0.5 * (conservation / 100))
+            const conservation = building.conservation ?? 100;
+            const turnsRemaining = Math.max(1, Math.ceil(building.construction_time_turns * 0.5 * (conservation / 100)));
+
+            const turnRes = await pool.query('SELECT current_turn FROM world_state WHERE id = 1');
+            const currentTurn = turnRes.rows[0]?.current_turn ?? 0;
+
+            await pool.query(
+                `INSERT INTO building_demolitions (h3_index, player_id, building_id, building_name, turns_remaining, started_turn)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [h3_index, playerId, building.building_id, building.name, turnsRemaining, currentTurn]
+            );
+
+            const startMsg = _pick([
+                `🪓 **Los picos ya trabajan sobre los muros**\n\nVuestras tropas han comenzado a desmantelar **${building.name}** en ${fmtHex(h3_index)}. Si permanecen en posición, la obra quedará reducida a escombros en ${turnsRemaining} jornadas.`,
+                `🔥 **La orden de demolición ha sido dada**\n\nEl **${building.name}** en ${fmtHex(h3_index)} tiene los días contados. Vuestros hombres trabajan sin descanso. En ${turnsRemaining} jornadas no quedará piedra sobre piedra.`,
+                `⚒️ **Comienza el derribo**\n\nVuestras huestes han iniciado el desmantelamiento de **${building.name}** en ${fmtHex(h3_index)}. Mantened las tropas en el feudo para completar la tarea en ${turnsRemaining} jornadas.`,
+            ]);
+            await NotificationService.createSystemNotification(playerId, 'Militar', startMsg, currentTurn);
+
+            Logger.action(
+                `[ACTION][Jugador ${playerId}]: Inicio demolición de "${building.name}" en ${h3_index} (${turnsRemaining} turnos)`,
+                playerId
+            );
+
+            res.json({
+                success: true,
+                message: `Demolición iniciada. ${building.name} será destruido en ${turnsRemaining} turnos si mantienes tropas en el feudo.`,
+                turns_remaining: turnsRemaining,
+            });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/demolish-building', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al iniciar la demolición del edificio' });
         }
     }
 }
