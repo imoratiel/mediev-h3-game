@@ -1218,7 +1218,7 @@ async function processCaptiveEscapes(client, turn) {
         let escapedCount = 0;
 
         for (const captive of captives) {
-            if (Math.random() > 0.02) continue; // 2% de escape
+            if (Math.random() > 0.002) continue; // 0.2% de escape
 
             // Escape exitoso
             await CharacterModel.flee(client, captive.id, captive.capital_h3);
