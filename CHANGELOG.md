@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.11.1...v0.12.0) (2026-04-16)
+
+
+### Nuevas funcionalidades
+
+* link de ayuda ([7916a2b](https://github.com/imoratiel/hipania210ac-game/commit/7916a2b957a7a65617fc87c253d86e882938b944))
+
 ## [0.11.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.11.0...v0.11.1) (2026-04-16)
 
 
