@@ -1024,7 +1024,7 @@ async function processBridgeDestructions(client, turn) {
 
         for (const bd of activeRes.rows) {
             try {
-                const neighbors = h3.gridDisk(bd.h3_index, 1).filter(n => n !== bd.h3_index);
+                const vicinity = h3.gridDisk(bd.h3_index, 1); // incluye el hex del puente
                 const armyRes = await client.query(`
                     SELECT a.army_id
                     FROM armies a
@@ -1035,7 +1035,7 @@ async function processBridgeDestructions(client, turn) {
                       AND t.total >= 1000
                       AND NOT a.is_garrison
                     LIMIT 1
-                `, [neighbors, bd.player_id]);
+                `, [vicinity, bd.player_id]);
 
                 if (armyRes.rows.length === 0) {
                     // Army moved away — cancel
@@ -1047,6 +1047,59 @@ async function processBridgeDestructions(client, turn) {
                 }
 
                 if (bd.turns_remaining <= 1) {
+                    // Displace armies standing ON the bridge before terrain changes
+                    const armiesOnBridge = await client.query(
+                        'SELECT army_id, player_id FROM armies WHERE h3_index = $1',
+                        [bd.h3_index]
+                    );
+                    if (armiesOnBridge.rows.length > 0) {
+                        const ring = h3.gridDisk(bd.h3_index, 1).filter(n => n !== bd.h3_index);
+                        const landRes = await client.query(`
+                            SELECT h3_index FROM h3_map
+                            WHERE h3_index = ANY($1::text[])
+                              AND terrain_type_id NOT IN (1, 4, 15)
+                            ORDER BY RANDOM()
+                            LIMIT 1
+                        `, [ring]);
+
+                        if (landRes.rows.length > 0) {
+                            const landingHex = landRes.rows[0].h3_index;
+                            await client.query(
+                                'UPDATE armies SET h3_index = $1 WHERE h3_index = $2',
+                                [landingHex, bd.h3_index]
+                            );
+                            const affectedPlayerIds = [...new Set(armiesOnBridge.rows.map(a => a.player_id))];
+                            for (const pid of affectedPlayerIds) {
+                                await NotificationService.createSystemNotification(
+                                    pid, 'Militar',
+                                    `⚠️ **Retirada forzosa del puente**\n\nEl puente en ${fmtHex(bd.h3_index)} ha cedido bajo vuestras tropas. Las huestes se han replegado al feudo más cercano en tierra firme.`,
+                                    turn
+                                );
+                            }
+                            Logger.engine(`[TURN ${turn}] Ejércitos sobre el puente ${bd.h3_index} desplazados a ${landingHex}`);
+                        } else {
+                            // No adjacent land — displace to ring 2
+                            const ring2 = h3.gridDisk(bd.h3_index, 2).filter(n => n !== bd.h3_index && !ring.includes(n));
+                            const landRes2 = await client.query(`
+                                SELECT h3_index FROM h3_map
+                                WHERE h3_index = ANY($1::text[])
+                                  AND terrain_type_id NOT IN (1, 4, 15)
+                                ORDER BY RANDOM()
+                                LIMIT 1
+                            `, [ring2]);
+                            if (landRes2.rows.length > 0) {
+                                const landingHex = landRes2.rows[0].h3_index;
+                                await client.query(
+                                    'UPDATE armies SET h3_index = $1 WHERE h3_index = $2',
+                                    [landingHex, bd.h3_index]
+                                );
+                                Logger.engine(`[TURN ${turn}] Ejércitos sobre el puente ${bd.h3_index} desplazados a ${landingHex} (ring 2)`);
+                            } else {
+                                Logger.engine(`[TURN ${turn}] WARN: no se encontró feudo de tierra para desplazar ejércitos del puente ${bd.h3_index}`);
+                            }
+                        }
+                    }
+
                     // Destruction complete
                     await client.query('DELETE FROM bridge_destructions WHERE h3_index = $1', [bd.h3_index]);
                     await client.query('DELETE FROM bridges WHERE h3_index = $1', [bd.h3_index]);

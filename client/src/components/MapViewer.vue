@@ -1616,6 +1616,7 @@ let _cachedArmies          = [];
 let _cachedWorkers         = [];
 let _cachedCurrentPlayerId = null;
 let _cachedOwnerMap        = new Map();
+let _cachedBridgeByHex     = new Set();
 // Map: h3_index → Leaflet marker, for icon updates after nav-arrow clicks
 let _hexStackerMarkers     = new Map();
 
@@ -2573,10 +2574,12 @@ const fetchHexagonData = async () => {
 
     // Build owner map from hexagon data: h3_index → { color, player_id }
     const ownerMap = new Map();
+    const bridgeByHex = new Set();
     for (const h of hexagons) {
       if (h.player_id) {
         ownerMap.set(h.h3_index, { color: h.player_color, player_id: h.player_id });
       }
+      if (h.is_bridge) bridgeByHex.add(h.h3_index);
     }
 
     // Draw movement routes (always, regardless of zoom)
@@ -2620,9 +2623,10 @@ const fetchHexagonData = async () => {
     _cachedWorkers         = workers;
     _cachedCurrentPlayerId = currentPlayerId;
     _cachedOwnerMap        = ownerMap;
+    _cachedBridgeByHex     = bridgeByHex;
 
     // Render combined HexStacker icons (troops + workers + chars in one marker per hex)
-    renderHexStackers(buildings, armies, workers, _char_cache, _enemy_char_cache, currentPlayerId, ownerMap);
+    renderHexStackers(buildings, armies, workers, _char_cache, _enemy_char_cache, currentPlayerId, ownerMap, bridgeByHex);
 
     // Hexes where the own player already has land troops (fleet marker hidden there — accessible via nav popup)
     const hexesWithOwnTroops = new Set(
@@ -3055,7 +3059,7 @@ const renderFiefIcons = (buildings) => {
  * @param {number} currentPlayerId
  * @param {Map}    ownerMap        - h3_index → { color, player_id }
  */
-const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars, currentPlayerId, ownerMap) => {
+const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars, currentPlayerId, ownerMap, bridgeByHex = new Set()) => {
   clearHexStackers();
   clearArmyMarkers();
   clearFiefIcons();
@@ -3107,6 +3111,7 @@ const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars
     ...workerByHex.keys(),
     ...ownCharsByHex.keys(),
     ...enemyCharsByHex.keys(),
+    ...bridgeByHex,
   ]);
 
   for (const h3_index of candidateHexes) {
@@ -3172,10 +3177,12 @@ const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars
 
       const isConflict = ownTroops > 0 && enemyTroops > 0;
 
-      if (!bld && ownEntities.length === 0 && enemyEntities.length === 0 && !hasEmbarckedTroops) continue;
+      const isBridge = bridgeByHex.has(h3_index);
+      if (!bld && !isBridge && ownEntities.length === 0 && enemyEntities.length === 0 && !hasEmbarckedTroops) continue;
 
       const divIcon = createStackerDivIcon(L, {
         building: bld,
+        isBridge,
         ownEntities,
         enemyEntities,
         h3Index: h3_index,
@@ -3329,7 +3336,7 @@ const fetchArmyData = async () => {
     _cachedBuildings       = buildings;
     _cachedArmies          = armies;
     _cachedCurrentPlayerId = cPlayerId;
-    renderHexStackers(buildings, armies, _cachedWorkers, _char_cache, _enemy_char_cache, cPlayerId, null);
+    renderHexStackers(buildings, armies, _cachedWorkers, _char_cache, _enemy_char_cache, cPlayerId, null, _cachedBridgeByHex);
     renderFleetMarkers(fleets);
   } catch (err) {
     console.error('Failed to fetch army data:', err);
@@ -3622,7 +3629,7 @@ const fetchAndRenderCharacters = async () => {
       renderHexStackers(
         _cachedBuildings, _cachedArmies, _cachedWorkers,
         _char_cache, _enemy_char_cache,
-        _cachedCurrentPlayerId, _cachedOwnerMap,
+        _cachedCurrentPlayerId, _cachedOwnerMap, _cachedBridgeByHex,
       );
     }
   } catch (e) {
@@ -4276,35 +4283,6 @@ const renderHexagons = (hexagons) => {
       }
 
       } // end if (hex.player_id)
-
-      // --- LAYER 3b: BRIDGE MARKER (starPane) ---
-      if (hex.is_bridge) {
-        const [bLat, bLng] = cellToLatLng(hex.h3_index);
-
-        const bridgeHtml = `<div style="
-          background:#1a3a5c;
-          border:2px solid #64b5f6;
-          border-radius:6px;
-          width:30px;height:30px;
-          display:flex;align-items:center;justify-content:center;
-          font-size:16px;
-          box-shadow:0 0 8px 2px rgba(100,181,246,0.45),0 2px 6px rgba(0,0,0,0.7);
-          user-select:none;">🌉</div>`;
-
-        const bridgeIcon = L.divIcon({
-          html:       bridgeHtml,
-          className:  '',
-          iconSize:   [30, 30],
-          iconAnchor: [15, 15],
-        });
-
-        L.marker([bLat, bLng], {
-          icon:        bridgeIcon,
-          pane:        'starPane',
-          interactive: false,
-          zIndexOffset: 999,
-        }).addTo(hexagonLayer);
-      }
 
     } catch (err) {
       console.error(`Error rendering hexagon ${hex.h3_index}:`, err);

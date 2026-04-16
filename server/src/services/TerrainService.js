@@ -135,9 +135,9 @@ class TerrainService {
                     };
                 }
 
-                // Can this player start destruction? Need army with 1000+ troops adjacent and no active order
+                // Can this player start destruction? Need army with 1000+ troops on or adjacent to the bridge
                 if (!bridge_destruction) {
-                    const neighbors = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+                    const vicinity = h3.gridDisk(h3_index, 1); // incluye el hex del puente
                     const armyRes = await pool.query(`
                         SELECT a.army_id
                         FROM armies a
@@ -148,7 +148,7 @@ class TerrainService {
                           AND t.total >= 1000
                           AND NOT a.is_garrison
                         LIMIT 1
-                    `, [neighbors, playerId]);
+                    `, [vicinity, playerId]);
                     can_destroy_bridge = armyRes.rows.length > 0;
                 }
             }
@@ -258,8 +258,8 @@ class TerrainService {
                 return res.status(409).json({ success: false, message: 'Ya hay una orden de demolición en curso para este puente' });
             }
 
-            // Player must have an army with 1000+ troops adjacent to the bridge
-            const neighbors = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+            // Player must have an army with 1000+ troops on or adjacent to the bridge
+            const vicinity = h3.gridDisk(h3_index, 1); // incluye el hex del puente
             const armyRes = await pool.query(`
                 SELECT a.army_id
                 FROM armies a
@@ -270,7 +270,7 @@ class TerrainService {
                   AND t.total >= 1000
                   AND NOT a.is_garrison
                 LIMIT 1
-            `, [neighbors, playerId]);
+            `, [vicinity, playerId]);
 
             if (armyRes.rows.length === 0) {
                 return res.status(403).json({
