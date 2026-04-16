@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.11.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.10.0...v0.11.0) (2026-04-16)
+
+
+### Nuevas funcionalidades
+
+* demoler edificios ([205cc79](https://github.com/imoratiel/hipania210ac-game/commit/205cc79e0781a0a0ec995b698deb81e12ed33c04))
+* destrucción de puentes ([8255ea0](https://github.com/imoratiel/hipania210ac-game/commit/8255ea0e3f7ffc78fd4056146a38e94051cff029))
+* ficha de otros personajes ([287dc13](https://github.com/imoratiel/hipania210ac-game/commit/287dc132b71c09e6bddedaf07608605f176f0a26))
+* ficha de personaje con subida de avatar ([8559fe9](https://github.com/imoratiel/hipania210ac-game/commit/8559fe9cb4a6e01529937f51e1f396d0ae008497))
+* hilos de mensajes ([3e4aabc](https://github.com/imoratiel/hipania210ac-game/commit/3e4aabc3090874aa450178f5f917d95e34bb73ca))
+* ordenar tabla imperium ([b66710f](https://github.com/imoratiel/hipania210ac-game/commit/b66710f0aadf9d43e1675b21dd726dd075a3ccbb))
+* panel descripción del personaje ([c18f655](https://github.com/imoratiel/hipania210ac-game/commit/c18f65506152d48736f14640732f3c4bb9f860f7))
+
+
+### Correcciones
+
+* al construir un edificio donde hay varios constructores, solo se consume uno ([4a803e4](https://github.com/imoratiel/hipania210ac-game/commit/4a803e4293d07c7033fe21e232dd317b5672d298))
+* arreglo de conquista de comarca, no se asignaban todos los feudos ([dfcc058](https://github.com/imoratiel/hipania210ac-game/commit/dfcc058877a40b48e1164e82716c9fe9d43f6aa3))
+* cambios en los mensajes de ascenso de rango ([e9fc04b](https://github.com/imoratiel/hipania210ac-game/commit/e9fc04bc9017ab91af1719fdeca9d954fc06cc9d))
+* errores al destruir puentes si hay un ejercito sobre el puente ([c9dee06](https://github.com/imoratiel/hipania210ac-game/commit/c9dee060fc09aa161b0ea634daa43216b67bfe2d))
+* errores en la cuenta de poblacion para reclutar ([a9e379a](https://github.com/imoratiel/hipania210ac-game/commit/a9e379a6c5889ee7a6c18f24b345e0f366156563))
+* estilo visual del popup del trabajador, como el de personaje ([45eff51](https://github.com/imoratiel/hipania210ac-game/commit/45eff51dc13a19487f9f970a0d538c1814fd7dfe))
+* los rios permitian la conquista de cualquier feudo, ahora solo los puentes ([051718d](https://github.com/imoratiel/hipania210ac-game/commit/051718db8da4e6c5e07f7eb430fcabad5645c892))
+* no se puede reaprovisionar un ejercito si no está en un territorio con cuartel o edificio militar ([87df8be](https://github.com/imoratiel/hipania210ac-game/commit/87df8be00336a64480197ae3d6428698419ed5fd))
+
 ## [0.10.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.9.0...v0.10.0) (2026-04-14)
 
 
