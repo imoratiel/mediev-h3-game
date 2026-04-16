@@ -45,6 +45,8 @@ export function generateCellPopupContent(cell, config) {
     h3_index,
     workerTypes = [],    // array of { id, name, cost } from /api/workers/types
   } = config;
+  const canDestroyBridge  = cell.can_destroy_bridge  ?? false;
+  const bridgeDestruction = cell.bridge_destruction  ?? null;
 
   let popupContent = '<div class="cell-inspector">';
 
@@ -278,6 +280,21 @@ export function generateCellPopupContent(cell, config) {
   // Market button — own Capital or fief with active economic building
   if (isCapitalHex || hasMarket) {
     popupContent += `<button id="open-market-btn-${h3_index}" class="btn-popup btn-market" title="Abrir panel de comercio">🏪 Comprar aquí</button>`;
+  }
+
+  // Bridge destruction — shown when it's a bridge hex
+  if (cell.terrain_type_id === 15) {
+    if (bridgeDestruction) {
+      const statusClass = bridgeDestruction.is_own_order
+        ? 'popup-building-progress'
+        : 'popup-building-status';
+      const label = bridgeDestruction.is_own_order
+        ? `🔥 Demolición en curso: <strong>${bridgeDestruction.turns_remaining}</strong> turno${bridgeDestruction.turns_remaining !== 1 ? 's' : ''} restante${bridgeDestruction.turns_remaining !== 1 ? 's' : ''}`
+        : `⚠️ Este puente está siendo demolido (${bridgeDestruction.turns_remaining} turnos)`;
+      popupContent += `<div class="popup-building-status ${statusClass}" style="margin-top:6px;">${label}</div>`;
+    } else if (canDestroyBridge) {
+      popupContent += `<button id="destroy-bridge-btn-${h3_index}" class="btn-popup btn-destroy-bridge" title="Ordenar la demolición del puente (requiere ejército adyacente con 1000+ tropas)">💥 Destruir puente</button>`;
+    }
   }
 
   popupContent += '</div>';

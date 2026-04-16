@@ -206,40 +206,42 @@ async function processHarvest(client, turn, config) {
 
                 // Generate harvest notification
                 const miracleSection = miracleHarvests.length > 0
-                    ? `\n\n✨ **¡Cosecha Milagrosa!**\n` +
-                      `Los campesinos han redoblado esfuerzos ante la hambruna y la producción ha aumentado:\n` +
+                    ? `\n\n✨ **¡Cosecha milagrosa!**\n` +
+                      `El tesón de vuestros labradores ante la penuria ha dado frutos inesperados:\n` +
                       miracleHarvests.map(m =>
                           `• ${fmtHex(m.h3_index)}: ×${m.multiplier.toFixed(2)} (+${m.bonus} comida extra)`
                       ).join('\n')
                     : '';
 
                 const marketSection = marketFamineBonusUsed
-                    ? `\n\n🏪 **Mercado — Suministro de Emergencia**\n` +
-                      `Feudos en hambruna recibieron el +15% de producción gracias al Mercado.\n` +
-                      `• Coste de importación: −${marketGoldPenalty.toLocaleString('es-ES')} oro (15% de reservas)`
+                    ? `\n\n🏪 **Mercado — Abastecimiento de urgencia**\n` +
+                      `Las reservas del mercado han aliviado la penuria en los feudos más afectados (+15%).\n` +
+                      `• Coste de importación: −${marketGoldPenalty.toLocaleString('es-ES')} oro (15% del tesoro)`
                     : '';
 
                 const messageBody = `
-🌾 **Producción Total:**
+📜 **Informe de cosecha del reino**
+
+🌾 **Rendimiento de los feudos:**
 • Comida: +${totalFoodProduced}
 • Oro: +${totalGoldProduced}
 
-⚔️ **Consumo de Tropas:**
+⚔️ **Manutención de las huestes:**
 • Comida: -${totalFoodConsumption}
 • Oro: -${totalGoldConsumption}
 
-💰 **Balance Neto:**
+⚖️ **Balance neto:**
 • Comida: ${netFood >= 0 ? '+' : ''}${netFood}
 • Oro: ${netGold >= 0 ? '+' : ''}${netGold}
 
-${territories.rows.length > 0 ? `Territorios productivos: ${territories.rows.length}` : '⚠️ No tienes territorios productivos este turno'}${miracleSection}${marketSection}
+${territories.rows.length > 0 ? `Feudos productivos este ciclo: ${territories.rows.length}` : '⚠️ Ningún feudo ha rendido frutos este ciclo'}${miracleSection}${marketSection}
                 `.trim();
 
                 await NotificationService.createSystemNotification(player.player_id, 'Económico', messageBody, turn);
 
                 // Soldadas notification
                 if (totalGoldConsumption > 0) {
-                    const soldadasBody = `⚔️ **Pago de Soldadas**\n• Tropas en nómina: ${totalTroops}\n• Oro pagado: -${totalGoldConsumption} 💰`;
+                    const soldadasBody = `⚔️ **Pago de soldadas**\n\nLos recaudadores han distribuido el jornal entre vuestras huestes.\n• Tropas en nómina: ${totalTroops}\n• Plata entregada: -${totalGoldConsumption} 💰`;
                     await NotificationService.createSystemNotification(player.player_id, 'Militar', soldadasBody, turn);
                     auditEvent('SALARY_PAYMENT', {
                         player_id:    player.player_id,
@@ -707,8 +709,8 @@ async function processExplorations(client, turn, config) {
 
                 // Generate notification for player
                 const messageBody = discoveredResource === 'none'
-                    ? `La exploración del territorio ${fmtHex(exploration.h3_index)} ha finalizado.\n\n❌ No se encontraron recursos especiales en este territorio.`
-                    : `¡La exploración del territorio ${fmtHex(exploration.h3_index)} ha finalizado con éxito!\n\n✨ **Recurso descubierto**: ${discoveredResource.toUpperCase()}\n\nEste recurso estará disponible para su explotación.`;
+                    ? `🗺️ **Exploración concluida — ${fmtHex(exploration.h3_index)}**\n\nVuestros exploradores han recorrido cada palmo del territorio. Los informes son desalentadores: la tierra no guarda riquezas ocultas.`
+                    : `🗺️ **¡Hallazgo en ${fmtHex(exploration.h3_index)}!**\n\nVuestros exploradores han desvelado los secretos del territorio. Bajo la superficie aguarda: **${discoveredResource.toUpperCase()}**\n\nEl recurso está listo para su explotación.`;
 
                 await NotificationService.createSystemNotification(exploration.player_id, 'Económico', messageBody, turn);
 
@@ -863,7 +865,7 @@ async function processConstructionTicks(client, turn) {
                         await NotificationService.createSystemNotification(
                             player_id,
                             'Económico',
-                            `🏗️ Construcción completada\n\n"${building_name}" ha sido construido en el feudo ${fmtHex(building.h3_index)} y ya está operativo.`,
+                            `🏛️ **Obra concluida**\n\nLos maestros de obras anuncian que **"${building_name}"** está en pie en el feudo ${fmtHex(building.h3_index)} y listo para servir al reino.`,
                             turn
                         );
                     }
@@ -965,7 +967,7 @@ async function processWorkerConstructions(client, turn) {
                         await NotificationService.createSystemNotification(
                             player_id,
                             'Económico',
-                            `🌉 Puente completado\n\nTus trabajadores han terminado la construcción del puente en ${fmtHex(h3_index)}. El hexágono es ahora transitable.`,
+                            `🌉 **El puente está en pie**\n\nVuestros trabajadores han concluido la obra en ${fmtHex(h3_index)}. El paso está abierto y los ejércitos pueden cruzar sin demora.`,
                             turn
                         );
                     }
@@ -989,6 +991,85 @@ async function processWorkerConstructions(client, turn) {
     } catch (err) {
         Logger.error(err, { context: 'processWorkerConstructions', turn });
         // Don't throw — allow turn to continue
+    }
+}
+
+function _cancelBridgeMsg(coords) {
+    const templates = [
+        `🌊 **Los trabajos han sido abandonados**\n\nVuestras fuerzas se han retirado de la ribera en ${coords} sin concluir la demolición. El puente permanece en pie y el paso sigue abierto.`,
+        `⚠️ **La demolición ha fracasado por falta de tropas**\n\nSin un ejército suficiente que sostenga los trabajos junto al puente en ${coords}, los cimientos han quedado intactos. Returned el lugar con fuerzas bastantes para retomar la tarea.`,
+        `🏚️ **El ímpetu se ha apagado**\n\nQuienes comenzaron la demolición del puente en ${coords} se han dispersado antes de completar su obra. La estructura resiste, y con ella, el acceso del enemigo.`,
+    ];
+    return templates[Math.floor(Math.random() * templates.length)];
+}
+
+function _completeBridgeMsg(coords) {
+    const templates = [
+        `💥 **El puente ha caído**\n\nVuestros hombres han consumado la destrucción del puente en ${coords}. Las aguas corren libres y el paso queda sellado para quien ose cruzar.`,
+        `🌊 **Victoria sobre la piedra**\n\nTras largas jornadas de trabajo, el puente en ${coords} ha sido reducido a escombros arrastrados por la corriente. Solo quien domine el río podrá cruzar este vado.`,
+        `⚔️ **La obra de demolición ha concluido**\n\nEl último bloque del puente en ${coords} ha cedido ante el esfuerzo de vuestras tropas. El río vuelve a ser un obstáculo natural para vuestros enemigos.`,
+    ];
+    return templates[Math.floor(Math.random() * templates.length)];
+}
+
+/**
+ * Procesa las demoliciones de puentes activas.
+ * - Si el jugador no tiene ejército con 1000+ tropas adyacente, cancela la orden.
+ * - Si el contador llega a 0, destruye el puente y vuelve el hexágono a terreno Río.
+ */
+async function processBridgeDestructions(client, turn) {
+    try {
+        const activeRes = await client.query('SELECT * FROM bridge_destructions');
+        if (activeRes.rows.length === 0) return;
+
+        for (const bd of activeRes.rows) {
+            try {
+                const neighbors = h3.gridDisk(bd.h3_index, 1).filter(n => n !== bd.h3_index);
+                const armyRes = await client.query(`
+                    SELECT a.army_id
+                    FROM armies a
+                    JOIN (SELECT army_id, SUM(quantity)::int AS total FROM troops GROUP BY army_id) t
+                         ON t.army_id = a.army_id
+                    WHERE a.h3_index = ANY($1::text[])
+                      AND a.player_id = $2
+                      AND t.total >= 1000
+                      AND NOT a.is_garrison
+                    LIMIT 1
+                `, [neighbors, bd.player_id]);
+
+                if (armyRes.rows.length === 0) {
+                    // Army moved away — cancel
+                    await client.query('DELETE FROM bridge_destructions WHERE h3_index = $1', [bd.h3_index]);
+                    const cancelMsg = _cancelBridgeMsg(fmtHex(bd.h3_index));
+                    await NotificationService.createSystemNotification(bd.player_id, 'Militar', cancelMsg, turn);
+                    Logger.engine(`[TURN ${turn}] Demolición de puente cancelada: ${bd.h3_index} (jugador ${bd.player_id}, sin ejército adyacente)`);
+                    continue;
+                }
+
+                if (bd.turns_remaining <= 1) {
+                    // Destruction complete
+                    await client.query('DELETE FROM bridge_destructions WHERE h3_index = $1', [bd.h3_index]);
+                    await client.query('DELETE FROM bridges WHERE h3_index = $1', [bd.h3_index]);
+                    await client.query(`
+                        UPDATE h3_map
+                        SET terrain_type_id = (SELECT terrain_type_id FROM terrain_types WHERE name = 'Río' LIMIT 1)
+                        WHERE h3_index = $1
+                    `, [bd.h3_index]);
+                    const completeMsg = _completeBridgeMsg(fmtHex(bd.h3_index));
+                    await NotificationService.createSystemNotification(bd.player_id, 'Militar', completeMsg, turn);
+                    Logger.engine(`[TURN ${turn}] Puente destruido: ${bd.h3_index} (jugador ${bd.player_id})`);
+                } else {
+                    await client.query(
+                        'UPDATE bridge_destructions SET turns_remaining = turns_remaining - 1 WHERE h3_index = $1',
+                        [bd.h3_index]
+                    );
+                }
+            } catch (innerErr) {
+                Logger.error(innerErr, { context: 'processBridgeDestructions.bridge', h3_index: bd.h3_index, turn });
+            }
+        }
+    } catch (err) {
+        Logger.error(err, { context: 'processBridgeDestructions', turn });
     }
 }
 
@@ -1019,7 +1100,7 @@ async function processCaptiveEscapes(client, turn) {
 
             await NotificationService.createSystemNotification(
                 captive.player_id, 'Militar',
-                `🏃 **${captive.name}** ha escapado del cautiverio y regresa a tu capital.`,
+                `🏃 **${captive.name} ha escapado del cautiverio**\n\nVuestro vasallo ha burlado la vigilancia del enemigo y regresa a vuestra capital.`,
                 turn
             );
 
@@ -1033,7 +1114,7 @@ async function processCaptiveEscapes(client, turn) {
                 if (captorId) {
                     await NotificationService.createSystemNotification(
                         captorId, 'Militar',
-                        `🏃 **${captive.name}** ha escapado de tu ejército.`,
+                        `🏃 **${captive.name} ha huido**\n\nEl prisionero ha logrado escabullirse de vuestro ejército. Las cadenas no siempre retienen a los hombres resueltos.`,
                         turn
                     );
                 }
@@ -1373,7 +1454,7 @@ async function processGameTurn(pool, config) {
                                 await NotificationService.createSystemNotification(
                                     t.player_id,
                                     'Hambre',
-                                    `🚨 HAMBRUNA en ${fmtHex(t.h3_index)}\n\nSin reservas de comida, la población ha descendido en ${deaths} ${noun} debido a la falta de suministros.\n\nAbastece el territorio urgentemente para detener la crisis.`,
+                                    `🚨 **Hambruna en ${fmtHex(t.h3_index)}**\n\nLas arcas de grano están vacías y el pueblo pasa hambre. ${deaths} ${noun} han perecido por falta de alimento.\n\nAbasteced el territorio antes de que el silencio se extienda.`,
                                     newTurn
                                 );
                             }
@@ -1421,6 +1502,16 @@ async function processGameTurn(pool, config) {
 
         // Worker-initiated constructions (bridges, etc.)
         await processWorkerConstructions(client, newTurn);
+
+        // Bridge destruction orders (demolición de puentes)
+        await client.query('SAVEPOINT bridge_destructions');
+        try {
+            await processBridgeDestructions(client, newTurn);
+            await client.query('RELEASE SAVEPOINT bridge_destructions');
+        } catch (bridgeErr) {
+            await client.query('ROLLBACK TO SAVEPOINT bridge_destructions');
+            Logger.error(bridgeErr, { context: 'processGameTurn.bridge_destructions', turn: newTurn });
+        }
 
         // Process completed explorations (every turn)
         await processExplorations(client, newTurn, config);
@@ -1478,7 +1569,7 @@ async function processGameTurn(pool, config) {
                     await NotificationService.createSystemNotification(
                         r.player_id,
                         'Económico',
-                        `⛏️ Acceso a Canteras de Piedra renovado.\nSe han descontado ${r.cost.toLocaleString('es-ES')} 💰 de tu tesoro. Tus edificios seguirán reparándose automáticamente el próximo ciclo.`,
+                        `⛏️ **Canteras de piedra — Acceso renovado**\n\nLos maestros canteros han renovado su acuerdo con vuestro tesoro. Se han deducido ${r.cost.toLocaleString('es-ES')} 💰. Vuestros edificios seguirán siendo reparados durante el próximo ciclo.`,
                         newTurn
                     );
                 }
@@ -1486,7 +1577,7 @@ async function processGameTurn(pool, config) {
                     await NotificationService.createSystemNotification(
                         e.player_id,
                         'Económico',
-                        `⚠️ Acceso a Canteras de Piedra cancelado por falta de oro.\nTus edificios volverán a deteriorarse a partir de este ciclo. Puedes renovarlo desde el Mercado.`,
+                        `⚠️ **Canteras de piedra — Acceso cancelado**\n\nVuestro tesoro no ha podido hacer frente al pago de los canteros. Los obreros han abandonado los trabajos y vuestros edificios volverán a deteriorarse. Acudid al Mercado para retomar el acuerdo.`,
                         newTurn
                     );
                 }

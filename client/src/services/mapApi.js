@@ -1066,3 +1066,13 @@ export async function getMyTerritories() {
   return { territories };
 }
 
+export async function destroyBridge(h3_index) {
+  const response = await axios.post(`${API_URL}/api/map/destroy-bridge`, { h3_index });
+  return response.data;
+}
+
+export async function getMapBridgeDestructions() {
+  const response = await axios.get(`${API_URL}/api/map/bridge-destructions`);
+  return response.data;
+}
+

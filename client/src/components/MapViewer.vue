@@ -2148,6 +2148,7 @@ let armyMarkersLayer = null;    // Layer for army/troop icons
 let workersMarkersLayer = null;       // Layer for worker icons
 let fleetMarkersLayer   = null;       // Layer for own naval fleet icons
 let constructionMarkersLayer = null;  // Layer for in-progress bridge constructions
+let bridgeDestructionLayer = null;    // Layer for active bridge destruction counters
 let hexStackerLayer = null;           // Layer for combined HexStacker markers (owner+building+troops)
 let highlightLayer = null; // Temporary highlight polygon for navigation
 let divisionHighlightLayer = null; // Gold overlay for division fief selection
@@ -2317,6 +2318,10 @@ const initMap = async () => {
   map.createPane('constructionPane');
   map.getPane('constructionPane').style.zIndex = 668;
 
+  // Bridge Destruction Pane - same tier as constructions
+  map.createPane('bridgeDestructionPane');
+  map.getPane('bridgeDestructionPane').style.zIndex = 669;
+
   // Army Pane (Troop Icons) - Below popupPane (700) so popups always render on top
   map.createPane('armyPane');
   map.getPane('armyPane').style.zIndex = 680;
@@ -2362,6 +2367,7 @@ const initMap = async () => {
   workersMarkersLayer = L.layerGroup().addTo(map);
   fleetMarkersLayer   = L.layerGroup().addTo(map);
   constructionMarkersLayer = L.layerGroup().addTo(map);
+  bridgeDestructionLayer = L.layerGroup().addTo(map);
   hexStackerLayer = L.layerGroup().addTo(map);
   divisionHighlightLayer = L.layerGroup().addTo(map);
   divisionBoundaryLayer = L.layerGroup().addTo(map);
@@ -2520,6 +2526,7 @@ const loadHexagonsIfZoomValid = () => {
     clearArmyMarkers();
     clearWorkerMarkers();
     clearConstructionMarkers();
+    clearBridgeDestructionMarkers();
     clearFiefIcons();
     clearHexStackers();
     if (currentZoom < MIN_ZOOM_H3) {
@@ -2575,12 +2582,13 @@ const fetchHexagonData = async () => {
     // Draw movement routes (always, regardless of zoom)
     await fetchAndDrawRoutes();
 
-    // Fetch buildings, armies, workers, constructions and own fleets in parallel
-    const [buildingData, armyData, workerData, constructionData, fleetData] = await Promise.allSettled([
+    // Fetch buildings, armies, workers, constructions, bridge destructions and own fleets in parallel
+    const [buildingData, armyData, workerData, constructionData, bridgeDestructionData, fleetData] = await Promise.allSettled([
       mapApi.getMapBuildings(params),
       mapApi.getMapArmies(params),
       mapApi.getMapWorkers(params),
       mapApi.getMapConstructions(params),
+      mapApi.getMapBridgeDestructions(),
       mapApi.getFleets(),
     ]);
 
@@ -2598,6 +2606,9 @@ const fetchHexagonData = async () => {
       : [];
     const constructions = constructionData.status === 'fulfilled' && constructionData.value.success
       ? constructionData.value.constructions
+      : [];
+    const bridgeDestructions = bridgeDestructionData.status === 'fulfilled' && bridgeDestructionData.value.success
+      ? bridgeDestructionData.value.destructions
       : [];
     const fleets = fleetData.status === 'fulfilled' && fleetData.value.success
       ? fleetData.value.fleets
@@ -2627,6 +2638,9 @@ const fetchHexagonData = async () => {
 
     // Render in-progress construction markers
     renderConstructionMarkers(constructions, currentPlayerId);
+
+    // Render active bridge destruction counters
+    renderBridgeDestructionMarkers(bridgeDestructions, currentPlayerId);
 
     loading.value = false;
   } catch (err) {
@@ -2719,6 +2733,59 @@ const renderConstructionMarkers = (constructions, currentPlayerId) => {
       );
 
       constructionMarkersLayer.addLayer(marker);
+    } catch { /* continue silently */ }
+  }
+};
+
+const clearBridgeDestructionMarkers = () => {
+  if (bridgeDestructionLayer) bridgeDestructionLayer.clearLayers();
+};
+
+/**
+ * Render active bridge destruction counters on the map.
+ * Own order: vivid red. Foreign: muted dark-red.
+ * @param {Array} destructions - [{ h3_index, player_id, turns_remaining, player_name }]
+ * @param {number} currentPlayerId
+ */
+const renderBridgeDestructionMarkers = (destructions, currentPlayerId) => {
+  clearBridgeDestructionMarkers();
+  if (!destructions || destructions.length === 0) return;
+
+  for (const d of destructions) {
+    try {
+      const [lat, lng] = cellToLatLng(d.h3_index);
+      const isOwn = d.player_id === currentPlayerId;
+      const bg     = isOwn ? '#dc2626' : '#7f1d1d';
+      const border = isOwn ? '#991b1b' : '#450a0a';
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+            position:relative;
+            width:36px;height:36px;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            background:${bg};border:2px solid ${border};border-radius:6px;
+            box-shadow:0 2px 6px rgba(0,0,0,0.5);cursor:default;"
+            title="${d.player_name} · Demolición · ${d.turns_remaining} turnos restantes">
+          <span style="font-size:14px;line-height:1;">💥</span>
+          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${d.turns_remaining}t</span>
+        </div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        pane: 'bridgeDestructionPane',
+      });
+
+      const marker = L.marker([lat, lng], { icon, pane: 'bridgeDestructionPane', interactive: true });
+      marker.bindPopup(
+        `<div style="font-family:sans-serif;font-size:13px;min-width:160px;">
+          <strong>💥 Puente en demolición</strong><br>
+          <span style="color:#6b7280;">👤 ${d.player_name}</span><br>
+          <span style="color:#fca5a5;font-weight:600;margin-top:4px;display:block;">${d.turns_remaining} turnos restantes</span>
+        </div>`,
+        { maxWidth: 220 }
+      );
+
+      bridgeDestructionLayer.addLayer(marker);
     } catch { /* continue silently */ }
   }
 };
@@ -5359,6 +5426,29 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
               workers: [],
             };
             openTradePanel(loc);
+          });
+        }
+      }, 100);
+    }
+
+    // Bridge destruction button
+    if (cell.can_destroy_bridge) {
+      setTimeout(() => {
+        const destroyBtn = document.getElementById(`destroy-bridge-btn-${h3_index}`);
+        if (destroyBtn) {
+          destroyBtn.addEventListener('click', async () => {
+            destroyBtn.disabled = true;
+            destroyBtn.textContent = '⏳ Ordenando demolición...';
+            try {
+              const result = await mapApi.destroyBridge(h3_index);
+              map.closePopup();
+              showToast(result.message || 'Demolición iniciada', 'success');
+            } catch (e) {
+              const msg = e?.response?.data?.message || 'Error al ordenar la demolición';
+              showToast(msg, 'error');
+              destroyBtn.disabled = false;
+              destroyBtn.textContent = '💥 Destruir puente';
+            }
           });
         }
       }, 100);

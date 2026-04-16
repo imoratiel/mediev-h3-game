@@ -684,6 +684,16 @@ button {
   filter: brightness(1.2);
 }
 
+.btn-destroy-bridge {
+  background: linear-gradient(135deg, #7f1d1d, #b91c1c) !important;
+  color: #fecaca !important;
+  margin-top: 6px !important;
+}
+
+.btn-destroy-bridge:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+
 /* Division boundary tooltip */
 .leaflet-division-tooltip {
   background: rgba(20, 10, 5, 0.92) !important;

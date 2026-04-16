@@ -66,7 +66,9 @@ module.exports = function () {
     router.post('/game/claim', authenticateToken, (req, res) => KingdomService.ClaimTerritory(req, res));
     router.post('/game/initialize', authenticateToken, (req, res) => KingdomService.InitializePlayer(req, res));
 
-    router.get('/map/cell-details/:h3_index', TerrainService.GetCellDetails);
+    router.get('/map/cell-details/:h3_index', authenticateToken, (req, res) => TerrainService.GetCellDetails(req, res));
+    router.post('/map/destroy-bridge', authenticateToken, (req, res) => TerrainService.StartBridgeDestruction(req, res));
+    router.get('/map/bridge-destructions', authenticateToken, (req, res) => TerrainService.GetBridgeDestructions(req, res));
 
     // Get armies in visible extent (for map icons)
     router.get('/map/armies', authenticateToken, ArmyService.GetArmiesInRegion);

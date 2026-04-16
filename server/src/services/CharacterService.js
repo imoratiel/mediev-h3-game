@@ -900,12 +900,12 @@ class CharacterService {
                 await CharacterModel.killCharacter(client, char.id);
                 await NotificationService.createSystemNotification(
                     char.player_id, 'Captura',
-                    `☠️ **${char.name}** ha muerto durante el intento de captura enemigo.`,
+                    `☠️ **${char.name} ha muerto**\n\nDurante el asalto enemigo, ${char.name} encontró la muerte. Que los dioses guíen su alma.`,
                     currentTurn
                 );
                 await NotificationService.createSystemNotification(
                     playerId, 'Captura',
-                    `☠️ **${char.name}** ha muerto durante el intento de captura.`,
+                    `☠️ **${char.name} ha muerto en el intento**\n\nEl personaje pereció durante la captura. Su sangre queda en vuestras manos.`,
                     currentTurn
                 );
                 await client.query('COMMIT');
@@ -973,12 +973,12 @@ class CharacterService {
             await CharacterModel.setCaptive(client, char.id, foundArmyId, char.level);
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
-                `⛓️ **${char.name}** ha sido capturado por el enemigo.`,
+                `⛓️ **${char.name} ha caído prisionero**\n\nEl enemigo ha puesto sus manos sobre ${char.name}. Negociad un rescate o preparaos para perderlo.`,
                 currentTurn
             );
             await NotificationService.createSystemNotification(
                 playerId, 'Captura',
-                `⛓️ Has capturado a **${char.name}**.`,
+                `⛓️ **${char.name} está bajo vuestra custodia**\n\nEl prisionero ha sido asegurado. Podéis exigir rescate o decidir su suerte.`,
                 currentTurn
             );
 
@@ -1043,7 +1043,7 @@ class CharacterService {
 
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
-                `☠️ **${char.name}** ha sido ejecutado por el enemigo.`,
+                `☠️ **${char.name} ha sido ejecutado**\n\nEl enemigo ha tomado la decisión más cruel. ${char.name} ya no volverá.`,
                 currentTurn
             );
 
@@ -1117,7 +1117,7 @@ class CharacterService {
 
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
-                `💰 El enemigo solicita un rescate de **${amount.toLocaleString('es-ES')} oro** por **${char.name}**.`,
+                `💰 **Solicitud de rescate**\n\nEl captor exige **${amount.toLocaleString('es-ES')} oro** por la liberación de **${char.name}**. La decisión es vuestra.`,
                 currentTurn
             );
 
@@ -1237,7 +1237,7 @@ class CharacterService {
 
             await NotificationService.createSystemNotification(
                 ransom.captor_player_id, 'Captura',
-                `💰 **${ransom.char_name}** ha sido rescatado. Recibes ${ransom.amount.toLocaleString('es-ES')} oro.`,
+                `💰 **Rescate cobrado**\n\n**${ransom.char_name}** ha sido liberado a cambio del oro pactado. ${ransom.amount.toLocaleString('es-ES')} monedas engrosan vuestro tesoro.`,
                 currentTurn
             );
 
@@ -1343,7 +1343,7 @@ class CharacterService {
 
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
-                `🔒 **${char.name}** ha sido encarcelado en un cuartel enemigo.`,
+                `🔒 **${char.name} ha sido encarcelado**\n\nVuestro personaje languidece en el calabozo de un cuartel enemigo. Buscad la manera de liberarlo.`,
                 currentTurn
             );
 

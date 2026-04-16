@@ -2,9 +2,17 @@ const { Logger } = require('../utils/logger');
 const TerrainModel = require('../models/TerrainModel.js');
 const h3 = require('h3-js');
 const { getTerrainColor } = require('../logic/territory.js');
-// [DEAD_CODE] Import de 'constants' de 'node:buffer' nunca utilizado en este módulo
-const { constants } = require('node:buffer');
 const pool = require('../../db.js');
+const NotificationService = require('./NotificationService.js');
+
+function fmtHex(h3_index) {
+    const [lat, lng] = h3.cellToLatLng(h3_index);
+    return `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+}
+
+function _pick(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
 
 class TerrainService {
     async GetRegion(req,res){
@@ -94,11 +102,14 @@ class TerrainService {
     async GetCellDetails(req, res) {
         try {
             const { h3_index } = req.params;
+            const playerId = req.user?.player_id ?? null;
+
             const result = await TerrainModel.GetCellDetails(h3_index);
             if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Hexágono no encontrado' });
             const cell = result.rows[0];
 
             const is_capital = cell.player_id && cell.capital_h3 === h3_index;
+            const isBridge   = cell.terrain_type_id === 15;
 
             // Cultura del feudo (puede no existir si no hay templos cerca aún)
             const cultureRes = await pool.query(
@@ -108,9 +119,44 @@ class TerrainService {
             );
             const cultureRow = cultureRes.rows[0] || null;
 
+            // Bridge destruction data (only for bridge hexes)
+            let bridge_destruction = null;
+            let can_destroy_bridge  = false;
+            if (isBridge && playerId) {
+                // Active destruction order (any player)
+                const bdRes = await pool.query(
+                    'SELECT player_id, turns_remaining FROM bridge_destructions WHERE h3_index = $1',
+                    [h3_index]
+                );
+                if (bdRes.rows.length > 0) {
+                    bridge_destruction = {
+                        turns_remaining: bdRes.rows[0].turns_remaining,
+                        is_own_order:    bdRes.rows[0].player_id === playerId,
+                    };
+                }
+
+                // Can this player start destruction? Need army with 1000+ troops adjacent and no active order
+                if (!bridge_destruction) {
+                    const neighbors = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+                    const armyRes = await pool.query(`
+                        SELECT a.army_id
+                        FROM armies a
+                        JOIN (SELECT army_id, SUM(quantity)::int AS total FROM troops GROUP BY army_id) t
+                             ON t.army_id = a.army_id
+                        WHERE a.h3_index = ANY($1::text[])
+                          AND a.player_id = $2
+                          AND t.total >= 1000
+                          AND NOT a.is_garrison
+                        LIMIT 1
+                    `, [neighbors, playerId]);
+                    can_destroy_bridge = armyRes.rows.length > 0;
+                }
+            }
+
             res.json({
                 h3_index,
                 terrain_type: cell.terrain_type,
+                terrain_type_id: cell.terrain_type_id,
                 terrain_color: cell.terrain_color,
                 food_output: cell.food_output || 0,
                 wood_output: cell.wood_output || 0,
@@ -145,6 +191,8 @@ class TerrainService {
                     iberos:        cultureRow.culture_iberos,
                     celtas:        cultureRow.culture_celtas,
                 } : null,
+                bridge_destruction,
+                can_destroy_bridge,
                 territory: cell.population ? {
                     population: cell.population,
                     happiness: cell.division_id
@@ -166,6 +214,101 @@ class TerrainService {
         } catch (error) {
             Logger.error(error, { endpoint: '/map/cell-details', h3_index: req.params?.h3_index });
             res.status(500).json({ error: 'Error al obtener detalles de celda', message: error.message });
+        }
+    }
+
+    async GetBridgeDestructions(req, res) {
+        try {
+            const result = await pool.query(`
+                SELECT bd.h3_index, bd.player_id, bd.turns_remaining,
+                       COALESCE(p.display_name, p.username) AS player_name
+                FROM bridge_destructions bd
+                JOIN players p ON p.player_id = bd.player_id
+                ORDER BY bd.turns_remaining ASC
+            `);
+            res.json({ success: true, destructions: result.rows });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/bridge-destructions' });
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async StartBridgeDestruction(req, res) {
+        const BRIDGE_DESTRUCTION_TURNS = Math.ceil(365 / 2); // 183 turnos
+        try {
+            const playerId   = req.user.player_id;
+            const { h3_index } = req.body;
+            if (!h3_index) return res.status(400).json({ success: false, message: 'h3_index requerido' });
+
+            // Verify the hex is a bridge
+            const terrainRes = await pool.query(
+                `SELECT terrain_type_id FROM h3_map WHERE h3_index = $1`,
+                [h3_index]
+            );
+            if (terrainRes.rows.length === 0 || terrainRes.rows[0].terrain_type_id !== 15) {
+                return res.status(400).json({ success: false, message: 'El hexágono no es un puente' });
+            }
+
+            // No active destruction order already
+            const existing = await pool.query(
+                'SELECT id FROM bridge_destructions WHERE h3_index = $1',
+                [h3_index]
+            );
+            if (existing.rows.length > 0) {
+                return res.status(409).json({ success: false, message: 'Ya hay una orden de demolición en curso para este puente' });
+            }
+
+            // Player must have an army with 1000+ troops adjacent to the bridge
+            const neighbors = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);
+            const armyRes = await pool.query(`
+                SELECT a.army_id
+                FROM armies a
+                JOIN (SELECT army_id, SUM(quantity)::int AS total FROM troops GROUP BY army_id) t
+                     ON t.army_id = a.army_id
+                WHERE a.h3_index = ANY($1::text[])
+                  AND a.player_id = $2
+                  AND t.total >= 1000
+                  AND NOT a.is_garrison
+                LIMIT 1
+            `, [neighbors, playerId]);
+
+            if (armyRes.rows.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Necesitas un ejército con al menos 1.000 tropas en un feudo contiguo al puente'
+                });
+            }
+
+            // Get current turn
+            const turnRes = await pool.query('SELECT current_turn FROM world_state WHERE id = 1');
+            const currentTurn = turnRes.rows[0]?.current_turn ?? 0;
+
+            await pool.query(
+                `INSERT INTO bridge_destructions (h3_index, player_id, turns_remaining, started_turn)
+                 VALUES ($1, $2, $3, $4)`,
+                [h3_index, playerId, BRIDGE_DESTRUCTION_TURNS, currentTurn]
+            );
+
+            Logger.action(
+                `[ACTION][Jugador ${playerId}]: Inicio demolición de puente en ${h3_index} (${BRIDGE_DESTRUCTION_TURNS} turnos)`,
+                playerId
+            );
+
+            const startMsg = _pick([
+                `⚔️ **El acero contra la piedra**\n\nVuestros ingenieros han comenzado a desmantelar el puente en ${fmtHex(h3_index)}. Mantened la presión y el paso quedará sellado en ${BRIDGE_DESTRUCTION_TURNS} jornadas.`,
+                `🔥 **La orden ha sido dada**\n\nVuestras huestes asedian ya el puente en ${fmtHex(h3_index)}. Si permanecen en posición, la estructura caerá en ${BRIDGE_DESTRUCTION_TURNS} jornadas y el río cerrará ese paso al enemigo.`,
+                `🪓 **Los trabajos de demolición han comenzado**\n\nVuestros hombres trabajan sin descanso sobre los cimientos del puente en ${fmtHex(h3_index)}. En ${BRIDGE_DESTRUCTION_TURNS} jornadas, si nadie los detiene, solo quedará ruina y corriente.`,
+            ]);
+            await NotificationService.createSystemNotification(playerId, 'Militar', startMsg, currentTurn);
+
+            res.json({
+                success: true,
+                message: `Demolición iniciada. El puente será destruido en ${BRIDGE_DESTRUCTION_TURNS} turnos si mantienes tropas adyacentes.`,
+                turns_remaining: BRIDGE_DESTRUCTION_TURNS,
+            });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/destroy-bridge', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al iniciar la demolición' });
         }
     }
 }
