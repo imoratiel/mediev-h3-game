@@ -237,6 +237,16 @@
           >
             <span class="footer-icon">📋</span>
           </button>
+          <a
+            class="footer-button"
+            href="https://www.notion.so/Manual-de-Juego-326c5a6157a28107b01edc275cd89f21"
+            target="_blank"
+            rel="noopener"
+            title="Manual de Juego"
+            style="text-decoration:none;"
+          >
+            <span class="footer-icon">❓</span>
+          </a>
           <button
             class="footer-button logout-button"
             @click="handleLogout"
@@ -11569,6 +11579,7 @@ onBeforeUnmount(() => {
 .admin-link-container + .logout-container {
   bottom: 80px; /* Position above admin link */
 }
+
 
 .logout-button {
   display: flex;
