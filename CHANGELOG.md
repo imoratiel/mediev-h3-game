@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.11.0...v0.11.1) (2026-04-16)
+
+
+### Correcciones
+
+* calculo de probabilidad de escape de un personaje ([abab35a](https://github.com/imoratiel/hipania210ac-game/commit/abab35a304506af6577d513a51c342f2effba2a4))
+* cambiar label de mercado ([d1c783a](https://github.com/imoratiel/hipania210ac-game/commit/d1c783aeed5fe759aa39b27463b7e8bc41f7a318))
+* mejora de visibilidad del popup de trabajador ([d6915c5](https://github.com/imoratiel/hipania210ac-game/commit/d6915c5a8b9c14ebc5536b4022ef7c93cc904a26))
+
 ## [0.11.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.10.0...v0.11.0) (2026-04-16)
 
 
