@@ -2940,7 +2940,7 @@ const renderWorkerMarkers = (workers, currentPlayerId) => {
           </div>
           <div class="char-popup-meta" style="margin-bottom:6px;">
             👤 ${data.player_name}<br>
-            <span style="font-size:0.63rem;opacity:0.75;">📍 ${h3_index}${terrainMeta}</span>
+            <span style="font-size:0.75rem;color:#9ca3af;">📍 ${lat.toFixed(3)}, ${lng.toFixed(3)}${terrainMeta}</span>
           </div>
           ${ownActions}
         </div>`,
@@ -3631,7 +3631,7 @@ const openWorkerPopup = (h3Index, latlng) => {
       </div>
       <div class="char-popup-meta" style="margin-bottom:6px;">
         👤 ${workerData.player_name}<br>
-        <span style="font-size:0.63rem;opacity:0.75;">📍 ${h3Index}${terrainMeta}</span>
+        <span style="font-size:0.75rem;color:#9ca3af;">📍 ${latlng[0].toFixed(3)}, ${latlng[1].toFixed(3)}${terrainMeta}</span>
       </div>
       ${ownActions}
     </div>`;
@@ -6015,7 +6015,12 @@ const showArmyDetailsPopup = async (h3_index, latLng) => {
     }
 
     // Reset pagination state for this new popup
-    _pp_armies = data.armies ?? [];
+    // Own armies first, then enemy armies
+    _pp_armies = (data.armies ?? []).sort((a, b) => {
+      const aOwn = a.player_id === playerId.value ? 0 : 1;
+      const bOwn = b.player_id === playerId.value ? 0 : 1;
+      return aOwn - bOwn;
+    });
     _pp_index = 0;
     _pp_h3 = h3_index;
     _pp_coords = { x: coord_x, y: coord_y, ownerId: cellData?.player_id ?? null };
