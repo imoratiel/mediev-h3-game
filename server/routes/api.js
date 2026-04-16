@@ -28,10 +28,11 @@ module.exports = function () {
     const CharacterService = require('../src/services/CharacterService.js');
     const OAuthService = require('../src/services/OAuthService.js');
     const NavalService = require('../src/services/NavalService.js');
+    const ProfileService = require('../src/services/ProfileService.js');
 
     // ── Turn lock: bloquea escrituras durante el procesamiento de turno ──────────
     // Excluye: auth (login/logout), rutas de solo lectura (GET) y admin (fuerza turno manual).
-    const TURN_LOCK_EXEMPT = new Set(['/auth/login', '/auth/logout', '/auth/google', '/auth/google/callback']);
+    const TURN_LOCK_EXEMPT = new Set(['/auth/login', '/auth/logout', '/auth/google', '/auth/google/callback', '/profile/avatar']);
     router.use((req, res, next) => {
         if (req.method === 'GET' || req.method === 'HEAD') return next();
         if (TURN_LOCK_EXEMPT.has(req.path)) return next();
@@ -46,6 +47,7 @@ module.exports = function () {
     router.post('/auth/logout', authenticateToken, LoginService.Logout);
     router.get('/auth/me', authenticateToken, LoginService.AuthMe);
     router.put('/auth/profile', authenticateToken, (req, res) => LoginService.UpdateProfile(req, res));
+    router.post('/profile/avatar', authenticateToken, (req, res) => ProfileService.UploadAvatar(req, res));
 
     // OAuth — Google
     router.get('/auth/google',          OAuthService.redirectToGoogle);
@@ -64,7 +66,11 @@ module.exports = function () {
     router.post('/game/claim', authenticateToken, (req, res) => KingdomService.ClaimTerritory(req, res));
     router.post('/game/initialize', authenticateToken, (req, res) => KingdomService.InitializePlayer(req, res));
 
-    router.get('/map/cell-details/:h3_index', TerrainService.GetCellDetails);
+    router.get('/map/cell-details/:h3_index', authenticateToken, (req, res) => TerrainService.GetCellDetails(req, res));
+    router.post('/map/destroy-bridge', authenticateToken, (req, res) => TerrainService.StartBridgeDestruction(req, res));
+    router.get('/map/bridge-destructions', authenticateToken, (req, res) => TerrainService.GetBridgeDestructions(req, res));
+    router.post('/map/demolish-building', authenticateToken, (req, res) => TerrainService.StartBuildingDemolition(req, res));
+    router.get('/map/building-demolitions', authenticateToken, (req, res) => TerrainService.GetBuildingDemolitions(req, res));
 
     // Get armies in visible extent (for map icons)
     router.get('/map/armies', authenticateToken, ArmyService.GetArmiesInRegion);
@@ -468,11 +474,13 @@ module.exports = function () {
     router.get('/characters',                      authenticateToken, (req, res) => CharacterService.GetMyCharacters(req, res));
     router.get('/characters/visible',              authenticateToken, (req, res) => CharacterService.GetVisibleCharacters(req, res));
     router.get('/characters/captives',             authenticateToken, (req, res) => CharacterService.GetMyCaptives(req, res));
+    router.get('/characters/me/profile',           authenticateToken, (req, res) => CharacterService.GetMyCharacterProfile(req, res));
     router.post('/characters/adopt',               authenticateToken, (req, res) => CharacterService.Adopt(req, res));
     router.get('/ransom-requests/pending',         authenticateToken, (req, res) => CharacterService.GetPendingRansomRequests(req, res));
     router.post('/ransom-requests/:id/pay',        authenticateToken, (req, res) => CharacterService.PayRansom(req, res));
     router.post('/ransom-requests/:id/reject',     authenticateToken, (req, res) => CharacterService.RejectRansom(req, res));
     // Rutas con parámetro :id
+    router.get('/characters/:id/profile',          authenticateToken, (req, res) => CharacterService.GetCharacterProfile(req, res));
     router.get('/characters/:id',                  authenticateToken, (req, res) => CharacterService.GetCharacter(req, res));
     router.post('/characters/:id/procreate',       authenticateToken, (req, res) => CharacterService.Procreate(req, res));
     router.patch('/characters/:id/heir',           authenticateToken, (req, res) => CharacterService.SetHeir(req, res));

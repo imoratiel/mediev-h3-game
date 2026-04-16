@@ -49,6 +49,18 @@ app.use(cookieParser()); // Parse cookies for JWT extraction
 // Serve static files (map-inspector.html and other debug tools)
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve player avatars (dev: Express serves; prod: Nginx serves directly from shared volume)
+const avatarsDir = process.env.AVATARS_DIR || path.join(__dirname, 'uploads/avatars');
+const fs = require('fs');
+if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
+app.use('/avatars', express.static(avatarsDir, {
+    maxAge: '1d',
+    setHeaders: (res) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Disposition', 'inline');
+    }
+}));
+
 // Serve generated H3 tiles
 const tilesDir = path.join(__dirname, 'tiles');
 

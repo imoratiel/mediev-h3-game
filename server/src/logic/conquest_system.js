@@ -132,6 +132,7 @@ async function processCapitalCollapse(client, capitalH3, newOwnerId, defeatedPla
         'SELECT id, name FROM political_divisions WHERE player_id = $1',
         [defeatedPlayerId]
     );
+    const defeatedDivisionIds = [];
     for (const div of defeatedDivisionsRes.rows) {
         let finalName = div.name;
         if (existingNames.has(finalName)) {
@@ -142,6 +143,18 @@ async function processCapitalCollapse(client, capitalH3, newOwnerId, defeatedPla
             'UPDATE political_divisions SET player_id = $1, name = $2 WHERE id = $3',
             [newOwnerId, finalName, div.id]
         );
+        defeatedDivisionIds.push(div.id);
+    }
+
+    // Asegurar que TODOS los feudos de las comarcas transferidas cambian de dueño,
+    // no sólo los alcanzados por el BFS (que tiene límite de rango).
+    if (defeatedDivisionIds.length > 0) {
+        await client.query(`
+            UPDATE h3_map SET player_id = $1
+            WHERE h3_index IN (
+                SELECT h3_index FROM territory_details WHERE division_id = ANY($2::int[])
+            ) AND player_id = $3
+        `, [newOwnerId, defeatedDivisionIds, defeatedPlayerId]);
     }
 
     Logger.engine(`[TURN ${turn}] Capital collapse: ${toConquer.length} fiefs cascade-conquered from ${capitalH3} (defeated player ${defeatedPlayerId})`);
@@ -152,10 +165,10 @@ async function processCapitalCollapse(client, capitalH3, newOwnerId, defeatedPla
         defeatedPlayerId,
         'Militar',
         [
-            `🏚️ **COLAPSO TERRITORIAL — Tu capital ha caído**`,
+            `🏚️ **COLAPSO TERRITORIAL — La capital ha caído**`,
             ``,
-            `La caída de tu capital ha desencadenado un efecto dominó.`,
-            `**${toConquer.length} feudos** han sido conquistados automáticamente (Turno ${turn}).`,
+            `La caída de vuestra capital ha desencadenado el derrumbe del reino.`,
+            `**${toConquer.length} feudos** han quedado en manos del vencedor.`,
             ``,
             `Feudos perdidos: ${fiefList}`,
         ].join('\n'),
@@ -207,10 +220,10 @@ async function processCapitalSuccession(client, defeatedPlayerId, turn) {
             [
                 `🏛️ **NUEVA CAPITAL ESTABLECIDA**`,
                 ``,
-                `Tu capital ha caído en manos enemigas.`,
-                `La sede de gobierno se ha trasladado a: **${newCapital.fief_name}**`,
+                `Vuestra capital ha caído en manos enemigas, pero el reino no está perdido aún.`,
+                `La sede del poder se traslada a: **${newCapital.fief_name}**`,
                 ``,
-                `*(Defiende tu nuevo bastión o expandirás tu reino desde aquí)*`,
+                `Defended ese bastión con uñas y dientes, pues es todo lo que os queda.`,
             ].join('\n'),
             turn
         );
@@ -227,12 +240,12 @@ async function processCapitalSuccession(client, defeatedPlayerId, turn) {
             defeatedPlayerId,
             'Militar',
             [
-                `⛓️ **HAS PERDIDO TODOS TUS TERRITORIOS**`,
+                `⛓️ **EL REINO HA CAÍDO**`,
                 ``,
-                `Tu reino ha sido completamente conquistado y ya no posees ningún feudo.`,
+                `No queda feudo bajo vuestra autoridad. El poder que ostentabais se ha disuelto como sal en el mar.`,
                 ``,
-                `Para continuar debes fundar un nuevo asentamiento.`,
-                `Puedes colonizar **cualquier feudo libre del mapa** sin restricción de adyacencia.`,
+                `Para continuar, habrá de empezarse de nuevo.`,
+                `Podéis colonizar **cualquier feudo libre del mapa** sin restricción de adyacencia.`,
             ].join('\n'),
             turn
         );

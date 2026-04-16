@@ -205,11 +205,13 @@ export async function getGameConfig() {
  * Get user's fiefs/territories (server-side paginated)
  * @param {Object} opts - { page, limit, filter_name, filter_maxpop }
  */
-export async function getMyFiefs({ page = 1, limit = 10, filter_name = '', filter_maxpop = null, filter_division = '' } = {}) {
+export async function getMyFiefs({ page = 1, limit = 10, filter_name = '', filter_maxpop = null, filter_division = '', sort_field = '', sort_dir = 'asc' } = {}) {
   const params = { page, limit };
   if (filter_name)     params.filter_name = filter_name;
   if (filter_maxpop != null) params.filter_maxpop = filter_maxpop;
   if (filter_division) params.filter_division = filter_division;
+  if (sort_field)      params.sort_field = sort_field;
+  if (sort_field)      params.sort_dir   = sort_dir;
   const response = await axios.get(`${API_URL}/api/game/my-fiefs`, { params });
   return response.data;
 }
@@ -780,6 +782,25 @@ export async function getCharacter(id) {
   return response.data;
 }
 
+export async function getCharacterProfile(id) {
+  const response = await axios.get(`${API_URL}/api/characters/${id}/profile`);
+  return response.data;
+}
+
+export async function getMyCharacterProfile() {
+  const response = await axios.get(`${API_URL}/api/characters/me/profile`);
+  return response.data;
+}
+
+export async function uploadAvatar(file) {
+  const form = new FormData();
+  form.append('avatar', file);
+  const response = await axios.post(`${API_URL}/api/profile/avatar`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+}
+
 export async function captureCharacter(id) {
   const response = await axios.post(`${API_URL}/api/characters/${id}/capture`);
   return response.data;
@@ -1043,5 +1064,25 @@ export async function getMyTerritories() {
     is_capital: f.h3_index === capitalH3,
   }));
   return { territories };
+}
+
+export async function destroyBridge(h3_index) {
+  const response = await axios.post(`${API_URL}/api/map/destroy-bridge`, { h3_index });
+  return response.data;
+}
+
+export async function getMapBridgeDestructions() {
+  const response = await axios.get(`${API_URL}/api/map/bridge-destructions`);
+  return response.data;
+}
+
+export async function getMapBuildingDemolitions() {
+  const response = await axios.get(`${API_URL}/api/map/building-demolitions`);
+  return response.data;
+}
+
+export async function startBuildingDemolition(h3_index) {
+  const response = await axios.post(`${API_URL}/api/map/demolish-building`, { h3_index });
+  return response.data;
 }
 

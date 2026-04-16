@@ -31,25 +31,14 @@
                   </svg>
                 </div>
                 <div class="adm-commander-info">
-                  <div class="adm-commander-name">{{ commander.full_title }}</div>
-                  <div class="adm-commander-meta">
-                    <span class="adm-commander-level">Nivel {{ commander.level }}</span>
-                    <span class="adm-commander-buff">⚔️ +{{ commander.combat_buff_pct }}% combate</span>
-                    <span v-if="commander.is_captive" class="adm-commander-captive">⛓️ Cautivo</span>
-                  </div>
-                  <div class="adm-commander-guard-row">
-                    <span class="adm-commander-guard-label">Guardia personal</span>
-                    <div class="adm-commander-guard-bar-wrap">
-                      <div class="adm-commander-guard-bar-fill"
-                           :style="{ width: Math.round(commander.personal_guard / 25 * 100) + '%',
-                                     background: barColor(Math.round(commander.personal_guard / 25 * 100)) }">
-                      </div>
-                    </div>
-                    <span class="adm-commander-guard-count">{{ commander.personal_guard }}/25</span>
-                  </div>
+                  <button class="adm-commander-name adm-commander-link" @click="openCommanderProfile">
+                    {{ commander.full_title }}
+                  </button>
+                  <span v-if="commander.is_captive" class="adm-commander-captive">⛓️ Cautivo</span>
                 </div>
               </div>
             </template>
+
 
           <!-- Tabla de tropas -->
             <div class="adm-section-label">🗡 COMPOSICIÓN DE TROPAS</div>
@@ -174,7 +163,7 @@
               <div class="adm-reinforce-wrap">
                 <!-- Recursos disponibles -->
                 <div class="adm-reinforce-resources">
-                  <span>👥 Pob. disponible: <b>{{ Math.max(0, armyDetail.fief_population - 20) }}</b></span>
+                  <span>👥 Pob. disponible: <b>{{ reinforcePool !== null ? reinforcePool : '...' }}</b></span>
                   <!-- DISABLED: <span>🌲 Madera: <b>{{ armyDetail.fief_wood }}</b></span> -->
                   <!-- DISABLED: <span>⛰️ Piedra: <b>{{ armyDetail.fief_stone }}</b></span> -->
                   <!-- DISABLED: <span>⛏️ Hierro: <b>{{ armyDetail.fief_iron }}</b></span> -->
@@ -250,8 +239,7 @@
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue';
 import axios from 'axios';
-import { dismissTroops, reinforceArmy } from '../services/mapApi.js';
-
+import { dismissTroops, reinforceArmy, getRecruitablePool } from '../services/mapApi.js';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 const props = defineProps({
@@ -260,13 +248,19 @@ const props = defineProps({
   autoReinforce:   { type: Boolean, default: false },  // auto-abre la sección de refuerzo
   playerCultureId: { type: Number,  default: null  },
 });
-const emit = defineEmits(['close', 'dismissed']);
+const emit = defineEmits(['close', 'dismissed', 'open-character-profile']);
 
 const loading    = ref(false);
 const error      = ref('');
 const armyDetail = ref(null);  // army con provisiones
 const troops     = ref([]);
 const commander  = ref(null);  // personaje comandante del ejército
+
+// ── Commander profile modal ──────────────────────────────────────────────────
+const openCommanderProfile = () => {
+  if (!commander.value?.id) return;
+  emit('open-character-profile', commander.value.id);
+};
 const dismissQty  = ref({});   // { [unit_type_id]: quantity }
 const dismissing  = ref(new Set());
 
@@ -277,6 +271,7 @@ const reinforceQty    = ref({});   // { [unit_type_id]: quantity }
 const reinforcing     = ref(false);
 const reinforceError  = ref('');
 const reinforceMsg    = ref('');
+const reinforcePool   = ref(null); // reclutas disponibles vía red de comarca
 
 // Unit types filtered by player culture
 const availableUnitTypes = computed(() => {
@@ -384,7 +379,20 @@ const toggleReinforce = () => {
   showReinforce.value = !showReinforce.value;
   reinforceError.value = '';
   reinforceMsg.value = '';
-  if (showReinforce.value) fetchUnitTypes();
+  if (showReinforce.value) {
+    fetchUnitTypes();
+    fetchReinforcePool();
+  }
+};
+
+const fetchReinforcePool = async () => {
+  const h3 = armyDetail.value?.h3_index;
+  if (!h3) return;
+  reinforcePool.value = null;
+  try {
+    const data = await getRecruitablePool(h3);
+    if (data?.success) reinforcePool.value = data.recruitable;
+  } catch (_) { /* silent */ }
 };
 
 const barColor = (val) => {
@@ -421,6 +429,7 @@ const fetchDetail = async (armyId) => {
       if (props.autoReinforce && data.army.is_own_fief && data.army.fief_grace_turns === 0) {
         showReinforce.value = true;
         fetchUnitTypes();
+        fetchReinforcePool();
       }
     } else {
       error.value = data.message || 'Error al cargar datos';
@@ -798,6 +807,21 @@ onUnmounted(() => document.removeEventListener('keydown', handleEsc));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.adm-commander-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(251, 191, 36, 0.35);
+  text-underline-offset: 2px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.adm-commander-link:hover {
+  color: #fde68a;
+  text-decoration-color: rgba(253, 230, 138, 0.7);
 }
 .adm-commander-meta {
   display: flex;

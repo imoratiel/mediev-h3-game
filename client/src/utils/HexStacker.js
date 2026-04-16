@@ -203,6 +203,7 @@ function _slotHTML(entities, pos, h3Index, side, navIdx, isConflict) {
  *
  * @param {Object}      opts
  * @param {Object|null} opts.building       - { name, is_under_construction, ... } or null
+ * @param {boolean}     opts.isBridge       - hex is a bridge (renders 🌉 in top slot)
  * @param {Array}       opts.ownEntities    - own player entities (troops, chars, workers)
  * @param {Array}       opts.enemyEntities  - enemy entities (troops, chars)
  * @param {string}      opts.h3Index        - hex cell index (for nav keys)
@@ -213,21 +214,23 @@ function _slotHTML(entities, pos, h3Index, side, navIdx, isConflict) {
  * @returns {string} HTML string for L.divIcon
  */
 export function createStackerHTML({
-  building     = null,
-  ownEntities  = [],
+  building      = null,
+  isBridge      = false,
+  ownEntities   = [],
   enemyEntities = [],
-  h3Index      = '',
-  ownNavIdx    = 0,
-  enemyNavIdx  = 0,
-  isConflict   = false,
-  hasFleet     = false,
+  h3Index       = '',
+  ownNavIdx     = 0,
+  enemyNavIdx   = 0,
+  isConflict    = false,
+  hasFleet      = false,
 } = {}) {
   const hasBuilding = !!building;
+  const hasTop      = hasBuilding || isBridge;
   const hasOwn      = ownEntities.length  > 0;
   const hasEnemy    = enemyEntities.length > 0;
   const hasEntities = hasOwn || hasEnemy;
 
-  if (!hasBuilding && !hasEntities && !hasFleet) return '';
+  if (!hasTop && !hasEntities && !hasFleet) return '';
 
   const parts = [];
 
@@ -247,8 +250,13 @@ export function createStackerHTML({
       ? `<span style="position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);background:#222;color:#fff;font-size:7px;font-weight:700;border-radius:2px;padding:0 2px;line-height:11px;white-space:nowrap;border:1px solid ${bBorder};">${turnsLeft}t</span>`
       : '';
     const pos = hasEntities ? POS.building : POS.buildingCenter;
-
     parts.push(`<div class="hs-building" style="position:absolute;left:${pos.left.toFixed(1)}%;top:${pos.top.toFixed(1)}%;transform:translate(-50%,-50%);z-index:2;opacity:${opacity};pointer-events:none;"><div style="background:${bBg};border:1.5px solid ${bBorder};border-radius:4px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,0.5);user-select:none;position:relative;">${icon}${foodTag}${turnsTag}</div></div>`);
+  }
+
+  // ── Bridge icon (TOP) — only when no building occupies the slot ───────────
+  if (isBridge && !hasBuilding) {
+    const pos = hasEntities ? POS.building : POS.buildingCenter;
+    parts.push(`<div class="hs-bridge" style="position:absolute;left:${pos.left.toFixed(1)}%;top:${pos.top.toFixed(1)}%;transform:translate(-50%,-50%);z-index:2;pointer-events:none;"><div style="background:#1a3a5c;border:1.5px solid #64b5f6;border-radius:4px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 0 6px 1px rgba(100,181,246,0.4),0 1px 4px rgba(0,0,0,0.5);user-select:none;">🌉</div></div>`);
   }
 
   // ── Fleet badge (TOP-RIGHT corner) ────────────────────────────────────────
@@ -260,11 +268,11 @@ export function createStackerHTML({
   if (hasOwn && hasEnemy) {
     parts.push(_slotHTML(ownEntities,   POS.ownSlot,   h3Index, 'left',  ownNavIdx,   isConflict));
     parts.push(_slotHTML(enemyEntities, POS.enemySlot, h3Index, 'right', enemyNavIdx, isConflict));
-  } else if (hasBuilding) {
+  } else if (hasTop) {
     if (hasOwn)   parts.push(_slotHTML(ownEntities,   POS.ownSlot,   h3Index, 'left',  ownNavIdx,   isConflict));
     if (hasEnemy) parts.push(_slotHTML(enemyEntities, POS.enemySlot, h3Index, 'right', enemyNavIdx, isConflict));
   } else {
-    // No building — center or split
+    // No top icon — center or split
     if (hasOwn && !hasEnemy) {
       parts.push(_slotHTML(ownEntities, POS.soloCenter, h3Index, 'left', ownNavIdx, isConflict));
     } else if (hasEnemy && !hasOwn) {

@@ -190,6 +190,125 @@ class CharacterService {
     }
 
     /**
+     * GET /api/characters/me/profile
+     * Ficha del personaje principal del jugador autenticado.
+     */
+    async GetMyCharacterProfile(req, res) {
+        try {
+            const playerId = req.user.player_id;
+            const mainChar = await pool.query(
+                'SELECT id FROM characters WHERE player_id = $1 AND is_main_character = TRUE AND health > 0 LIMIT 1',
+                [playerId]
+            );
+            if (!mainChar.rows[0]) {
+                return res.status(404).json({ success: false, message: 'Sin personaje principal' });
+            }
+            // Delegate to GetCharacterProfile logic by temporarily overriding params
+            req.params = { ...req.params, id: String(mainChar.rows[0].id) };
+            return this.GetCharacterProfile(req, res);
+        } catch (err) {
+            Logger.error(err, { endpoint: 'GET /characters/me/profile', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener perfil del personaje' });
+        }
+    }
+
+    /**
+     * GET /api/characters/:id/profile
+     * Ficha completa: datos base + linaje ascendente + hijos + stats del reino.
+     */
+    async GetCharacterProfile(req, res) {
+        try {
+            const playerId = req.user.player_id;
+            const id = parseInt(req.params.id, 10);
+
+            // 1. Character base + player info
+            const charResult = await pool.query(`
+                SELECT
+                    c.*,
+                    json_agg(
+                        json_build_object('ability_key', ca.ability_key, 'level', ca.level)
+                    ) FILTER (WHERE ca.id IS NOT NULL) AS abilities,
+                    p.last_name            AS dynasty,
+                    p.gender               AS player_gender,
+                    p.color                AS player_color,
+                    p.culture_id           AS player_culture_id,
+                    p.avatar_version       AS player_avatar_version,
+                    cu.name                AS culture_name,
+                    CASE WHEN p.gender = 'F' THEN nr.title_female ELSE nr.title_male END AS noble_rank_title,
+                    nr.territory_name      AS noble_rank_name,
+                    COALESCE(td_cap.custom_name, s_cap.name, p.capital_h3) AS capital_name,
+                    p.capital_h3,
+                    (SELECT COUNT(*)::int FROM political_divisions WHERE player_id = c.player_id) AS division_count,
+                    (SELECT COUNT(*)::int FROM h3_map WHERE player_id = c.player_id)              AS fief_count
+                FROM characters c
+                JOIN players p ON p.player_id = c.player_id
+                LEFT JOIN cultures cu ON cu.id = p.culture_id
+                LEFT JOIN noble_ranks nr ON nr.id = p.noble_rank_id
+                LEFT JOIN character_abilities ca ON ca.character_id = c.id
+                LEFT JOIN territory_details td_cap ON td_cap.h3_index = p.capital_h3
+                LEFT JOIN settlements s_cap ON s_cap.h3_index = p.capital_h3
+                WHERE c.id = $1
+                GROUP BY c.id, p.last_name, p.gender, p.color, p.culture_id, p.avatar_version,
+                         cu.name, nr.title_male, nr.title_female, nr.territory_name,
+                         td_cap.custom_name, s_cap.name, p.capital_h3
+            `, [id]);
+
+            const char = charResult.rows[0];
+            if (!char) {
+                return res.status(404).json({ success: false, message: 'Personaje no encontrado' });
+            }
+            const isOwn = char.player_id === playerId;
+            if (!isOwn) {
+                // Mask private fields for non-owner viewers
+                char.level          = null;
+                char.health         = null;
+                char.capital_name   = null;
+                char.capital_h3     = null;
+                char.personal_guard = null;
+                char.h3_index       = null;
+            }
+
+            // 2. Children — solo visibles para el propio jugador
+            const childrenResult = isOwn ? await pool.query(`
+                SELECT id, name, age, health, is_heir, is_main_character
+                FROM characters
+                WHERE parent_character_id = $1 AND health > 0
+                ORDER BY age DESC
+            `, [id]) : { rows: [] };
+
+            // 3. Ancestors (walk parent chain, up to 3 levels)
+            const ancestors = [];
+            let nextParentId = char.parent_character_id;
+            while (nextParentId && ancestors.length < 3) {
+                const ancRow = await pool.query(
+                    'SELECT id, name, age, health, parent_character_id FROM characters WHERE id = $1',
+                    [nextParentId]
+                );
+                const anc = ancRow.rows[0];
+                if (!anc) break;
+                ancestors.unshift({ id: anc.id, name: anc.name, age: anc.age, is_alive: anc.health > 0 });
+                nextParentId = anc.parent_character_id;
+            }
+
+            res.json({
+                success: true,
+                character: {
+                    ...char,
+                    is_own_character: isOwn,
+                    abilities:        char.abilities ?? [],
+                    combat_buff_pct:  isOwn ? this.calcCombatBuff(char.level) : null,
+                    display_level:    isOwn ? Math.floor((char.level ?? 1) / 10) : null,
+                    children:         childrenResult.rows,
+                    ancestors,
+                },
+            });
+        } catch (err) {
+            Logger.error(err, { endpoint: 'GET /characters/:id/profile', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener ficha del personaje' });
+        }
+    }
+
+    /**
      * POST /api/characters/:id/procreate
      * Genera un descendiente del personaje indicado.
      * Body: { name }
@@ -781,12 +900,12 @@ class CharacterService {
                 await CharacterModel.killCharacter(client, char.id);
                 await NotificationService.createSystemNotification(
                     char.player_id, 'Captura',
-                    `☠️ **${char.name}** ha muerto durante el intento de captura enemigo.`,
+                    `☠️ **${char.name} ha muerto**\n\nDurante el asalto enemigo, ${char.name} encontró la muerte. Que los dioses guíen su alma.`,
                     currentTurn
                 );
                 await NotificationService.createSystemNotification(
                     playerId, 'Captura',
-                    `☠️ **${char.name}** ha muerto durante el intento de captura.`,
+                    `☠️ **${char.name} ha muerto en el intento**\n\nEl personaje pereció durante la captura. Su sangre queda en vuestras manos.`,
                     currentTurn
                 );
                 await client.query('COMMIT');
@@ -854,12 +973,12 @@ class CharacterService {
             await CharacterModel.setCaptive(client, char.id, foundArmyId, char.level);
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
-                `⛓️ **${char.name}** ha sido capturado por el enemigo.`,
+                `⛓️ **${char.name} ha caído prisionero**\n\nEl enemigo ha puesto sus manos sobre ${char.name}. Negociad un rescate o preparaos para perderlo.`,
                 currentTurn
             );
             await NotificationService.createSystemNotification(
                 playerId, 'Captura',
-                `⛓️ Has capturado a **${char.name}**.`,
+                `⛓️ **${char.name} está bajo vuestra custodia**\n\nEl prisionero ha sido asegurado. Podéis exigir rescate o decidir su suerte.`,
                 currentTurn
             );
 
@@ -924,7 +1043,7 @@ class CharacterService {
 
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
-                `☠️ **${char.name}** ha sido ejecutado por el enemigo.`,
+                `☠️ **${char.name} ha sido ejecutado**\n\nEl enemigo ha tomado la decisión más cruel. ${char.name} ya no volverá.`,
                 currentTurn
             );
 
@@ -998,7 +1117,7 @@ class CharacterService {
 
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
-                `💰 El enemigo solicita un rescate de **${amount.toLocaleString('es-ES')} oro** por **${char.name}**.`,
+                `💰 **Solicitud de rescate**\n\nEl captor exige **${amount.toLocaleString('es-ES')} oro** por la liberación de **${char.name}**. La decisión es vuestra.`,
                 currentTurn
             );
 
@@ -1118,7 +1237,7 @@ class CharacterService {
 
             await NotificationService.createSystemNotification(
                 ransom.captor_player_id, 'Captura',
-                `💰 **${ransom.char_name}** ha sido rescatado. Recibes ${ransom.amount.toLocaleString('es-ES')} oro.`,
+                `💰 **Rescate cobrado**\n\n**${ransom.char_name}** ha sido liberado a cambio del oro pactado. ${ransom.amount.toLocaleString('es-ES')} monedas engrosan vuestro tesoro.`,
                 currentTurn
             );
 
@@ -1224,7 +1343,7 @@ class CharacterService {
 
             await NotificationService.createSystemNotification(
                 char.player_id, 'Captura',
-                `🔒 **${char.name}** ha sido encarcelado en un cuartel enemigo.`,
+                `🔒 **${char.name} ha sido encarcelado**\n\nVuestro personaje languidece en el calabozo de un cuartel enemigo. Buscad la manera de liberarlo.`,
                 currentTurn
             );
 

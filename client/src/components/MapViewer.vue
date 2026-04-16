@@ -208,13 +208,16 @@
         <button
           v-if="currentUser"
           class="user-info-footer"
-          :class="{ active: activePanel === 'profile' }"
-          @click="togglePanel('profile')"
-          title="Editar perfil"
+          :class="{ active: activePanel === 'profile' && !profileViewCharId }"
+          @click="profileViewCharId = null; togglePanel('profile')"
+          title="Ver perfil"
         >
-          <span class="username">{{ currentUser.culture_id === 1 ? 'Gens' : 'Casa' }} {{ currentUser.display_name || currentUser.username }}</span>
-          <span v-if="currentUser.noble_title" class="noble-title-badge">{{ currentUser.noble_title }}</span>
-          <span v-if="currentUser.culture_name" class="culture-badge">{{ currentUser.culture_name }}</span>
+          <img :src="playerAvatarUrl" class="footer-avatar" alt="avatar" />
+          <div class="footer-user-text">
+            <span class="username">{{ currentUser.culture_id === 1 ? 'Gens' : 'Casa' }} {{ currentUser.display_name || currentUser.username }}</span>
+            <span v-if="currentUser.noble_title" class="noble-title-badge">{{ currentUser.noble_title }}</span>
+            <span v-if="currentUser.culture_name" class="culture-badge">{{ currentUser.culture_name }}</span>
+          </div>
         </button>
         <div v-if="currentUser" class="footer-actions">
           <button
@@ -655,19 +658,80 @@
 
         <!-- Profile Panel -->
         <div v-if="activePanel === 'profile'" class="panel-section profile-panel">
-          <div class="profile-info">
-            <p class="profile-field-label">Usuario de acceso</p>
-            <p class="profile-username">{{ currentUser?.username }}</p>
-          </div>
-          <div class="profile-edit-section">
-            <p class="profile-field-label">Nombre de personaje</p>
-            <input
-              :value="profileDisplayName"
-              class="profile-input profile-input--readonly"
-              type="text"
-              readonly
-            />
-          </div>
+          <div v-if="profileCharLoading" class="profile-loading">Cargando personaje...</div>
+          <template v-else-if="profileCharData">
+            <!-- Hero -->
+            <div class="prf-hero">
+              <!-- Avatar with upload overlay (solo propio personaje) -->
+              <div class="prf-avatar-wrap">
+                <img :src="profilePanelAvatarUrl" class="prf-avatar-img" alt="avatar" />
+                <label v-if="!profileViewCharId" class="prf-avatar-upload" title="Cambiar imagen">
+                  <span>📷</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    style="display:none"
+                    @change="handleAvatarUpload"
+                  />
+                </label>
+              </div>
+              <div class="prf-hero-info">
+                <div class="prf-name">{{ profileCharData.name }}</div>
+                <div v-if="profileCharData.dynasty" class="prf-meta">🏛 {{ profileCharData.dynasty }}</div>
+                <div v-if="profileCharData.is_captive" class="prf-roles">
+                  <span class="prf-badge prf-badge-captive">⛓️ Cautivo</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="avatarUploadMsg" class="prf-upload-msg" :class="avatarUploadError ? 'prf-upload-err' : 'prf-upload-ok'">
+              {{ avatarUploadMsg }}
+            </div>
+
+            <!-- Stats grid -->
+            <div class="prf-stats">
+              <div class="prf-stat"><span class="prf-stat-label">Edad</span><span class="prf-stat-val">{{ profileCharData.age }}</span></div>
+              <div class="prf-stat"><span class="prf-stat-label">Nivel</span><span class="prf-stat-val">{{ profileCharData.display_level ?? '—' }}</span></div>
+              <div class="prf-stat">
+                <span class="prf-stat-label">Salud</span>
+                <span class="prf-stat-val" :class="profileCharData.health != null ? healthClass(profileCharData.health) : ''">{{ profileCharData.health != null ? profileCharData.health + '%' : '—' }}</span>
+              </div>
+              <div class="prf-stat"><span class="prf-stat-label">Comarcas</span><span class="prf-stat-val">{{ profileCharData.division_count }}</span></div>
+              <div class="prf-stat"><span class="prf-stat-label">Feudos</span><span class="prf-stat-val">{{ profileCharData.fief_count }}</span></div>
+              <div class="prf-stat" v-if="profileCharData.combat_buff_pct != null"><span class="prf-stat-label">Bono ⚔️</span><span class="prf-stat-val">+{{ profileCharData.combat_buff_pct }}%</span></div>
+              <div class="prf-stat prf-stat--wide"><span class="prf-stat-label">Cultura</span><span class="prf-stat-val prf-stat-val--text">{{ profileCharData.culture_name || '—' }}</span></div>
+              <div class="prf-stat prf-stat--wide"><span class="prf-stat-label">Capital</span><span class="prf-stat-val prf-stat-val--text">{{ profileCharData.capital_name || '—' }}</span></div>
+              <div class="prf-stat prf-stat--wide"><span class="prf-stat-label">Rango</span><span class="prf-stat-val prf-stat-val--text">{{ profileCharData.noble_rank_title || '—' }}</span></div>
+            </div>
+
+            <!-- Children -->
+            <div v-if="profileCharData.children?.length" class="prf-section">
+              <div class="prf-section-title">Descendencia</div>
+              <div v-for="child in profileCharData.children" :key="child.id" class="prf-list-item">
+                <span>{{ child.name }}</span>
+                <span class="prf-list-sub">{{ child.age }} años</span>
+              </div>
+            </div>
+
+            <!-- Ancestors -->
+            <div v-if="profileCharData.ancestors?.length" class="prf-section">
+              <div class="prf-section-title">Linaje</div>
+              <div v-for="(anc, i) in profileCharData.ancestors" :key="anc.id" class="prf-list-item">
+                <span class="prf-list-sub">{{ ancestorLabel(i, profileCharData.ancestors.length) }}</span>
+                <span>{{ anc.name }}<span v-if="!anc.is_alive"> †</span></span>
+              </div>
+            </div>
+
+            <!-- Abilities -->
+            <div v-if="profileCharData.abilities?.length" class="prf-section">
+              <div class="prf-section-title">Habilidades</div>
+              <div class="prf-abilities">
+                <span v-for="ab in profileCharData.abilities" :key="ab.ability_key" class="prf-chip">
+                  {{ ab.ability_key }} {{ ab.level > 1 ? 'II' : 'I' }}
+                </span>
+              </div>
+            </div>
+          </template>
+          <div v-else class="profile-loading">Sin personaje principal.</div>
         </div>
       </div>
     </aside>
@@ -800,19 +864,20 @@
 
               <!-- Thread View -->
               <div v-if="threadMessages.length > 1" class="message-thread">
-                <h4 class="thread-title">🧵 Conversación ({{ threadMessages.length }} mensajes)</h4>
+                <h4 class="thread-title">🧵 Hilo ({{ threadMessages.length }} mensajes)</h4>
                 <div class="thread-messages">
                   <div
-                    v-for="msg in threadMessages"
+                    v-for="msg in threadMessagesReversed"
                     :key="msg.id"
-                    :class="['thread-message', { 'thread-message-current': msg.id === selectedMessage.id }]"
+                    :class="['thread-message', { 'thread-message-current': msg.id === selectedMessage.id, 'thread-message-expanded': msg.id === selectedThreadMsgId }]"
+                    @click="selectedThreadMsgId = msg.id"
                   >
                     <div class="thread-message-header">
                       <strong>{{ msg.sender_username }}</strong>
                       <span class="thread-message-date">{{ formatMessageDate(msg.sent_at) }}</span>
                     </div>
                     <div class="thread-message-subject">{{ msg.subject }}</div>
-                    <div class="thread-message-body">{{ msg.body }}</div>
+                    <div v-if="selectedThreadMsgId === msg.id" class="thread-message-body">{{ msg.body }}</div>
                   </div>
                 </div>
               </div>
@@ -977,6 +1042,8 @@
               :total="fiefsTotalCount"
               :page="fiefsPage"
               :limit="fiefsLimit"
+              :sortField="fiefsSort.field"
+              :sortDir="fiefsSort.dir"
               :playerGold="playerGold"
               :explorationConfig="explorationConfig"
               :workerTypes="workerTypes"
@@ -989,6 +1056,7 @@
               @buyWorker="handleBuyWorkerFromTable"
               @change-page="handleFiefsPageChange"
               @change-limit="handleFiefsLimitChange"
+              @sort-change="handleFiefsSortChange"
             />
           </div>
 
@@ -1210,6 +1278,7 @@
       :battle="battleSummaryData"
       @close="battleSummaryVisible = false"
     />
+
 
     <!-- Army Transfer Panel (opened from map popup split button) -->
     <ArmyTransferPanel
@@ -1461,6 +1530,8 @@ const myMessages = ref([]);
 const loadingMessages = ref(false);
 const selectedMessage = ref(null); // Currently selected message for detail view
 const threadMessages = ref([]); // Messages in the current thread
+const threadMessagesReversed = computed(() => [...threadMessages.value].reverse());
+const selectedThreadMsgId = ref(null); // Expanded message in the thread
 const unreadCount = computed(() => myMessages.value.filter(m => !m.is_read && m.receiver_id === playerId.value).length);
 const unreadNotifCount = computed(() => notifications.value.filter(n => !n.is_read).length);
 const pendingRelationsCount = ref(0);
@@ -1545,6 +1616,7 @@ let _cachedArmies          = [];
 let _cachedWorkers         = [];
 let _cachedCurrentPlayerId = null;
 let _cachedOwnerMap        = new Map();
+let _cachedBridgeByHex     = new Set();
 // Map: h3_index → Leaflet marker, for icon updates after nav-arrow clicks
 let _hexStackerMarkers     = new Map();
 
@@ -1570,6 +1642,7 @@ const myDivisions = ref([]); // Player's señoríos for the filter dropdown
 const fiefsPage       = ref(1);
 const fiefsLimit      = ref(10);
 const fiefsTotalCount = ref(0);
+const fiefsSort = ref({ field: '', dir: 'asc' });
 
 // Re-fetch from page 1 whenever filters change
 watch(kingdomFilters, () => {
@@ -1805,6 +1878,81 @@ const NOTIF_POLL_INTERVAL = 45_000; // 45 segundos
 // Profile panel state
 const profileDisplayName = ref('');
 const savingProfile = ref(false);
+const profileCharData    = ref(null);
+const profileCharLoading = ref(false);
+// null = own character; a number = viewing another player's character
+const profileViewCharId  = ref(null);
+
+window.__openCharacterProfile = (id) => {
+  profileViewCharId.value = Number(id);
+  activePanel.value = 'profile';
+};
+const avatarUploadMsg    = ref('');
+const avatarUploadError  = ref(false);
+const healthClass = (h) => h > 66 ? 'prf-health-green' : h > 33 ? 'prf-health-orange' : 'prf-health-red';
+const ancestorLabel = (i, total) => { const fromEnd = total - 1 - i; return ['Padre', 'Abuelo', 'Bisabuelo'][fromEnd] ?? ''; };
+
+const CULTURE_AVATAR = { 1: 'romano', 2: 'cartagines', 3: 'celta', 4: 'ibero' };
+const playerAvatarUrl = computed(() => {
+  if (!currentUser.value) return '';
+  if (currentUser.value.avatar_version > 0) {
+    return `/avatars/player_${currentUser.value.player_id}.webp?v=${currentUser.value.avatar_version}`;
+  }
+  const name = CULTURE_AVATAR[currentUser.value.culture_id] || 'ibero';
+  return `/images_default/default_${name}.png`;
+});
+
+// Avatar para el panel de perfil: propio o de otro jugador
+const profilePanelAvatarUrl = computed(() => {
+  if (!profileViewCharId.value) return playerAvatarUrl.value;
+  if (!profileCharData.value) return '/images_default/default_ibero.png';
+  const pid     = profileCharData.value.player_id;
+  const version = profileCharData.value.player_avatar_version ?? 0;
+  if (version > 0) return `/avatars/player_${pid}.webp?v=${version}`;
+  const cName = CULTURE_AVATAR[profileCharData.value.player_culture_id] || 'ibero';
+  return `/images_default/default_${cName}.png`;
+});
+
+async function handleAvatarUpload(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  avatarUploadMsg.value = '';
+  avatarUploadError.value = false;
+
+  const MAX_MB = 2;
+  if (file.size > MAX_MB * 1024 * 1024) {
+    avatarUploadError.value = true;
+    avatarUploadMsg.value = `La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El límite es ${MAX_MB} MB.`;
+    e.target.value = '';
+    setTimeout(() => { avatarUploadMsg.value = ''; }, 5000);
+    return;
+  }
+
+  const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  if (!ALLOWED.includes(file.type)) {
+    avatarUploadError.value = true;
+    avatarUploadMsg.value = 'Formato no permitido. Usa JPG, PNG, WebP o GIF.';
+    e.target.value = '';
+    setTimeout(() => { avatarUploadMsg.value = ''; }, 5000);
+    return;
+  }
+
+  try {
+    const result = await mapApi.uploadAvatar(file);
+    if (result.success) {
+      currentUser.value = { ...currentUser.value, avatar_version: result.avatar_version };
+      localStorage.setItem('user', JSON.stringify(currentUser.value));
+      avatarUploadMsg.value = 'Imagen actualizada correctamente.';
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (err) {
+    avatarUploadError.value = true;
+    avatarUploadMsg.value = err?.response?.data?.message || err.message || 'Error al subir la imagen.';
+  }
+  e.target.value = '';
+  setTimeout(() => { avatarUploadMsg.value = ''; }, 4000);
+}
 
 // Battle summary modal state
 const battleSummaryVisible = ref(false);
@@ -2001,6 +2149,8 @@ let armyMarkersLayer = null;    // Layer for army/troop icons
 let workersMarkersLayer = null;       // Layer for worker icons
 let fleetMarkersLayer   = null;       // Layer for own naval fleet icons
 let constructionMarkersLayer = null;  // Layer for in-progress bridge constructions
+let bridgeDestructionLayer = null;    // Layer for active bridge destruction counters
+let buildingDemolitionLayer = null;   // Layer for active building demolition counters
 let hexStackerLayer = null;           // Layer for combined HexStacker markers (owner+building+troops)
 let highlightLayer = null; // Temporary highlight polygon for navigation
 let divisionHighlightLayer = null; // Gold overlay for division fief selection
@@ -2170,6 +2320,14 @@ const initMap = async () => {
   map.createPane('constructionPane');
   map.getPane('constructionPane').style.zIndex = 668;
 
+  // Bridge Destruction Pane - same tier as constructions
+  map.createPane('bridgeDestructionPane');
+  map.getPane('bridgeDestructionPane').style.zIndex = 669;
+
+  // Building Demolition Pane - same tier as bridge destructions
+  map.createPane('buildingDemolitionPane');
+  map.getPane('buildingDemolitionPane').style.zIndex = 670;
+
   // Army Pane (Troop Icons) - Below popupPane (700) so popups always render on top
   map.createPane('armyPane');
   map.getPane('armyPane').style.zIndex = 680;
@@ -2215,6 +2373,8 @@ const initMap = async () => {
   workersMarkersLayer = L.layerGroup().addTo(map);
   fleetMarkersLayer   = L.layerGroup().addTo(map);
   constructionMarkersLayer = L.layerGroup().addTo(map);
+  bridgeDestructionLayer = L.layerGroup().addTo(map);
+  buildingDemolitionLayer = L.layerGroup().addTo(map);
   hexStackerLayer = L.layerGroup().addTo(map);
   divisionHighlightLayer = L.layerGroup().addTo(map);
   divisionBoundaryLayer = L.layerGroup().addTo(map);
@@ -2373,6 +2533,7 @@ const loadHexagonsIfZoomValid = () => {
     clearArmyMarkers();
     clearWorkerMarkers();
     clearConstructionMarkers();
+    clearBridgeDestructionMarkers();
     clearFiefIcons();
     clearHexStackers();
     if (currentZoom < MIN_ZOOM_H3) {
@@ -2419,21 +2580,25 @@ const fetchHexagonData = async () => {
 
     // Build owner map from hexagon data: h3_index → { color, player_id }
     const ownerMap = new Map();
+    const bridgeByHex = new Set();
     for (const h of hexagons) {
       if (h.player_id) {
         ownerMap.set(h.h3_index, { color: h.player_color, player_id: h.player_id });
       }
+      if (h.is_bridge) bridgeByHex.add(h.h3_index);
     }
 
     // Draw movement routes (always, regardless of zoom)
     await fetchAndDrawRoutes();
 
-    // Fetch buildings, armies, workers, constructions and own fleets in parallel
-    const [buildingData, armyData, workerData, constructionData, fleetData] = await Promise.allSettled([
+    // Fetch buildings, armies, workers, constructions, bridge destructions, building demolitions and own fleets in parallel
+    const [buildingData, armyData, workerData, constructionData, bridgeDestructionData, buildingDemolitionData, fleetData] = await Promise.allSettled([
       mapApi.getMapBuildings(params),
       mapApi.getMapArmies(params),
       mapApi.getMapWorkers(params),
       mapApi.getMapConstructions(params),
+      mapApi.getMapBridgeDestructions(),
+      mapApi.getMapBuildingDemolitions(),
       mapApi.getFleets(),
     ]);
 
@@ -2452,6 +2617,12 @@ const fetchHexagonData = async () => {
     const constructions = constructionData.status === 'fulfilled' && constructionData.value.success
       ? constructionData.value.constructions
       : [];
+    const bridgeDestructions = bridgeDestructionData.status === 'fulfilled' && bridgeDestructionData.value.success
+      ? bridgeDestructionData.value.destructions
+      : [];
+    const buildingDemolitions = buildingDemolitionData.status === 'fulfilled' && buildingDemolitionData.value.success
+      ? buildingDemolitionData.value.demolitions
+      : [];
     const fleets = fleetData.status === 'fulfilled' && fleetData.value.success
       ? fleetData.value.fleets
       : [];
@@ -2462,9 +2633,10 @@ const fetchHexagonData = async () => {
     _cachedWorkers         = workers;
     _cachedCurrentPlayerId = currentPlayerId;
     _cachedOwnerMap        = ownerMap;
+    _cachedBridgeByHex     = bridgeByHex;
 
     // Render combined HexStacker icons (troops + workers + chars in one marker per hex)
-    renderHexStackers(buildings, armies, workers, _char_cache, _enemy_char_cache, currentPlayerId, ownerMap);
+    renderHexStackers(buildings, armies, workers, _char_cache, _enemy_char_cache, currentPlayerId, ownerMap, bridgeByHex);
 
     // Hexes where the own player already has land troops (fleet marker hidden there — accessible via nav popup)
     const hexesWithOwnTroops = new Set(
@@ -2480,6 +2652,12 @@ const fetchHexagonData = async () => {
 
     // Render in-progress construction markers
     renderConstructionMarkers(constructions, currentPlayerId);
+
+    // Render active bridge destruction counters
+    renderBridgeDestructionMarkers(bridgeDestructions, currentPlayerId);
+
+    // Render active building demolition counters
+    renderBuildingDemolitionMarkers(buildingDemolitions, currentPlayerId);
 
     loading.value = false;
   } catch (err) {
@@ -2576,6 +2754,113 @@ const renderConstructionMarkers = (constructions, currentPlayerId) => {
   }
 };
 
+const clearBridgeDestructionMarkers = () => {
+  if (bridgeDestructionLayer) bridgeDestructionLayer.clearLayers();
+};
+
+/**
+ * Render active bridge destruction counters on the map.
+ * Own order: vivid red. Foreign: muted dark-red.
+ * @param {Array} destructions - [{ h3_index, player_id, turns_remaining, player_name }]
+ * @param {number} currentPlayerId
+ */
+const renderBridgeDestructionMarkers = (destructions, currentPlayerId) => {
+  clearBridgeDestructionMarkers();
+  if (!destructions || destructions.length === 0) return;
+
+  for (const d of destructions) {
+    try {
+      const [lat, lng] = cellToLatLng(d.h3_index);
+      const isOwn = d.player_id === currentPlayerId;
+      const bg     = isOwn ? '#dc2626' : '#7f1d1d';
+      const border = isOwn ? '#991b1b' : '#450a0a';
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+            position:relative;
+            width:36px;height:36px;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            background:${bg};border:2px solid ${border};border-radius:6px;
+            box-shadow:0 2px 6px rgba(0,0,0,0.5);cursor:default;"
+            title="${d.player_name} · Demolición · ${d.turns_remaining} turnos restantes">
+          <span style="font-size:14px;line-height:1;">💥</span>
+          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${d.turns_remaining}t</span>
+        </div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        pane: 'bridgeDestructionPane',
+      });
+
+      const marker = L.marker([lat, lng], { icon, pane: 'bridgeDestructionPane', interactive: true });
+      marker.bindPopup(
+        `<div style="font-family:sans-serif;font-size:13px;min-width:160px;">
+          <strong>💥 Puente en demolición</strong><br>
+          <span style="color:#6b7280;">👤 ${d.player_name}</span><br>
+          <span style="color:#fca5a5;font-weight:600;margin-top:4px;display:block;">${d.turns_remaining} turnos restantes</span>
+        </div>`,
+        { maxWidth: 220 }
+      );
+
+      bridgeDestructionLayer.addLayer(marker);
+    } catch { /* continue silently */ }
+  }
+};
+
+const clearBuildingDemolitionMarkers = () => {
+  if (buildingDemolitionLayer) buildingDemolitionLayer.clearLayers();
+};
+
+/**
+ * Render active building demolition counters on the map.
+ * Own order: vivid orange-red. Foreign: muted.
+ * @param {Array} demolitions - [{ h3_index, player_id, turns_remaining, player_name, building_name }]
+ * @param {number} currentPlayerId
+ */
+const renderBuildingDemolitionMarkers = (demolitions, currentPlayerId) => {
+  clearBuildingDemolitionMarkers();
+  if (!demolitions || demolitions.length === 0) return;
+
+  for (const d of demolitions) {
+    try {
+      const [lat, lng] = cellToLatLng(d.h3_index);
+      const isOwn = d.player_id === currentPlayerId;
+      const bg     = isOwn ? '#ea580c' : '#78350f';
+      const border = isOwn ? '#c2410c' : '#431407';
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+            position:relative;
+            width:36px;height:36px;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            background:${bg};border:2px solid ${border};border-radius:6px;
+            box-shadow:0 2px 6px rgba(0,0,0,0.5);cursor:default;"
+            title="${d.player_name} · Derribo · ${d.turns_remaining} turnos restantes">
+          <span style="font-size:14px;line-height:1;">🔨</span>
+          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${d.turns_remaining}t</span>
+        </div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        pane: 'buildingDemolitionPane',
+      });
+
+      const marker = L.marker([lat, lng], { icon, pane: 'buildingDemolitionPane', interactive: true });
+      marker.bindPopup(
+        `<div style="font-family:sans-serif;font-size:13px;min-width:160px;">
+          <strong>🔨 Edificio en demolición</strong><br>
+          <span style="color:#6b7280;">🏛️ ${d.building_name}</span><br>
+          <span style="color:#6b7280;">👤 ${d.player_name}</span><br>
+          <span style="color:#fdba74;font-weight:600;margin-top:4px;display:block;">${d.turns_remaining} turnos restantes</span>
+        </div>`,
+        { maxWidth: 220 }
+      );
+
+      buildingDemolitionLayer.addLayer(marker);
+    } catch { /* continue silently */ }
+  }
+};
+
 /**
  * Render worker icons on the map.
  * Own workers: amber (#f59e0b). Foreign workers: teal (#0d9488).
@@ -2629,44 +2914,37 @@ const renderWorkerMarkers = (workers, currentPlayerId) => {
       const canBuildBridge  = isOwn && BRIDGE_TERRAINS.includes(data.terrain_type);
       const canBuildEdificio = isOwn && !BRIDGE_TERRAINS.includes(data.terrain_type);
 
-      const terrainLabel = data.terrain_type
-        ? `<span style="color:#6b7280;font-size:11px;">🌍 ${data.terrain_type}</span><br>`
-        : '';
+      const terrainMeta = data.terrain_type ? ` · 🌍 ${data.terrain_type}` : '';
 
       const buildBtn = isOwn
         ? canBuildBridge
-          ? `<button id="worker-build-btn-${h3_index}"
-               style="flex:1;padding:4px 6px;border:none;border-radius:4px;
-                      background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;"
-               title="Construir puente (consume trabajadores)">🌉 Puente</button>`
-          : `<button id="worker-build-btn-${h3_index}"
-               style="flex:1;padding:4px 6px;border:none;border-radius:4px;
-                      background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;"
-               title="Construir edificio en este territorio">🏛️ Edificio</button>`
+          ? `<button id="worker-build-btn-${h3_index}" class="worker-popup-btn" title="Construir puente (consume trabajadores)">🌉 Puente</button>`
+          : `<button id="worker-build-btn-${h3_index}" class="worker-popup-btn" title="Construir edificio en este territorio">🏛️ Edificio</button>`
         : '';
 
       const ownActions = isOwn ? `
-        <div style="display:flex;gap:6px;margin-top:8px;">
+        <div class="char-popup-actions" style="margin-top:4px;">
           ${buildBtn}
-          <button
-            id="worker-move-btn-${h3_index}"
-            data-worker-id="${data.first_worker_id}"
-            style="flex:1;padding:4px 6px;border:none;border-radius:4px;
-                   background:#f59e0b;color:#1c1917;font-size:12px;font-weight:600;cursor:pointer;"
-            >➡️ Mover</button>
+          <button id="worker-move-btn-${h3_index}" data-worker-id="${data.first_worker_id}" class="worker-popup-btn" title="Mover trabajador">➡️ Mover</button>
         </div>` : '';
 
       const marker = L.marker([lat, lng], { icon, pane: 'workerPane' });
       marker.bindPopup(
-        `<div style="font-family:sans-serif;font-size:13px;min-width:160px;">
-          <strong>⛏️ Trabajadores</strong><br>
-          <span style="color:#d1d5db;">${data.worker_count} ${data.worker_type}(s)</span><br>
-          <span style="color:#6b7280;">👤 ${data.player_name}</span><br>
-          <span style="color:#6b7280;font-size:11px;">📍 ${h3_index}</span><br>
-          ${terrainLabel}
+        `<div class="char-popup">
+          <div class="char-popup-header">
+            <span class="char-popup-icon">⛏️</span>
+            <div>
+              <div class="char-popup-name">Trabajadores</div>
+              <div class="char-popup-meta">${data.worker_count} ${data.worker_type}(s)</div>
+            </div>
+          </div>
+          <div class="char-popup-meta" style="margin-bottom:6px;">
+            👤 ${data.player_name}<br>
+            <span style="font-size:0.63rem;opacity:0.75;">📍 ${h3_index}${terrainMeta}</span>
+          </div>
           ${ownActions}
         </div>`,
-        { maxWidth: 220 }
+        { maxWidth: 240, className: 'worker-leaflet-popup' }
       );
 
       // Wire up popup buttons after it opens
@@ -2848,7 +3126,7 @@ const renderFiefIcons = (buildings) => {
  * @param {number} currentPlayerId
  * @param {Map}    ownerMap        - h3_index → { color, player_id }
  */
-const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars, currentPlayerId, ownerMap) => {
+const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars, currentPlayerId, ownerMap, bridgeByHex = new Set()) => {
   clearHexStackers();
   clearArmyMarkers();
   clearFiefIcons();
@@ -2900,6 +3178,7 @@ const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars
     ...workerByHex.keys(),
     ...ownCharsByHex.keys(),
     ...enemyCharsByHex.keys(),
+    ...bridgeByHex,
   ]);
 
   for (const h3_index of candidateHexes) {
@@ -2965,10 +3244,12 @@ const renderHexStackers = (buildings, armyEntries, workers, ownChars, enemyChars
 
       const isConflict = ownTroops > 0 && enemyTroops > 0;
 
-      if (!bld && ownEntities.length === 0 && enemyEntities.length === 0 && !hasEmbarckedTroops) continue;
+      const isBridge = bridgeByHex.has(h3_index);
+      if (!bld && !isBridge && ownEntities.length === 0 && enemyEntities.length === 0 && !hasEmbarckedTroops) continue;
 
       const divIcon = createStackerDivIcon(L, {
         building: bld,
+        isBridge,
         ownEntities,
         enemyEntities,
         h3Index: h3_index,
@@ -3122,7 +3403,7 @@ const fetchArmyData = async () => {
     _cachedBuildings       = buildings;
     _cachedArmies          = armies;
     _cachedCurrentPlayerId = cPlayerId;
-    renderHexStackers(buildings, armies, _cachedWorkers, _char_cache, _enemy_char_cache, cPlayerId, null);
+    renderHexStackers(buildings, armies, _cachedWorkers, _char_cache, _enemy_char_cache, cPlayerId, null, _cachedBridgeByHex);
     renderFleetMarkers(fleets);
   } catch (err) {
     console.error('Failed to fetch army data:', err);
@@ -3325,34 +3606,37 @@ const openWorkerPopup = (h3Index, latlng) => {
   const canBuildBridge   = isOwn && BRIDGE_TERRAINS.includes(workerData.terrain_type);
   const canBuildEdificio = isOwn && !BRIDGE_TERRAINS.includes(workerData.terrain_type);
 
-  const terrainLabel = workerData.terrain_type
-    ? `<span style="color:#6b7280;font-size:11px;">🌍 ${workerData.terrain_type}</span><br>`
-    : '';
+  const terrainMeta = workerData.terrain_type ? ` · 🌍 ${workerData.terrain_type}` : '';
 
   const buildBtn = isOwn
     ? canBuildBridge
-      ? `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir puente (consume trabajadores)">🌉 Puente</button>`
-      : `<button id="worker-build-btn-${h3Index}" style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#22c55e;color:#14532d;font-size:12px;font-weight:600;cursor:pointer;" title="Construir edificio en este territorio">🏛️ Edificio</button>`
+      ? `<button id="worker-build-btn-${h3Index}" class="worker-popup-btn" title="Construir puente (consume trabajadores)">🌉 Puente</button>`
+      : `<button id="worker-build-btn-${h3Index}" class="worker-popup-btn" title="Construir edificio en este territorio">🏛️ Edificio</button>`
     : '';
 
   const ownActions = isOwn ? `
-    <div style="display:flex;gap:6px;margin-top:8px;">
+    <div class="char-popup-actions" style="margin-top:4px;">
       ${buildBtn}
-      <button id="worker-move-btn-${h3Index}" data-worker-id="${workerData.first_worker_id}"
-        style="flex:1;padding:4px 6px;border:none;border-radius:4px;background:#f59e0b;color:#1c1917;font-size:12px;font-weight:600;cursor:pointer;">➡️ Mover</button>
+      <button id="worker-move-btn-${h3Index}" data-worker-id="${workerData.first_worker_id}" class="worker-popup-btn" title="Mover trabajador">➡️ Mover</button>
     </div>` : '';
 
   const popupHtml = `
-    <div style="font-family:sans-serif;font-size:13px;min-width:160px;">
-      <strong>⛏️ Trabajadores</strong><br>
-      <span style="color:#d1d5db;">${workerData.worker_count} ${workerData.worker_type}(s)</span><br>
-      <span style="color:#6b7280;">👤 ${workerData.player_name}</span><br>
-      <span style="color:#6b7280;font-size:11px;">📍 ${h3Index}</span><br>
-      ${terrainLabel}
+    <div class="char-popup">
+      <div class="char-popup-header">
+        <span class="char-popup-icon">⛏️</span>
+        <div>
+          <div class="char-popup-name">Trabajadores</div>
+          <div class="char-popup-meta">${workerData.worker_count} ${workerData.worker_type}(s)</div>
+        </div>
+      </div>
+      <div class="char-popup-meta" style="margin-bottom:6px;">
+        👤 ${workerData.player_name}<br>
+        <span style="font-size:0.63rem;opacity:0.75;">📍 ${h3Index}${terrainMeta}</span>
+      </div>
       ${ownActions}
     </div>`;
 
-  L.popup({ maxWidth: 220 })
+  L.popup({ maxWidth: 240, className: 'worker-leaflet-popup' })
     .setLatLng(latlng)
     .setContent(popupHtml)
     .openOn(map);
@@ -3412,7 +3696,7 @@ const fetchAndRenderCharacters = async () => {
       renderHexStackers(
         _cachedBuildings, _cachedArmies, _cachedWorkers,
         _char_cache, _enemy_char_cache,
-        _cachedCurrentPlayerId, _cachedOwnerMap,
+        _cachedCurrentPlayerId, _cachedOwnerMap, _cachedBridgeByHex,
       );
     }
   } catch (e) {
@@ -3633,6 +3917,8 @@ const updateFiefsUI = async ({ page, limit } = {}) => {
       filter_name:      kingdomFilters.value.name     || '',
       filter_maxpop:    kingdomFilters.value.maxPopulation ?? null,
       filter_division:  kingdomFilters.value.division || '',
+      sort_field:       fiefsSort.value.field,
+      sort_dir:         fiefsSort.value.dir,
     });
 
     if (data.success) {
@@ -3660,6 +3946,12 @@ const handleFiefsLimitChange = (l) => {
   fiefsPage.value  = 1;
   fiefsLimit.value = l;
   updateFiefsUI({ page: 1, limit: l });
+};
+
+const handleFiefsSortChange = ({ field, dir }) => {
+  fiefsSort.value = { field, dir };
+  fiefsPage.value = 1;
+  updateFiefsUI({ page: 1 });
 };
 
 const loadMyDivisions = async () => {
@@ -4058,35 +4350,6 @@ const renderHexagons = (hexagons) => {
       }
 
       } // end if (hex.player_id)
-
-      // --- LAYER 3b: BRIDGE MARKER (starPane) ---
-      if (hex.is_bridge) {
-        const [bLat, bLng] = cellToLatLng(hex.h3_index);
-
-        const bridgeHtml = `<div style="
-          background:#1a3a5c;
-          border:2px solid #64b5f6;
-          border-radius:6px;
-          width:30px;height:30px;
-          display:flex;align-items:center;justify-content:center;
-          font-size:16px;
-          box-shadow:0 0 8px 2px rgba(100,181,246,0.45),0 2px 6px rgba(0,0,0,0.7);
-          user-select:none;">🌉</div>`;
-
-        const bridgeIcon = L.divIcon({
-          html:       bridgeHtml,
-          className:  '',
-          iconSize:   [30, 30],
-          iconAnchor: [15, 15],
-        });
-
-        L.marker([bLat, bLng], {
-          icon:        bridgeIcon,
-          pane:        'starPane',
-          interactive: false,
-          zIndexOffset: 999,
-        }).addTo(hexagonLayer);
-      }
 
     } catch (err) {
       console.error(`Error rendering hexagon ${hex.h3_index}:`, err);
@@ -4675,6 +4938,7 @@ const selectMessage = async (message) => {
   selectedMessage.value = message;
 
   // Load thread messages
+  selectedThreadMsgId.value = message.id;
   if (message.thread_id) {
     try {
       const data = await mapApi.getMessageThread(message.thread_id);
@@ -5060,6 +5324,19 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
       .setContent(popupContent)
       .openOn(map);
 
+    // Character profile link (owner's main character)
+    if (cell.owner_main_character_id) {
+      setTimeout(() => {
+        const charBtn = document.getElementById(`char-owner-btn-${h3_index}`);
+        if (charBtn) {
+          charBtn.addEventListener('click', () => {
+            map.closePopup();
+            window.__openCharacterProfile(charBtn.dataset.charId);
+          });
+        }
+      }, 100);
+    }
+
     // Add event listener to colonize button (if exists)
     if (!cell.player_id) {
       setTimeout(() => {
@@ -5194,6 +5471,52 @@ const showCellDetailsPopup = async (h3_index, latLng) => {
               workers: [],
             };
             openTradePanel(loc);
+          });
+        }
+      }, 100);
+    }
+
+    // Bridge destruction button
+    if (cell.can_destroy_bridge) {
+      setTimeout(() => {
+        const destroyBtn = document.getElementById(`destroy-bridge-btn-${h3_index}`);
+        if (destroyBtn) {
+          destroyBtn.addEventListener('click', async () => {
+            destroyBtn.disabled = true;
+            destroyBtn.textContent = '⏳ Ordenando demolición...';
+            try {
+              const result = await mapApi.destroyBridge(h3_index);
+              map.closePopup();
+              showToast(result.message || 'Demolición iniciada', 'success');
+            } catch (e) {
+              const msg = e?.response?.data?.message || 'Error al ordenar la demolición';
+              showToast(msg, 'error');
+              destroyBtn.disabled = false;
+              destroyBtn.textContent = '💥 Destruir puente';
+            }
+          });
+        }
+      }, 100);
+    }
+
+    // Building demolition button
+    if (cell.can_demolish_building) {
+      setTimeout(() => {
+        const demolishBtn = document.getElementById(`demolish-building-btn-${h3_index}`);
+        if (demolishBtn) {
+          demolishBtn.addEventListener('click', async () => {
+            demolishBtn.disabled = true;
+            demolishBtn.textContent = '⏳ Ordenando derribo...';
+            try {
+              const result = await mapApi.startBuildingDemolition(h3_index);
+              map.closePopup();
+              showToast(result.message || 'Derribo iniciado', 'success');
+            } catch (e) {
+              const msg = e?.response?.data?.message || 'Error al ordenar el derribo';
+              showToast(msg, 'error');
+              demolishBtn.disabled = false;
+              demolishBtn.textContent = '🔨 Demoler edificio';
+            }
           });
         }
       }, 100);
@@ -5355,6 +5678,12 @@ const attachArmyListeners = (army, h3_index) => {
 
   const commanderBtn = document.getElementById(`army-commander-${army.army_id}`);
   if (commanderBtn && !commanderBtn.disabled) commanderBtn.addEventListener('click', () => handleArmyCommander(army, h3_index));
+
+  const charArmyBtn = document.getElementById(`char-army-btn-${army.army_id}`);
+  if (charArmyBtn) charArmyBtn.addEventListener('click', () => {
+    map.closePopup();
+    window.__openCharacterProfile(charArmyBtn.dataset.charId);
+  });
 };
 
 /** Retorna si hay un ejército propio con Exploradores en el hex y su army_id, y el primer ejército propio para atacar. */
@@ -6829,10 +7158,23 @@ const handleLogout = async () => {
 
 // Watchers
 watch(
-  () => activePanel.value,
-  (newPanel) => {
+  () => [activePanel.value, profileViewCharId.value],
+  async ([newPanel]) => {
     if (newPanel === 'profile') {
       profileDisplayName.value = currentUser.value?.display_name || currentUser.value?.username || '';
+      profileCharLoading.value = true;
+      profileCharData.value = null;
+      try {
+        const charId = profileViewCharId.value;
+        const result = charId
+          ? await mapApi.getCharacterProfile(charId)
+          : await mapApi.getMyCharacterProfile();
+        profileCharData.value = result.success ? result.character : null;
+      } catch {
+        profileCharData.value = null;
+      } finally {
+        profileCharLoading.value = false;
+      }
     }
   }
 );
@@ -7785,10 +8127,161 @@ onBeforeUnmount(() => {
 
 /* Profile panel */
 .profile-panel {
-  padding: 20px 16px;
+  padding: 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+/* ── Footer avatar ── */
+.user-info-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(197,160,89,0.4);
+  flex-shrink: 0;
+}
+.footer-user-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* ── Profile character card ── */
+.prf-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(197,160,89,0.25);
+  border-radius: 6px;
+  padding: 14px 10px;
+}
+.prf-hero-info {
+  text-align: center;
+  width: 100%;
+}
+.prf-roles {
+  justify-content: center;
+}
+.prf-avatar-wrap {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  flex-shrink: 0;
+}
+.prf-avatar-img {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(197,160,89,0.5);
+  display: block;
+}
+.prf-avatar-upload {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+  cursor: pointer;
+}
+.prf-avatar-wrap:hover .prf-avatar-upload { opacity: 1; }
+
+.prf-upload-msg {
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+.prf-upload-ok  { background: rgba(80,160,80,0.2);  color: #7ecf7e; border: 1px solid rgba(80,160,80,0.3); }
+.prf-upload-err { background: rgba(180,60,60,0.2);  color: #d98080; border: 1px solid rgba(180,60,60,0.3); }
+.prf-hero-info { flex: 1; min-width: 0; }
+.prf-name { font-size: 0.95rem; font-weight: 700; color: #e8d5b5; }
+.prf-rank { font-size: 0.72rem; color: #c5a059; font-style: italic; margin-top: 1px; }
+.prf-meta { font-size: 0.7rem; color: #a89875; margin-top: 2px; }
+.prf-roles { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.prf-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.prf-badge-leader { background: rgba(197,160,89,0.2); color: #c5a059; border: 1px solid rgba(197,160,89,0.4); }
+.prf-badge-captive { background: rgba(180,60,60,0.2); color: #d98080; border: 1px solid rgba(180,60,60,0.4); }
+
+.prf-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.prf-stat {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(197,160,89,0.15);
+  border-radius: 4px;
+  padding: 5px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.prf-stat-label { font-size: 0.6rem; color: #a89875; text-transform: uppercase; letter-spacing: 0.5px; }
+.prf-stat-val   { font-size: 0.82rem; font-weight: 700; color: #e8d5b5; }
+.prf-stat-val--text { font-size: 0.72rem; font-weight: 600; text-align: center; line-height: 1.2; }
+.prf-health-green  { color: #6dbf67; }
+.prf-health-orange { color: #d4a44c; }
+.prf-health-red    { color: #c05050; }
+
+.prf-section { display: flex; flex-direction: column; gap: 4px; }
+.prf-section-title {
+  font-size: 0.65rem;
+  color: #a89875;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border-bottom: 1px solid rgba(197,160,89,0.15);
+  padding-bottom: 3px;
+}
+.prf-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: #e8d5b5;
+  padding: 2px 0;
+}
+.prf-list-sub { font-size: 0.7rem; color: #a89875; }
+
+.prf-abilities { display: flex; flex-wrap: wrap; gap: 4px; }
+.prf-chip {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  background: rgba(197,160,89,0.12);
+  border: 1px solid rgba(197,160,89,0.3);
+  border-radius: 10px;
+  color: #c5a059;
+}
+
+.profile-loading {
+  font-size: 0.8rem;
+  color: #a89875;
+  text-align: center;
+  padding: 20px 0;
 }
 
 .profile-info {
@@ -12192,6 +12685,7 @@ onBeforeUnmount(() => {
   padding: 12px 15px;
   border-radius: 4px;
   transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .thread-message:hover {
@@ -12203,6 +12697,11 @@ onBeforeUnmount(() => {
   background: rgba(197, 160, 89, 0.15);
   border-left-color: #c5a059;
   box-shadow: 0 0 10px rgba(197, 160, 89, 0.2);
+}
+
+.thread-message-expanded {
+  background: rgba(197, 160, 89, 0.1);
+  border-left-color: #c5a059;
 }
 
 .thread-message-header {
@@ -12982,6 +13481,49 @@ onBeforeUnmount(() => {
   vertical-align: middle;
 }
 
+/* Worker popup — dark medieval wrapper */
+:deep(.worker-leaflet-popup .leaflet-popup-content-wrapper) {
+  background: #1a1008;
+  border: 1px solid rgba(197,160,89,0.4);
+  border-radius: 8px;
+  color: #e8d5a3;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  padding: 0;
+}
+:deep(.worker-leaflet-popup .leaflet-popup-tip) {
+  background: #1a1008;
+}
+:deep(.worker-leaflet-popup .leaflet-popup-content) {
+  margin: 0;
+}
+
+/* Worker action buttons (text + icon) */
+:deep(.worker-popup-btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #f4e4bc, #e8d5b5);
+  border: 2px solid #c5a059;
+  border-radius: 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #1a1612;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+:deep(.worker-popup-btn:hover) {
+  background: linear-gradient(135deg, #ffd700, #f4e4bc);
+  border-color: #8B6914;
+  transform: translateY(-1px);
+}
+:deep(.worker-popup-btn:active) {
+  transform: translateY(0);
+}
+
 /* Strip Leaflet's default divIcon styles so our container is clean */
 :deep(.hex-stacker-icon) {
   background: none !important;
@@ -13106,4 +13648,26 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .staging-notice-btn:hover { background: #d4b97e; }
+</style>
+
+<style>
+/* Leaflet popup — character profile link buttons (non-scoped, injected HTML) */
+.popup-char-link {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 0.9em;
+  color: #c5a059;
+  border-radius: 3px;
+  transition: background 0.12s, color 0.12s;
+  vertical-align: middle;
+  line-height: 1;
+}
+.popup-char-link:hover {
+  background: rgba(197, 160, 89, 0.15);
+  color: #f4e4bc;
+}
 </style>

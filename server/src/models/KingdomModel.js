@@ -216,7 +216,25 @@ class KingdomModel {
             [next_building_id, turns, h3_index]
         );
     }
-    async GetMyFiefs(player_id, { page = 1, limit = 10, filter_name = '', filter_maxpop = null, filter_division = '' } = {}) {
+    async GetMyFiefs(player_id, { page = 1, limit = 10, filter_name = '', filter_maxpop = null, filter_division = '', sort_field = '', sort_dir = 'asc' } = {}) {
+        const SORTABLE_COLUMNS = {
+            h3_index:      'm.h3_index',
+            terrain:       't.name',
+            gold:          'td.gold_stored::numeric',
+            population:    'td.population::numeric',
+            happiness:     'td.happiness::numeric',
+            food:          'td.food_stored::numeric',
+            autonomy:      'td.food_stored::numeric * 1000.0 / NULLIF(td.population::numeric, 0)',
+            farm_level:    'td.farm_level::numeric',
+            division_name: "COALESCE(pd.name, '')",
+            total_troops:  'COALESCE(garrison.total_troops, 0)::numeric',
+        };
+        const safeDir = sort_dir === 'desc' ? 'DESC' : 'ASC';
+        const sortExpr = SORTABLE_COLUMNS[sort_field];
+        const orderBy = sortExpr
+            ? `${sortExpr} ${safeDir}`
+            : '(m.h3_index = p.capital_h3) DESC, td.population DESC';
+
         const offset = (page - 1) * limit;
         const params = [player_id];
         const whereClauses = ['m.player_id = $1'];
@@ -287,7 +305,7 @@ class KingdomModel {
                 GROUP BY a.h3_index
             ) garrison ON m.h3_index = garrison.h3_index
             WHERE ${whereClauses.join(' AND ')}
-            ORDER BY (m.h3_index = p.capital_h3) DESC, td.population DESC
+            ORDER BY ${orderBy}
             LIMIT $${limitIdx} OFFSET $${offsetIdx}
         `;
         const result = await pool.query(query, params);

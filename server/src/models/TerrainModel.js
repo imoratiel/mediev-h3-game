@@ -54,16 +54,20 @@ class TerrainModel {
                 fb.remaining_construction_turns AS fief_building_turns_left,
                 fb.conservation           AS fief_building_conservation,
                 bld.name                  AS fief_building_name,
+                bld.construction_time_turns AS fief_building_construction_time,
                 bt.name                   AS fief_building_type_name,
                 upgrade_bld.id            AS upgrade_building_id,
                 upgrade_bld.name          AS upgrade_building_name,
                 upgrade_bld.gold_cost     AS upgrade_gold_cost,
                 upgrade_bld.construction_time_turns AS upgrade_turns,
-                pd.name                   AS division_name
+                pd.name                   AS division_name,
+                chr.id                    AS owner_main_character_id
             FROM h3_map m
             LEFT JOIN terrain_types t ON m.terrain_type_id = t.terrain_type_id
             LEFT JOIN players p ON m.player_id = p.player_id
             LEFT JOIN cultures c ON p.culture_id = c.id
+            LEFT JOIN characters chr ON chr.player_id = m.player_id
+                AND chr.is_main_character = TRUE AND chr.health > 0
             LEFT JOIN settlements s ON m.h3_index = s.h3_index
             LEFT JOIN territory_details td ON m.h3_index = td.h3_index
             LEFT JOIN political_divisions pd ON td.division_id = pd.id

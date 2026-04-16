@@ -45,6 +45,10 @@ export function generateCellPopupContent(cell, config) {
     h3_index,
     workerTypes = [],    // array of { id, name, cost } from /api/workers/types
   } = config;
+  const canDestroyBridge  = cell.can_destroy_bridge  ?? false;
+  const bridgeDestruction = cell.bridge_destruction  ?? null;
+  const canDemolishBuilding  = cell.can_demolish_building  ?? false;
+  const buildingDemolition   = cell.building_demolition    ?? null;
 
   let popupContent = '<div class="cell-inspector">';
 
@@ -71,7 +75,9 @@ export function generateCellPopupContent(cell, config) {
 
   // OWNER - Player name or "Sin reclamar"
   const ownerText = cell.player_name
-    ? `<span class="popup-owner-name" style="color: #1a1612; border-bottom: 2px solid ${cell.player_color}">⚔️ ${cell.player_name}</span>`
+    ? cell.owner_main_character_id
+      ? `<button id="char-owner-btn-${h3_index}" data-char-id="${cell.owner_main_character_id}" class="popup-owner-name popup-owner-btn" style="border-bottom: 2px solid ${cell.player_color}">⚔️ ${cell.player_name}</button>`
+      : `<span class="popup-owner-name" style="color: #1a1612; border-bottom: 2px solid ${cell.player_color}">⚔️ ${cell.player_name}</span>`
     : '<span class="unclaimed-text">🌿 Sin reclamar</span>';
   popupContent += `<p class="popup-stat-row"><strong>Dueño:</strong> ${ownerText}</p>`;
 
@@ -278,6 +284,30 @@ export function generateCellPopupContent(cell, config) {
     popupContent += `<button id="open-market-btn-${h3_index}" class="btn-popup btn-market" title="Abrir panel de comercio">🏪 Comprar aquí</button>`;
   }
 
+  // Bridge destruction — shown when it's a bridge hex
+  if (cell.terrain_type_id === 15) {
+    if (bridgeDestruction) {
+      const statusClass = bridgeDestruction.is_own_order
+        ? 'popup-building-progress'
+        : 'popup-building-status';
+      const label = bridgeDestruction.is_own_order
+        ? `🔥 Demolición en curso: <strong>${bridgeDestruction.turns_remaining}</strong> turno${bridgeDestruction.turns_remaining !== 1 ? 's' : ''} restante${bridgeDestruction.turns_remaining !== 1 ? 's' : ''}`
+        : `⚠️ Este puente está siendo demolido (${bridgeDestruction.turns_remaining} turnos)`;
+      popupContent += `<div class="popup-building-status ${statusClass}" style="margin-top:6px;">${label}</div>`;
+    } else if (canDestroyBridge) {
+      popupContent += `<button id="destroy-bridge-btn-${h3_index}" class="btn-popup btn-destroy-bridge" title="Ordenar la demolición del puente (requiere ejército adyacente con 1000+ tropas)">💥 Destruir puente</button>`;
+    }
+  }
+
+  // Building demolition — shown when own fief has a completed building
+  if (cell.fief_building && !cell.fief_building.is_under_construction) {
+    if (buildingDemolition) {
+      popupContent += `<div class="popup-building-status popup-building-progress" style="margin-top:6px;">🔨 Derribo en curso: <strong>${buildingDemolition.turns_remaining}</strong> turno${buildingDemolition.turns_remaining !== 1 ? 's' : ''} restante${buildingDemolition.turns_remaining !== 1 ? 's' : ''}</div>`;
+    } else if (canDemolishBuilding) {
+      popupContent += `<button id="demolish-building-btn-${h3_index}" class="btn-popup btn-destroy-bridge" title="Demoler el edificio (requiere 1000+ tropas en el feudo)">🔨 Demoler edificio</button>`;
+    }
+  }
+
   popupContent += '</div>';
   popupContent += '</div>';
 
@@ -379,7 +409,7 @@ export function generateArmyPopup(armyData, config) {
               <path d="M12 13c-5 0-8 2.5-8 4v1h16v-1c0-1.5-3-4-8-4z"/>
             </svg>
           </span>`;
-          popupContent += `<span class="troop-name" style="flex:1;">${c.full_title || c.name}</span>`;
+          popupContent += `<button id="char-army-btn-${army.army_id}" data-char-id="${c.id}" class="popup-char-link" style="flex:1;text-align:left;" title="Ver ficha del personaje">${c.full_title || c.name}</button>`;
           popupContent += `<span class="troop-quantity" style="color:#c5a059;font-size:0.72rem;" title="Bono de combate al ejército">⚔️+${c.combat_buff_pct}%</span>`;
           popupContent += `<div class="guard-bar-mini" title="Guardia ${c.personal_guard}/25">
             <div style="width:${guardFill}%;background:${guardColor};height:100%;border-radius:2px;"></div>

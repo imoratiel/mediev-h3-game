@@ -28,25 +28,52 @@ const MAX_RECRUITS_INDEPENDENT = GAME_CONFIG.DIVISIONS.MAX_RECRUITS_INDEPENDENT;
  * @returns {Promise<string[]>} Ordered BFS list of connected h3 indices (max distance MAX_RANGE)
  */
 async function getConnectedNetwork(client, startH3, playerId) {
-    const result = await client.query(
-        'SELECT h3_index FROM h3_map WHERE player_id = $1',
-        [playerId]
+    const RIVER_ID  = GAME_CONFIG.MAP.RIVER_TERRAIN_TYPE_ID;
+    const BRIDGE_ID = GAME_CONFIG.MAP.BRIDGE_TERRAIN_TYPE_ID;
+
+    // Obtener la comarca del feudo de origen
+    const divResult = await client.query(
+        'SELECT division_id FROM territory_details WHERE h3_index = $1',
+        [startH3]
     );
-    const playerHexSet = new Set(result.rows.map(r => r.h3_index));
+    const divisionId = divResult.rows[0]?.division_id ?? null;
+
+    // Solo hexes del jugador que pertenezcan a la misma comarca (o sin comarca si el origen es independiente)
+    // Excluir ríos — no transmiten abastecimiento
+    const playerResult = await client.query(
+        `SELECT m.h3_index FROM h3_map m
+         LEFT JOIN territory_details td ON td.h3_index = m.h3_index
+         WHERE m.player_id = $1
+           AND m.terrain_type_id != $2
+           AND (
+             ($3::int IS NULL AND (td.division_id IS NULL))
+             OR (td.division_id = $3)
+           )`,
+        [playerId, RIVER_ID, divisionId]
+    );
+    const playerHexSet = new Set(playerResult.rows.map(r => r.h3_index));
+
+    // Puentes de cualquier propietario: actúan como conectores neutros para todos
+    const bridgeResult = await client.query(
+        'SELECT h3_index FROM h3_map WHERE terrain_type_id = $1',
+        [BRIDGE_ID]
+    );
+    const bridgeSet = new Set(bridgeResult.rows.map(r => r.h3_index));
 
     const visited = new Set([startH3]);
     const bfsOrder = [];
-    // Queue stores [h3_index, depth]
     const queue = [[startH3, 0]];
 
     while (queue.length > 0) {
         const [current, depth] = queue.shift();
         bfsOrder.push(current);
-        if (depth >= MAX_RANGE) continue; // No expandir más allá del radio máximo
+        if (depth >= MAX_RANGE) continue;
         const neighbors = h3.gridDisk(current, 1).filter(n => n !== current);
         for (const neighbor of neighbors) {
-            if (!visited.has(neighbor) && playerHexSet.has(neighbor)) {
-                visited.add(neighbor);
+            if (visited.has(neighbor)) continue;
+            visited.add(neighbor);
+            // Propagar por hexes de la misma comarca o por puentes (conectores neutros)
+            if (playerHexSet.has(neighbor) || bridgeSet.has(neighbor)) {
                 queue.push([neighbor, depth + 1]);
             }
         }
