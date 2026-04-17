@@ -37,3 +37,13 @@ TERRAIN_MAPPING = {
 
 # Default terrain type for unmapped or nodata values
 DEFAULT_TERRAIN_TYPE_ID = 1
+
+# Multiplier applied to the random ranges of gold_stored and food_stored
+# when populating territory_details via populate_economy.py.
+# gold_stored: getRandomInt(2000 * M, 6000 * M)
+# food_stored: calculateLoot(1000 * M, 2500 * M, food_output)
+ECONOMY_RESOURCE_MULTIPLIER = 10
+
+# Multiplier applied to the random range of population when populating territory_details.
+# population: getRandomInt(200 * M, 400 * M)
+ECONOMY_POPULATION_MULTIPLIER = 6

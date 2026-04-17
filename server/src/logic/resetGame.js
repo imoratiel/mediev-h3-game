@@ -1,4 +1,5 @@
 const pool = require('../../db.js');
+const GAME_CONFIG = require('../config/constants');
 
 /**
  * Resetea completamente una partida en curso manteniendo las cuentas de jugadores.
@@ -9,7 +10,7 @@ const pool = require('../../db.js');
  *  3. Elimina construcciones activas
  *  4. Restaura terreno original en hexes de puentes y elimina puentes
  *  5. Elimina edificios de feudos
- *  6. Resetea metadatos de territorios (preserva oro, comida, recursos y población) y elimina divisiones políticas
+ *  6. Resetea metadatos de territorios y re-randomiza gold_stored, food_stored y population con los multiplicadores de GAME_CONFIG
  *  7. Libera todos los hexes del mapa (player_id = NULL)
  *  8. Elimina mensajes y notificaciones
  *  9. Elimina bots (is_ai = TRUE)
@@ -58,9 +59,17 @@ async function resetGame() {
         // 5. Buildings in fiefs
         await client.query('DELETE FROM fief_buildings');
 
-        // 6. Reset territory metadata, preserve economic state (gold, food, resources, population)
+        // 6. Reset territory metadata and re-randomize economic resources
+        const eco = GAME_CONFIG.ECONOMY;
+        const goldMin  = eco.GOLD_STORED_BASE_MIN  * eco.RESOURCE_MULTIPLIER;
+        const goldMax  = eco.GOLD_STORED_BASE_MAX  * eco.RESOURCE_MULTIPLIER;
+        const foodMin  = eco.FOOD_STORED_BASE_MIN  * eco.RESOURCE_MULTIPLIER;
+        const foodMax  = eco.FOOD_STORED_BASE_MAX  * eco.RESOURCE_MULTIPLIER;
+        const popMin   = eco.POPULATION_BASE_MIN   * eco.POPULATION_MULTIPLIER;
+        const popMax   = eco.POPULATION_BASE_MAX   * eco.POPULATION_MULTIPLIER;
+
         await client.query(`
-            UPDATE territory_details SET
+            UPDATE territory_details td SET
                 custom_name          = NULL,
                 discovered_resource  = NULL,
                 exploration_end_turn = NULL,
@@ -70,8 +79,16 @@ async function resetGame() {
                 lumber_level         = 0,
                 port_level           = 0,
                 defense_level        = 0,
-                division_id          = NULL
-        `);
+                division_id          = NULL,
+                gold_stored = floor($1::int + random() * ($2::int - $1::int + 1)),
+                food_stored = floor(($3::int + random() * ($4::int - $3::int + 1))
+                              * COALESCE((
+                                  SELECT t.food_output FROM h3_map m
+                                  JOIN terrain_types t ON t.terrain_type_id = m.terrain_type_id
+                                  WHERE m.h3_index = td.h3_index
+                              ), 100) / 100.0),
+                population  = floor($5::int + random() * ($6::int - $5::int + 1))
+        `, [goldMin, goldMax, foodMin, foodMax, popMin, popMax]);
 
         // 6b. Delete political divisions (señoríos y otras divisiones)
         await client.query('DELETE FROM political_divisions');

@@ -60,6 +60,15 @@ FIEF_DETECTION_RANGE: 2,        // Hexágonos visibles desde cada feudo propio (
     ECONOMY: {
         MIN_FIEF_POPULATION: 200,       // Población mínima garantizada por feudo (reclutamiento y hambruna no pueden reducirla más)
         RECRUITMENT_NETWORK_RANGE: 10,  // Radio máximo (hexágonos BFS) de la red de suministro de reclutamiento
+        // Rangos base para repoblado (populate_economy.py y resetGame.js)
+        GOLD_STORED_BASE_MIN:  2000,    // gold_stored  = randInt(MIN * MULTIPLIER, MAX * MULTIPLIER)
+        GOLD_STORED_BASE_MAX:  6000,
+        FOOD_STORED_BASE_MIN:  1000,    // food_stored  = randInt(MIN * MULTIPLIER, MAX * MULTIPLIER) * food_output / 100
+        FOOD_STORED_BASE_MAX:  2500,
+        POPULATION_BASE_MIN:    200,    // population   = randInt(MIN * MULTIPLIER, MAX * MULTIPLIER)
+        POPULATION_BASE_MAX:    400,
+        RESOURCE_MULTIPLIER:     10,    // Multiplicador aplicado a gold_stored y food_stored
+        POPULATION_MULTIPLIER:    4,    // Multiplicador aplicado a population
     },
 
     // 🌾 Producción y Cosecha
