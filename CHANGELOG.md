@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.13.0...v0.13.1) (2026-04-18)
+
+
+### Correcciones
+
+* quitar limite de poblacion ([1bf9f0a](https://github.com/imoratiel/hipania210ac-game/commit/1bf9f0aeead2691018062ca666f95048a8fe96bb))
+
 ## [0.13.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.12.1...v0.13.0) (2026-04-18)
 
 
