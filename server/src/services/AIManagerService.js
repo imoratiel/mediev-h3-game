@@ -34,18 +34,19 @@ const CharacterModel         = require('../models/CharacterModel');
 const CharacterNameGenerator = require('../logic/CharacterNameGenerator');
 const infrastructure = require('../logic/infrastructure');
 const CONFIG         = require('../config.js');
+const GAME_CONFIG    = require('../config/constants');
 const { findContiguousFiefs }   = require('../logic/contiguitySearch.js');
 const { getUniqueDivisionName } = require('../logic/NamingService.js');
 
 // ── Constantes del perfil Dummy (no hace nada, solo ocupa territorio) ────────
 const DUMMY = {
-    STARTING_GOLD: 100_000,
+    STARTING_GOLD: GAME_CONFIG.ECONOMY.STARTING_GOLD,
     COLORS: ['#555555','#666666','#777777','#888888','#999999','#aaaaaa','#bbbbbb','#cccccc'],
 };
 
 // ── Constantes del perfil Expansionista ──────────────────────────────────────
 const EXPANSIONIST = {
-    STARTING_GOLD:      100_000,
+    STARTING_GOLD:      GAME_CONFIG.ECONOMY.STARTING_GOLD,
     CLAIM_COST:          100,
     GOLD_TO_BUILD:       8_000,   // Build military only if well-funded
     GOLD_TO_RECRUIT:     5_000,   // Recruit unconditionally above this
@@ -63,7 +64,7 @@ const EXPANSIONIST = {
 
 // ── Constantes del perfil Equilibrado ────────────────────────────────────────
 const BALANCED = {
-    STARTING_GOLD:       100_000,
+    STARTING_GOLD:       GAME_CONFIG.ECONOMY.STARTING_GOLD,
     CLAIM_COST:           100,
     GOLD_TO_EXPAND:       20_000,  // More conservative than farmer (15K)
     GOLD_TO_BUILD:        5_000,
@@ -82,7 +83,7 @@ const BALANCED = {
 
 // ── Constantes del perfil Agricultor ─────────────────────────────────────────
 const FARMER = {
-    STARTING_GOLD:      100_000,
+    STARTING_GOLD:      GAME_CONFIG.ECONOMY.STARTING_GOLD,
     CLAIM_COST:          100,
     GOLD_TO_BUILD:       4_000,   // Gold mínimo para iniciar construcción
     GOLD_TO_EXPAND:      15_000,  // Gold mínimo para colonizar

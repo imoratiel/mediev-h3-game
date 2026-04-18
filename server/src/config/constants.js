@@ -60,6 +60,8 @@ FIEF_DETECTION_RANGE: 2,        // Hexágonos visibles desde cada feudo propio (
     ECONOMY: {
         MIN_FIEF_POPULATION: 200,       // Población mínima garantizada por feudo (reclutamiento y hambruna no pueden reducirla más)
         RECRUITMENT_NETWORK_RANGE: 10,  // Radio máximo (hexágonos BFS) de la red de suministro de reclutamiento
+        STARTING_GOLD:       1_000_000, // Oro inicial al inicializar un jugador (humano o bot)
+        STARTING_GOLD_RANDOM: 2_000_000, // Oro inicial si el jugador eligió personaje aleatorio
         // Rangos base para repoblado (populate_economy.py y resetGame.js)
         GOLD_STORED_BASE_MIN:  2000,    // gold_stored  = randInt(MIN * MULTIPLIER, MAX * MULTIPLIER)
         GOLD_STORED_BASE_MAX:  6000,

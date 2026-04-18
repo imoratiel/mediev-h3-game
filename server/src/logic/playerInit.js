@@ -430,7 +430,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
 
         // ── 10. Mark player as initialized and set starting gold ─────────────
         const debugMult    = CONFIG.DEBUG.ENABLED ? CONFIG.DEBUG.GOLD_MULTIPLIER : 1;
-        const startingGold = (randomBonus ? 200000 : 100000) * debugMult;
+        const startingGold = (randomBonus ? CONFIG.ECONOMY.STARTING_GOLD_RANDOM : CONFIG.ECONOMY.STARTING_GOLD) * debugMult;
         await client.query(
             'UPDATE players SET is_initialized = TRUE, gold = $1 WHERE player_id = $2',
             [startingGold, player_id]

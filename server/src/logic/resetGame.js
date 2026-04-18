@@ -107,7 +107,7 @@ async function resetGame() {
         // 10. Reset human players (keep accounts, reset game state)
         await client.query(`
             UPDATE players
-            SET gold = 50000, capital_h3 = NULL,
+            SET gold = ${GAME_CONFIG.ECONOMY.STARTING_GOLD}, capital_h3 = NULL,
                 tax_percentage = 10.00, tithe_active = FALSE,
                 is_initialized = FALSE
             WHERE is_ai = FALSE AND deleted = FALSE
