@@ -28,7 +28,7 @@
                 <div class="res-row"><span>⛏️ Hierro</span><strong>{{ fmt(summary.total_iron) }}</strong></div>
                 -->
                 <div class="res-row eco-gold-row"><span>💰 Oro (territorios)</span><strong class="gold">{{ fmt(summary.total_gold) }}</strong></div>
-                <div class="res-row"><span>👥 Población</span><strong>{{ fmt(summary.total_population) }}</strong></div>
+                <div class="res-row"><span>👥 Población</span><strong>{{ summary.total_population ?? 0 }}</strong></div>
               </div>
               <p class="eco-fiefs-note">{{ summary.fief_count }} territorio{{ summary.fief_count !== 1 ? 's' : '' }} bajo tu dominio</p>
             </template>
@@ -115,7 +115,7 @@
                 </div>
                 <div class="pagus-stat">
                   <span class="pstat-label">👥 Población</span>
-                  <span class="pstat-value">{{ fmt(div.total_population) }}</span>
+                  <span class="pstat-value">{{ div.total_population ?? 0 }}</span>
                 </div>
                 <div class="pagus-stat">
                   <span class="pstat-label">💰 Oro</span>
