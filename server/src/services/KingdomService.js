@@ -15,6 +15,57 @@ const pool = require('../../db.js');
 const h3 = require('h3-js');
 const { executeConstruction, canPerformAction, applyCooldown, processConquestLoot, GameActionError } = require('./gameActions.js');
 
+/**
+ * Captura o dispersa a los personajes enemigos presentes en un hex conquistado.
+ * - Adultos (age >= 16): quedan cautivos del ejército conquistador, guardias a 0.
+ * - Menores (age < 16): huyen a la capital de su dueño; si no tienen o era la misma,
+ *   desaparecen.
+ */
+async function captureCharactersOnConquest(client, h3_index, capturingArmyId, capturingPlayerId) {
+    const charsRes = await client.query(
+        `SELECT c.id, c.age, c.level, c.player_id
+         FROM characters c
+         WHERE c.h3_index = $1
+           AND c.player_id != $2
+           AND c.is_captive = FALSE
+           AND c.health > 0`,
+        [h3_index, capturingPlayerId]
+    );
+    if (charsRes.rows.length === 0) return;
+
+    for (const char of charsRes.rows) {
+        if (char.age >= 16) {
+            const ransom = 1000 * (char.level || 1);
+            await client.query(
+                `UPDATE characters
+                 SET army_id                = $1,
+                     is_captive             = TRUE,
+                     captured_by_army_id    = $1,
+                     destination            = NULL,
+                     ransom_amount          = $2,
+                     ransom_turns_remaining = 10,
+                     personal_guard         = 0
+                 WHERE id = $3`,
+                [capturingArmyId, ransom, char.id]
+            );
+        } else {
+            const capRes = await client.query(
+                `SELECT capital_h3 FROM players WHERE player_id = $1`,
+                [char.player_id]
+            );
+            const capital = capRes.rows[0]?.capital_h3;
+            if (capital && capital !== h3_index) {
+                await client.query(
+                    `UPDATE characters SET h3_index = $1 WHERE id = $2`,
+                    [capital, char.id]
+                );
+            } else {
+                await client.query(`DELETE FROM characters WHERE id = $1`, [char.id]);
+            }
+        }
+    }
+}
+
 class KingdomService {
     async StartExploration(req, res) {
         // DISABLED: exploration temporarily disabled
@@ -626,6 +677,7 @@ class KingdomService {
             // 8. Victoria o Empate → transferir propiedad
             await client.query('UPDATE h3_map SET player_id = $1 WHERE h3_index = $2', [player_id, h3_index]);
             await client.query('UPDATE territory_details SET grace_turns = $1 WHERE h3_index = $2', [GRACE_TURNS_DEFAULT, h3_index]);
+            await captureCharactersOnConquest(client, h3_index, armyId, player_id);
 
             // 9. Notificar al antiguo propietario
             if (currentOwner !== null) {
@@ -889,6 +941,7 @@ class KingdomService {
                 await client.query('UPDATE h3_map SET player_id = $1 WHERE h3_index = $2', [player_id, h3_index]);
                 // Período de gracia para el feudo recién conquistado
                 await client.query('UPDATE territory_details SET grace_turns = $1 WHERE h3_index = $2', [GRACE_TURNS_DEFAULT, h3_index]);
+                await captureCharactersOnConquest(client, h3_index, armyId, player_id);
 
                 const worldResult = await client.query('SELECT current_turn FROM world_state LIMIT 1');
                 const turn = worldResult.rows[0]?.current_turn ?? 0;
