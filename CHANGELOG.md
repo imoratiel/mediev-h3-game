@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.12.1...v0.13.0) (2026-04-18)
+
+
+### Nuevas funcionalidades
+
+* rebalance de comida ([dee8250](https://github.com/imoratiel/hipania210ac-game/commit/dee82505b1bf1e2f6fd31902159d4390027fa0dd))
+
+
+### Correcciones
+
+* inicio de oro por territorio al iniciar ([c6a7f02](https://github.com/imoratiel/hipania210ac-game/commit/c6a7f0290cc237b138b9fdbb57c03e976624fc45))
+
 ## [0.12.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.12.0...v0.12.1) (2026-04-18)
 
 
