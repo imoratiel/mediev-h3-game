@@ -151,9 +151,9 @@ FIEF_DETECTION_RANGE: 2,        // Hexágonos visibles desde cada feudo propio (
 
     // 👥 Límites de Población por Tipo de Terreno
     POPULATION: {
-        CAP_CAPITAL:      6000,         // Capital del jugador
-        CAP_PLAINS_COAST: 2000,         // Llanuras y costa (terrenos llanos productivos)
-        CAP_DEFAULT:      1000,         // Resto de terrenos (montaña, pantano, bosque, etc.)
+        CAP_CAPITAL:      6_000_000,     // Capital del jugador
+        CAP_PLAINS_COAST: 2_000_000,    // Llanuras y costa (terrenos llanos productivos)
+        CAP_DEFAULT:      1_000_000,    // Resto de terrenos (montaña, pantano, bosque, etc.)
         // Fragmentos de terrain_types.name que califican como llanura/costa (comparación lowercase)
         PLAINS_COAST_TERRAINS: ['costa', 'llanura', 'llano', 'pradera', 'planicie', 'prado'],
     },

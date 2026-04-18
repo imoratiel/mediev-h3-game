@@ -29,7 +29,7 @@
               <span class="terrain-label">{{ fief.terrain }}</span>
             </td>
             <td class="text-gold text-right">{{ formatGold(fief.gold) }}</td>
-            <td class="text-right pop-cell">{{ formatNumber(fief.population) }}</td>
+            <td class="text-right pop-cell">{{ formatPop(fief.population) }}</td>
             <td class="text-right" :class="{ 'happiness-low': fief.happiness < 30 }">
               <span
                 :title="fief.happiness_delta !== 0 ? `${fief.happiness_delta > 0 ? '+' : ''}${fief.happiness_delta} en el último mes` : 'Sin cambios este mes'"
@@ -335,6 +335,7 @@ const formatNumber = (val) => {
   if (val >= 1000) return (val / 1000).toFixed(1) + 'k';
   return Math.round(val).toString();
 };
+const formatPop = (val) => Number(val ?? 0).toLocaleString('es-ES');
 
 const formatGold = (val) => {
   if (val === null || val === undefined || isNaN(val)) return '0';
