@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.12.0...v0.12.1) (2026-04-18)
+
+
+### Correcciones
+
+* error al tributar, las comarcas estaban a cero ([cdb02f1](https://github.com/imoratiel/hipania210ac-game/commit/cdb02f16663d73afbb1f1cf365747f274dcb67dd))
+* inicio de feudos con mucha más comida ([6eb3637](https://github.com/imoratiel/hipania210ac-game/commit/6eb36377212006c68d7508225e8c88fff00396ed))
+
 ## [0.12.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.11.1...v0.12.0) (2026-04-16)
 
 
