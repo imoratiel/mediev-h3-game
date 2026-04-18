@@ -1,4 +1,5 @@
 const h3 = require('h3-js');
+const { generateFiefEconomy } = require('../config/gameFunctions.js');
 
 /**
  * Check if a hexagon is adjacent to any player-owned territory
@@ -21,21 +22,8 @@ async function checkContiguity(h3Index, playerId, pool) {
     return parseInt(neighborResult.rows[0].count) > 0;
 }
 
-/**
- * Generate initial economy values for a newly claimed territory
- * @returns {Object} Initial economy values
- */
-function generateInitialEconomy() {
-    const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-    return {
-        population: getRandomInt(200, 400),
-        happiness: getRandomInt(50, 70),
-        food: getRandomInt(0, 2000),
-        wood: getRandomInt(0, 2000),
-        stone: getRandomInt(0, 2000)
-    };
-}
+// Re-export para compatibilidad con AIManagerService y otros importadores
+const generateInitialEconomy = () => generateFiefEconomy('fief');
 
 module.exports = {
     checkContiguity,

@@ -38,4 +38,33 @@ function getFleetLimit(numFiefs) {
     return Math.max(BASE, Math.floor((numFiefs || 0) / RATIO));
 }
 
-module.exports = { getPopulationCap, getArmyLimit, getFleetLimit };
+/**
+ * Genera valores económicos aleatorios para un feudo recién colonizado.
+ * Usa los multiplicadores de GAME_CONFIG.ECONOMY para consistencia con resetGame y populate_economy.
+ * @param {'capital'|'fief'} type - 'capital' para la capital del jugador, 'fief' para el resto
+ * @returns {{ population, happiness, food, wood, stone, gold }}
+ */
+function generateFiefEconomy(type = 'fief') {
+    const { RESOURCE_MULTIPLIER: rm, POPULATION_MULTIPLIER: pm } = GAME_CONFIG.ECONOMY;
+    const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    if (type === 'capital') {
+        return {
+            population: rand(400 * pm, 600 * pm),
+            happiness:  rand(60, 80),
+            food:       rand(1000 * rm, 3000 * rm),
+            wood:       rand(500,  2500),
+            stone:      rand(500,  2500),
+            gold:       rand(300 * rm, 800 * rm),
+        };
+    }
+    return {
+        population: rand(200 * pm, 400 * pm),
+        happiness:  rand(50, 70),
+        food:       rand(0, 2000 * rm),
+        wood:       rand(0, 2000),
+        stone:      rand(0, 2000),
+        gold:       rand(50 * rm, 250 * rm),
+    };
+}
+
+module.exports = { getPopulationCap, getArmyLimit, getFleetLimit, generateFiefEconomy };

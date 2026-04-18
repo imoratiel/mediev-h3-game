@@ -6,7 +6,7 @@ const ArmyModel = require('../models/ArmyModel.js');
 const CombatModel = require('../models/CombatModel.js');
 const { CONFIG } = require('../config.js');
 const GAME_CONFIG = require('../config/constants.js');
-const { getPopulationCap } = require('../config/gameFunctions.js');
+const { getPopulationCap, generateFiefEconomy } = require('../config/gameFunctions.js');
 const infrastructure = require('../logic/infrastructure.js');
 const conquest = require('../logic/conquest.js');
 const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = require('../logic/conquest_system.js');
@@ -397,25 +397,12 @@ class KingdomService {
                 }
             }
 
-            const _eco = GAME_CONFIG.ECONOMY;
-            const _rm  = _eco.RESOURCE_MULTIPLIER;
-            const _pm  = _eco.POPULATION_MULTIPLIER;
-
-            const eco = {
-                population: Math.floor(Math.random() * (201 * _pm)) + (200 * _pm),
-                happiness: Math.floor(Math.random() * 21) + 50,
-                food: Math.floor(Math.random() * (2001 * _rm)),
-                wood: Math.floor(Math.random() * 2001),
-                stone: Math.floor(Math.random() * 2001),
-                gold: Math.floor(Math.random() * (501 * _rm)) + (100 * _rm),
-            };
-
             await KingdomModel.ClaimHex(client, h3_index, player_id);
             if (isFirstTerritory || isExiled) {
                 await KingdomModel.SetCapital(client, h3_index, player_id);
                 if (isExiled) await KingdomModel.ClearExileStatus(client, player_id);
             }
-            await KingdomModel.InsertTerritoryDetails(client, h3_index, eco);
+            await KingdomModel.InsertTerritoryDetails(client, h3_index, generateFiefEconomy(isFirstTerritory || isExiled ? 'capital' : 'fief'));
             await KingdomModel.DeductGold(client, player_id, CLAIM_COST);
 
             // On first claim (capital/exile), also claim all colonizable ring-2 neighbors for free
@@ -425,13 +412,7 @@ class KingdomService {
                 const neighbors = await KingdomModel.GetColonizableNeighbors(client, ring1);
                 for (const neighbor of neighbors) {
                     await KingdomModel.ClaimHex(client, neighbor.h3_index, player_id);
-                    await KingdomModel.InsertTerritoryDetails(client, neighbor.h3_index, {
-                        population: Math.floor(Math.random() * (201 * _pm)) + (200 * _pm),
-                        happiness: Math.floor(Math.random() * 21) + 50,
-                        food: Math.floor(Math.random() * (2001 * _rm)),
-                        wood: Math.floor(Math.random() * 2001),
-                        stone: Math.floor(Math.random() * 2001),
-                    });
+                    await KingdomModel.InsertTerritoryDetails(client, neighbor.h3_index, generateFiefEconomy('fief'));
                     bonusHexes.push(neighbor.h3_index);
                 }
             }
