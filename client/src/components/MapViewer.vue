@@ -457,8 +457,8 @@
               </button>
             </div>
 
-            <!-- Acceso a recursos -->
-            <div class="mkt-section-label" style="margin-top:18px">Acceso a Recursos</div>
+            <!-- Acceso a recursos — DESHABILITADO: piedra ya no disponible en el mercado -->
+            <!-- <div class="mkt-section-label" style="margin-top:18px">Acceso a Recursos</div>
             <div v-if="marketAccessResources.length === 0" class="mkt-empty">Cargando…</div>
             <div v-for="res in marketAccessResources" :key="res.id" class="mkt-access-card">
               <div class="mkt-access-icon-wrap">⛏️</div>
@@ -482,7 +482,7 @@
                   <button class="mkt-cancel-btn" :disabled="marketTxLoading" @click="marketCancelAccess(res)">Cancelar</button>
                 </template>
               </div>
-            </div>
+            </div> -->
 
           </div>
 

@@ -16,6 +16,7 @@
 const pool  = require('../../db.js');
 const h3    = require('h3-js');
 const { Logger } = require('../utils/logger');
+const GAME_CONFIG = require('../config/constants');
 const ArmyModel      = require('../models/ArmyModel.js');
 const KingdomModel   = require('../models/KingdomModel.js');
 const CharacterModel = require('../models/CharacterModel.js');
@@ -229,13 +230,16 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
             'UPDATE h3_map SET player_id = $1, last_update = CURRENT_TIMESTAMP WHERE h3_index = $2',
             [player_id, capitalHex]
         );
+        const _eco = GAME_CONFIG.ECONOMY;
+        const _rm  = _eco.RESOURCE_MULTIPLIER;
+        const _pm  = _eco.POPULATION_MULTIPLIER;
         await upsertTerritoryDetails(client, capitalHex, {
-            population: Math.floor(Math.random() * 201) + 400,
+            population: Math.floor(Math.random() * (201 * _pm)) + (400 * _pm),
             happiness:  Math.floor(Math.random() * 21)  + 60,
-            food:       Math.floor(Math.random() * 2001) + 1000,
+            food:       Math.floor(Math.random() * (2001 * _rm)) + (1000 * _rm),
             wood:       Math.floor(Math.random() * 2001) + 500,
             stone:      Math.floor(Math.random() * 2001) + 500,
-            gold:       Math.floor(Math.random() * 501)  + 300,
+            gold:       Math.floor(Math.random() * (501 * _rm))  + (300 * _rm),
         });
 
         // ── 3. BFS expansion: claim up to 29 bonus hexes (total 30) ──────────
@@ -256,12 +260,12 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
                 [player_id, hex]
             );
             await upsertTerritoryDetails(client, hex, {
-                population: Math.floor(Math.random() * 201) + 200,
+                population: Math.floor(Math.random() * (201 * _pm)) + (200 * _pm),
                 happiness:  Math.floor(Math.random() * 21)  + 50,
-                food:       Math.floor(Math.random() * 2001),
+                food:       Math.floor(Math.random() * (2001 * _rm)),
                 wood:       Math.floor(Math.random() * 2001),
                 stone:      Math.floor(Math.random() * 2001),
-                gold:       Math.floor(Math.random() * 201)  + 50,
+                gold:       Math.floor(Math.random() * (201 * _rm))  + (50 * _rm),
             });
         }
 
@@ -426,7 +430,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
 
         // ── 10. Mark player as initialized and set starting gold ─────────────
         const debugMult    = CONFIG.DEBUG.ENABLED ? CONFIG.DEBUG.GOLD_MULTIPLIER : 1;
-        const startingGold = (randomBonus ? 200000 : 100000) * debugMult;
+        const startingGold = (randomBonus ? CONFIG.ECONOMY.STARTING_GOLD_RANDOM : CONFIG.ECONOMY.STARTING_GOLD) * debugMult;
         await client.query(
             'UPDATE players SET is_initialized = TRUE, gold = $1 WHERE player_id = $2',
             [startingGold, player_id]

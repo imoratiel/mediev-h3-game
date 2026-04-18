@@ -356,13 +356,13 @@ export function generateArmyPopup(armyData, config) {
 
   // ── Barra de navegación (solo si hay varios items) ──────────────────────
   if (navTotal > 1) {
-    const btnStyle = 'background:#1e1e38;border:1px solid #3a3a5c;color:#e2e8f0;border-radius:4px;padding:3px 11px;font-size:1rem;line-height:1;cursor:pointer;transition:background 0.15s;';
-    const btnDisStyle = btnStyle + 'opacity:0.3;cursor:not-allowed;';
+    const btnStyle = 'background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#e2e8f0;border-radius:6px;padding:4px 12px;font-size:0.85rem;line-height:1;cursor:pointer;transition:background 0.15s;';
+    const btnDisStyle = btnStyle + 'opacity:0.25;cursor:not-allowed;';
     const prevDis = navIndex === 0;
     const nextDis = navIndex === navTotal - 1;
-    popupContent += `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(0,0,0,0.45);border-bottom:1px solid #2d2d4a;margin-bottom:4px;">`;
+    popupContent += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(0,0,0,0.35);border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:6px;gap:8px;">`;
     popupContent += `<button onclick="event.stopPropagation();window.armyPopupNavigate(-1)" ${prevDis ? 'disabled' : ''} style="${prevDis ? btnDisStyle : btnStyle}">◀</button>`;
-    popupContent += `<span style="font-family:sans-serif;font-size:0.72rem;color:#6b7280;letter-spacing:1.5px;text-transform:uppercase;">Ejército ${navIndex + 1} de ${navTotal}</span>`;
+    popupContent += `<span style="font-family:sans-serif;font-size:0.7rem;color:#94a3b8;letter-spacing:0.08em;text-transform:uppercase;flex:1;text-align:center;">${navIndex + 1} <span style="color:#475569;">de</span> ${navTotal}</span>`;
     popupContent += `<button onclick="event.stopPropagation();window.armyPopupNavigate(1)" ${nextDis ? 'disabled' : ''} style="${nextDis ? btnDisStyle : btnStyle}">▶</button>`;
     popupContent += `</div>`;
   }

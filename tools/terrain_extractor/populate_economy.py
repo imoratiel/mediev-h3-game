@@ -7,7 +7,7 @@ from psycopg2.extras import execute_values
 # 1. CARGA DE CONFIGURACIÓN
 try:
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from config import DB_CONFIG
+    from config import DB_CONFIG, ECONOMY_RESOURCE_MULTIPLIER, ECONOMY_POPULATION_MULTIPLIER
     from pathlib import Path
     BASE_DATA_DIR = Path(__file__).parent.parent.parent.resolve() / 'data'
     print("✅ Configuración cargada correctamente.")
@@ -66,9 +66,9 @@ def populate():
                 h3_index, food_output, wood, stone, iron = cell
                 
                 # 1. Cálculos base
-                pop = getRandomInt(200, 400)
+                pop = getRandomInt(200 * ECONOMY_POPULATION_MULTIPLIER, 400 * ECONOMY_POPULATION_MULTIPLIER)
                 hap = getRandomInt(50, 70)
-                food = calculateLoot(500, 2500, food_output)
+                food = calculateLoot(1000 * ECONOMY_RESOURCE_MULTIPLIER, 2500 * ECONOMY_RESOURCE_MULTIPLIER, food_output)
                 wood_s = calculateLoot(500, 2500, wood)
                 stone_s = calculateLoot(500, 2500, stone)
                 
@@ -81,7 +81,7 @@ def populate():
 
                 # Los recursos mineros físicos se generan pero permanecen ocultos
                 # El turn engine hará el roll de descubrimiento cuando se complete la exploración
-                gold_s = getRandomInt(2000, 6000)
+                gold_s = getRandomInt(2000 * ECONOMY_RESOURCE_MULTIPLIER, 6000 * ECONOMY_RESOURCE_MULTIPLIER)
                 iron_s = getRandomInt(100, 2000)
 
                 if stone > 0 or iron > 0:

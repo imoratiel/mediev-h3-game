@@ -10,6 +10,7 @@ const { getPopulationCap } = require('../config/gameFunctions.js');
 const infrastructure = require('../logic/infrastructure.js');
 const conquest = require('../logic/conquest.js');
 const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = require('../logic/conquest_system.js');
+const DivisionModel = require('../models/DivisionModel.js');
 const pool = require('../../db.js');
 const h3 = require('h3-js');
 const { executeConstruction, canPerformAction, applyCooldown, processConquestLoot, GameActionError } = require('./gameActions.js');
@@ -396,13 +397,17 @@ class KingdomService {
                 }
             }
 
+            const _eco = GAME_CONFIG.ECONOMY;
+            const _rm  = _eco.RESOURCE_MULTIPLIER;
+            const _pm  = _eco.POPULATION_MULTIPLIER;
+
             const eco = {
-                population: Math.floor(Math.random() * 201) + 200,
+                population: Math.floor(Math.random() * (201 * _pm)) + (200 * _pm),
                 happiness: Math.floor(Math.random() * 21) + 50,
-                food: Math.floor(Math.random() * 2001),
+                food: Math.floor(Math.random() * (2001 * _rm)),
                 wood: Math.floor(Math.random() * 2001),
                 stone: Math.floor(Math.random() * 2001),
-                gold: Math.floor(Math.random() * 501) + 100,
+                gold: Math.floor(Math.random() * (501 * _rm)) + (100 * _rm),
             };
 
             await KingdomModel.ClaimHex(client, h3_index, player_id);
@@ -421,14 +426,29 @@ class KingdomService {
                 for (const neighbor of neighbors) {
                     await KingdomModel.ClaimHex(client, neighbor.h3_index, player_id);
                     await KingdomModel.InsertTerritoryDetails(client, neighbor.h3_index, {
-                        population: Math.floor(Math.random() * 201) + 200,
+                        population: Math.floor(Math.random() * (201 * _pm)) + (200 * _pm),
                         happiness: Math.floor(Math.random() * 21) + 50,
-                        food: Math.floor(Math.random() * 2001),
+                        food: Math.floor(Math.random() * (2001 * _rm)),
                         wood: Math.floor(Math.random() * 2001),
                         stone: Math.floor(Math.random() * 2001),
                     });
                     bonusHexes.push(neighbor.h3_index);
                 }
+            }
+
+            // Asignar división más cercana del jugador al nuevo feudo (y bonus hexes)
+            const allNewHexes = [h3_index, ...bonusHexes];
+            const playerDivisions = await DivisionModel.GetPlayerDivisions(client, player_id);
+            if (playerDivisions.length > 0) {
+                let bestDiv = playerDivisions[0];
+                let bestDist = Infinity;
+                for (const div of playerDivisions) {
+                    try {
+                        const dist = h3.gridDistance(h3_index, div.capital_h3);
+                        if (dist < bestDist) { bestDist = dist; bestDiv = div; }
+                    } catch (_) { /* resoluciones incompatibles */ }
+                }
+                await DivisionModel.AssignFiefsToDivision(client, bestDiv.id, allNewHexes);
             }
 
             await client.query('COMMIT');
