@@ -1574,7 +1574,11 @@ class AIManagerService {
         const result = ratio >= 1.1 ? 'victory' : ratio <= 0.9 ? 'defeat' : 'draw';
 
         // 8. Apply attacker losses
-        const lossFrac       = result === 'victory' ? 0.05 + (1 / ratio) * 0.10 : 0.20 + Math.random() * 0.15;
+        const { MILITIA_ROUT_RATIO, MILITIA_MAX_LOSS } = GAME_CONFIG.MILITARY;
+        const lossFrac = result !== 'victory'
+            ? 0.20 + Math.random() * 0.15
+            : ratio >= MILITIA_ROUT_RATIO ? 0
+            : MILITIA_MAX_LOSS * Math.pow(1.1 / ratio, 2);
         const attackerLosses = Math.min(attackerTotal, Math.floor(attackerTotal * lossFrac));
         if (attackerLosses > 0) {
             for (const t of troops) {

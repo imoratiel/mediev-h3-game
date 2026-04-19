@@ -40,6 +40,9 @@ const GAME_CONFIG = {
         COMBAT_SKIRMISH_STAMINA_LOSS:    20,    // pérdida stamina en batalla intermedia (1 turno)
         COMBAT_EARLY_MOVE_MORALE_PENALTY: 10,   // % moral perdida/turno por moverse en recuperación
         COMBAT_EARLY_MOVE_TROOP_PENALTY:   5,   // % tropas eliminadas/turno por moverse en recuperación
+        // ⚔️ Conquista de feudos (milicia civil)
+        MILITIA_ROUT_RATIO:   15,       // ratio atacante/defensor a partir del cual la milicia huye sin causar bajas
+        MILITIA_MAX_LOSS:   0.15,       // % máximo de bajas del atacante en victoria muy ajustada (ratio ~1.1)
         // 🎖️ Experiencia de Combate
         COMBAT_XP_MULTIPLIER: 15,       // Multiplicador aplicado a la XP ganada por unidades tras combate
         // 🔭 Espionaje
@@ -112,24 +115,24 @@ const GAME_CONFIG = {
     // El multiplicador ×2 para "Aleatorio" se aplica en playerInit.js.
     STARTING_TROOPS: {
         1: [ // Roma
-            { unit_type_id:  1, quantity: 100 }, // Hastati
-            { unit_type_id:  5, quantity:  50 }, // Velites
-            { unit_type_id:  4, quantity:  50 }, // Auxilia (Cab)
+            { unit_type_id:  1, quantity: 1000 }, // Hastati
+            { unit_type_id:  5, quantity:  500 }, // Velites
+            { unit_type_id:  4, quantity:  500 }, // Auxilia (Cab)
         ],
         2: [ // Cartago
-            { unit_type_id:  9, quantity: 100 }, // Infantería Libia
-            { unit_type_id: 13, quantity:  50 }, // Honderos Baleares
-            { unit_type_id: 11, quantity:  50 }, // Caballería Numida
+            { unit_type_id:  9, quantity: 1000 }, // Infantería Libia
+            { unit_type_id: 13, quantity:  500 }, // Honderos Baleares
+            { unit_type_id: 11, quantity:  500 }, // Caballería Numida
         ],
         3: [ // Íberos
-            { unit_type_id: 17, quantity: 100 }, // Caetrati
-            { unit_type_id: 21, quantity:  50 }, // Falarica
-            { unit_type_id: 19, quantity:  50 }, // Jin. Lanza
+            { unit_type_id: 17, quantity: 1000 }, // Caetrati
+            { unit_type_id: 21, quantity:  500 }, // Falarica
+            { unit_type_id: 19, quantity:  500 }, // Jin. Lanza
         ],
         4: [ // Celtas
-            { unit_type_id: 25, quantity: 100 }, // Celtíberos
-            { unit_type_id: 27, quantity:  50 }, // Cazadores
-            { unit_type_id: 29, quantity:  50 }, // Cab. de Exploración
+            { unit_type_id: 25, quantity: 1000 }, // Celtíberos
+            { unit_type_id: 27, quantity:  500 }, // Cazadores
+            { unit_type_id: 29, quantity:  500 }, // Cab. de Exploración
         ],
     },
 
