@@ -630,7 +630,11 @@ class KingdomService {
             else                   result = 'draw';
 
             // 6. Calcular y aplicar bajas al atacante
-            const attackerLossFraction = result === 'victory' ? 0.05 + (1 / ratio) * 0.10 : 0.20 + Math.random() * 0.15;
+            const { MILITIA_ROUT_RATIO, MILITIA_MAX_LOSS } = GAME_CONFIG.MILITARY;
+            const attackerLossFraction = result !== 'victory'
+                ? 0.20 + Math.random() * 0.15
+                : ratio >= MILITIA_ROUT_RATIO ? 0
+                : MILITIA_MAX_LOSS * Math.pow(1.1 / ratio, 2);
             const defenderLossFraction = result === 'defeat'  ? 0.30 + Math.random() * 0.20 : 0.70 + Math.random() * 0.30;
             const attacker_losses = Math.min(attackerTotal, Math.floor(attackerTotal * attackerLossFraction));
             const defender_losses = Math.min(militiaCount,  Math.floor(militiaCount  * defenderLossFraction));
@@ -875,7 +879,11 @@ class KingdomService {
             else result = 'draw';
 
             // 8. Calcular bajas totales
-            const attackerLossFraction = result === 'victory' ? 0.05 + (1 / ratio) * 0.10 : 0.20 + Math.random() * 0.15;
+            const { MILITIA_ROUT_RATIO, MILITIA_MAX_LOSS } = GAME_CONFIG.MILITARY;
+            const attackerLossFraction = result !== 'victory'
+                ? 0.20 + Math.random() * 0.15
+                : ratio >= MILITIA_ROUT_RATIO ? 0
+                : MILITIA_MAX_LOSS * Math.pow(1.1 / ratio, 2);
             const defenderLossFraction = result === 'defeat' ? 0.30 + Math.random() * 0.20 : 0.70 + Math.random() * 0.30;
             const attacker_losses = Math.min(attackerTotal, Math.floor(attackerTotal * attackerLossFraction));
             const defender_losses = Math.min(militiaCount, Math.floor(militiaCount * defenderLossFraction));
