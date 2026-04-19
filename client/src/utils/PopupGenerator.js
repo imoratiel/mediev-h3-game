@@ -550,7 +550,7 @@ export function generateArmyPopup(armyData, config) {
         ? `Atacar con tu ejército (mismo hexágono)`
         : 'Necesitas un ejército propio en el mismo hexágono';
       const attackClass = attackEnabled
-        ? 'army-action-icon army-action-attack'
+        ? 'army-action-icon army-action-conquer'
         : 'army-action-icon army-action-disabled';
       popupContent += `<button id="army-attack-${army.army_id}" class="${attackClass}" ${!attackEnabled ? 'disabled' : ''} data-attacking-army="${attackingArmyId ?? ''}" title="${attackTitle}">⚔️</button>`;
 
