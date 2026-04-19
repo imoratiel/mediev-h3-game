@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.14.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.13.1...v0.14.0) (2026-04-19)
+
+
+### Nuevas funcionalidades
+
+* capturar personajes al conquistar el feudo ([07e0b45](https://github.com/imoratiel/hipania210ac-game/commit/07e0b45428d5b2df02313d1edffef9d8d96902e6))
+* rebalance de oro ([cfeab69](https://github.com/imoratiel/hipania210ac-game/commit/cfeab6957398912f43859f09d921e7e668b9f139))
+
+
+### Correcciones
+
+* cambio de icono para atacar ([24144b6](https://github.com/imoratiel/hipania210ac-game/commit/24144b69735317120b9bd56e321b4df0a453f48f))
+* las batallas tenian un 5% de bajas siempre ([2f8f559](https://github.com/imoratiel/hipania210ac-game/commit/2f8f5597f32a3e32499896edfdb0c7735fa37727))
+
 ## [0.13.1](https://github.com/imoratiel/hipania210ac-game/compare/v0.13.0...v0.13.1) (2026-04-18)
 
 
