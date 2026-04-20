@@ -1,0 +1,34 @@
+meta {
+  name: SD-11b LOGIN_BRUTE_WIN - Login exitoso tras solo 3 fallidos (sin alerta)
+  type: http
+  seq: 15
+}
+
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "{{username}}",
+    "password": "{{password}}"
+  }
+}
+
+tests {
+  test("login exitoso boundary devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+}
+
+script:post-response {
+  console.log("SD-11b login exitoso tras 3 fallos | Status:", res.getStatus());
+  console.log("Ejecutar sd-sleep-35s.bru — NO debe aparecer LOGIN_BRUTE_WIN en alertas");
+}

@@ -1,0 +1,32 @@
+meta {
+  name: RL-06 Military - Boundary 8vo move-army (pasa, no 429)
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+tests {
+  test("el 8vo intento NO devuelve 429", function() {
+    expect(res.getStatus()).to.not.equal(429);
+  });
+  test("respuesta es logica de juego o auth, no rate limit", function() {
+    const status = res.getStatus();
+    expect([200, 400, 401, 403, 404]).to.include(status);
+  });
+}

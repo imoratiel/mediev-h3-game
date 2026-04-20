@@ -1,0 +1,36 @@
+meta {
+  name: RL-07 Conquer - 5to intento dispara 429
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{base_url}}/api/military/conquer
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "h3_index": "8928308280fffff"
+  }
+}
+
+tests {
+  test("el 5to intento conquer devuelve 429", function() {
+    expect(res.getStatus()).to.equal(429);
+  });
+  test("body tiene success false", function() {
+    expect(res.getBody().success).to.equal(false);
+  });
+  test("mensaje de rate limit en espanol", function() {
+    expect(res.getBody().message).to.be.a("string");
+    // El mensaje del byPlayer es: 'Demasiadas peticiones. Espera un momento...'
+    expect(res.getBody().message.toLowerCase()).to.include("demasiada");
+  });
+}

@@ -1,0 +1,42 @@
+meta {
+  name: RL-02 Auth - 6 logins fallidos (dispara 429 en el 6to)
+  type: http
+  seq: 6
+}
+
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "usuario_inexistente_rl01",
+    "password": "password_incorrecta_123"
+  }
+}
+
+tests {
+  test("el 6to intento devuelve 429", function() {
+    // Si el servidor ha recibido 5+ requests en la ventana, este devuelve 429.
+    // Puede devolver 401 si el servidor se reinicio entre tests — re-ejecutar RL-01 primero.
+    expect(res.getStatus()).to.equal(429);
+  });
+  test("body indica demasiadas peticiones", function() {
+    expect(res.getBody().success).to.equal(false);
+    expect(res.getBody().message).to.be.a("string");
+    expect(res.getBody().message.toLowerCase()).to.include("demasiado");
+  });
+}
+
+script:post-response {
+  if (res.getStatus() === 429) {
+    console.log("429 recibido correctamente. Retry-After:", res.getHeader("Retry-After"));
+  }
+}

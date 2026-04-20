@@ -1,0 +1,35 @@
+meta {
+  name: Setup - Login Admin
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "{{admin_username}}",
+    "password": "{{admin_password}}"
+  }
+}
+
+tests {
+  test("login admin devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+}
+
+script:post-response {
+  // La cookie access_token del admin queda guardada en la sesion de Bruno.
+  // Los tests SD necesitan el admin token para consultar /admin/player-audit/alerts.
+  const data = res.getBody();
+  console.log("Admin login OK:", res.getStatus());
+}

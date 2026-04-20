@@ -1,0 +1,41 @@
+meta {
+  name: SD-08b INHUMAN_TIMING - Segundo request inmediato (< 150ms del primero)
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:post-response {
+  const ts2 = Date.now();
+  const ts1 = bru.getVar("sd08_ts1") || 0;
+  const gap = ts2 - ts1;
+  bru.setVar("sd08_gap", gap);
+  console.log("SD-08b gap desde primer request:", gap + "ms");
+  if (gap < 150) {
+    console.log("Gap < 150ms — INHUMAN_TIMING deberia detectarse en el proximo scan");
+  } else {
+    console.warn("Gap >= 150ms (" + gap + "ms) — alerta puede no dispararse (latencia de red demasiado alta)");
+  }
+}
+
+tests {
+  test("segundo request enviado", function() {
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}

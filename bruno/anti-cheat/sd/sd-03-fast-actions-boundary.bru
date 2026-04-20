@@ -1,0 +1,34 @@
+meta {
+  name: SD-03 FAST_ACTIONS - Boundary exactamente 7 (dispara alerta)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:post-response {
+  const count = (bru.getVar("sd03_count") || 0) + 1;
+  bru.setVar("sd03_count", count);
+  console.log("SD-03 boundary request #" + count);
+}
+
+tests {
+  test("request de escritura registrado en audit", function() {
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}

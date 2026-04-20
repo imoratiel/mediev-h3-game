@@ -1,0 +1,35 @@
+meta {
+  name: SD-10b LOGIN_BRUTE_WIN - Login exitoso tras 4 fallidos (completa patron)
+  type: http
+  seq: 13
+}
+
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "{{username}}",
+    "password": "{{password}}"
+  }
+}
+
+tests {
+  test("login exitoso devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+}
+
+script:post-response {
+  console.log("SD-10b login exitoso | Status:", res.getStatus());
+  console.log("Patron LOGIN_BRUTE_WIN completo: 4x401 + 1x200");
+  console.log("Ejecutar sd-sleep-35s.bru y luego sd-check-brute-win.bru");
+}

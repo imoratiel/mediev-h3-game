@@ -1,0 +1,56 @@
+meta {
+  name: SD Check - Verificar alerta REPEATED_PAYLOAD
+  type: http
+  seq: 22
+}
+
+
+get {
+  url: {{base_url}}/api/admin/player-audit/alerts
+  body: none
+  auth: none
+}
+
+tests {
+  test("endpoint devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("respuesta tiene formato correcto", function() {
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().alerts).to.be.an("array");
+  });
+  test("existe alerta REPEATED_PAYLOAD", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "REPEATED_PAYLOAD");
+    expect(alert).to.exist;
+  });
+  test("alerta REPEATED_PAYLOAD es severity high", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "REPEATED_PAYLOAD");
+    if (alert) {
+      expect(alert.severity).to.equal("high");
+    }
+  });
+  test("alerta REPEATED_PAYLOAD tiene h3 y count >= 3", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "REPEATED_PAYLOAD");
+    if (alert && alert.details) {
+      const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+      expect(details.count).to.be.at.least(3);
+      expect(details.h3).to.be.a("string");
+      expect(details.action).to.be.a("string");
+      expect(details.window_s).to.equal(10);
+    }
+  });
+}
+
+script:post-response {
+  const alerts = res.getBody().alerts || [];
+  const alert = alerts.find(a => a.rule === "REPEATED_PAYLOAD");
+  if (alert) {
+    const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+    console.log("REPEATED_PAYLOAD alerta:", JSON.stringify({ severity: alert.severity, details }));
+  } else {
+    console.warn("No se encontro REPEATED_PAYLOAD — verificar que se enviaron 3x el mismo action+h3 en 10s");
+  }
+}

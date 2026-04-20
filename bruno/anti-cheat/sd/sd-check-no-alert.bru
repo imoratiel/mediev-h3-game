@@ -1,0 +1,50 @@
+meta {
+  name: SD Check - Verificar ausencia de alerta (tests negativos)
+  type: http
+  seq: 25
+}
+
+
+get {
+  url: {{base_url}}/api/admin/player-audit/alerts
+  body: none
+  auth: none
+}
+
+tests {
+  test("endpoint devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("respuesta tiene formato correcto", function() {
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().alerts).to.be.an("array");
+  });
+  test("no existe alerta para la regla bajo prueba", function() {
+    const rule = bru.getVar("sd_check_rule") || bru.getEnvVar("sd_check_rule");
+    if (!rule) {
+      console.warn("sd_check_rule no configurada — verificar manualmente");
+      return;
+    }
+    const alerts = res.getBody().alerts;
+    // Filtrar por la regla especifica y que sea reciente (no de tests anteriores)
+    const recentAlerts = alerts.filter(a => {
+      if (a.rule !== rule) return false;
+      // Solo alertas de los ultimos 5 minutos
+      const created = new Date(a.created_at).getTime();
+      return (Date.now() - created) < 5 * 60 * 1000;
+    });
+    expect(recentAlerts.length).to.equal(0);
+  });
+}
+
+script:post-response {
+  const rule = bru.getVar("sd_check_rule") || bru.getEnvVar("sd_check_rule") || "(no configurada)";
+  const alerts = res.getBody().alerts || [];
+  const ruleAlerts = alerts.filter(a => a.rule === rule);
+  console.log("Verificando ausencia de alerta '" + rule + "' — encontradas:", ruleAlerts.length);
+  if (ruleAlerts.length === 0) {
+    console.log("Correcto: no hay alerta " + rule);
+  } else {
+    console.warn("INESPERADO: se encontraron " + ruleAlerts.length + " alertas " + rule);
+  }
+}

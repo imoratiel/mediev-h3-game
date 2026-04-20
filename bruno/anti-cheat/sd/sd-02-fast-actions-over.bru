@@ -1,0 +1,37 @@
+meta {
+  name: SD-02 FAST_ACTIONS - 7 requests en 30s (genera alerta)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:post-response {
+  const count = (bru.getVar("sd02_count") || 0) + 1;
+  bru.setVar("sd02_count", count);
+  console.log("SD-02 request #" + count + " | Status:", res.getStatus());
+  if (count >= 7) {
+    console.log("7 requests enviados — ejecutar sd-sleep-35s.bru y luego sd-check-fast-actions.bru");
+  }
+}
+
+tests {
+  test("request de escritura autenticado enviado", function() {
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}

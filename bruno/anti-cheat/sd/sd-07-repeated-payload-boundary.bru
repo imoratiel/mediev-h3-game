@@ -1,0 +1,34 @@
+meta {
+  name: SD-07 REPEATED_PAYLOAD - Boundary 2x mismo h3 (sin alerta)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{base_url}}/api/military/conquer
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "h3_index": "{{sd_boundary_h3}}"
+  }
+}
+
+script:post-response {
+  const count = (bru.getVar("sd07_count") || 0) + 1;
+  bru.setVar("sd07_count", count);
+  console.log("SD-07 boundary CONQUER #" + count + " h3=" + bru.getEnvVar("sd_boundary_h3"));
+}
+
+tests {
+  test("request enviado para boundary test", function() {
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}

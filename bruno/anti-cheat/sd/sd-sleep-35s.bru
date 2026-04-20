@@ -1,0 +1,24 @@
+meta {
+  name: SD - Sleep 35s (esperar scan de SuspicionDetector)
+  type: http
+  seq: 0
+}
+
+
+get {
+  url: {{base_url}}/api/game/world-state
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  // Pausa de 35 segundos antes de continuar al siguiente request.
+  // Necesario para que SuspicionDetector complete su ciclo de scan (cada 30s).
+  console.log("Esperando 35 segundos para el scan de SuspicionDetector...");
+  await new Promise(resolve => setTimeout(resolve, 35000));
+  console.log("Pausa completada. Continuando...");
+}
+
+settings {
+  timeout: 40000
+}

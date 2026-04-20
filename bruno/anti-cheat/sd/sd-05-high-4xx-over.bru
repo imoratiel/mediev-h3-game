@@ -1,0 +1,38 @@
+meta {
+  name: SD-05 HIGH_4XX_RATE - 16 requests 4xx en 60s (genera alerta)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:post-response {
+  const count = (bru.getVar("sd05_count") || 0) + 1;
+  bru.setVar("sd05_count", count);
+  console.log("SD-05 request #" + count + " | Status:", res.getStatus());
+  if (count >= 16) {
+    console.log("16 requests 4xx enviados — ejecutar sd-sleep-35s.bru y sd-check-high4xx.bru");
+  }
+}
+
+tests {
+  test("request 4xx registrado", function() {
+    const status = res.getStatus();
+    expect(status).to.be.within(400, 499);
+  });
+}

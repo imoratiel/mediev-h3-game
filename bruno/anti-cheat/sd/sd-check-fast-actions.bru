@@ -1,0 +1,53 @@
+meta {
+  name: SD Check - Verificar alerta FAST_ACTIONS
+  type: http
+  seq: 20
+}
+
+get {
+  url: {{base_url}}/api/admin/player-audit/alerts
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const alerts = res.getBody().alerts || [];
+  const alert = alerts.find(a => a.rule === "FAST_ACTIONS");
+  if (alert) {
+    const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+    console.log("FAST_ACTIONS alerta encontrada:", JSON.stringify({ severity: alert.severity, details }));
+  } else {
+    console.warn("No se encontro alerta FAST_ACTIONS — verificar que el audit esta activo y que se enviaron > 6 requests WRITE en 30s");
+  }
+}
+
+tests {
+  test("endpoint devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("respuesta tiene formato correcto", function() {
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().alerts).to.be.an("array");
+  });
+  test("existe alerta FAST_ACTIONS", function() {
+    const alerts = res.getBody().alerts;
+    const fastActionAlert = alerts.find(a => a.rule === "FAST_ACTIONS");
+    expect(fastActionAlert).to.exist;
+  });
+  test("alerta FAST_ACTIONS es severity high", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "FAST_ACTIONS");
+    if (alert) {
+      expect(alert.severity).to.equal("high");
+    }
+  });
+  test("alerta FAST_ACTIONS tiene details con count > 6", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "FAST_ACTIONS");
+    if (alert && alert.details) {
+      const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+      expect(details.count).to.be.above(6);
+      expect(details.window_s).to.equal(30);
+    }
+  });
+}
