@@ -289,14 +289,18 @@ class ArmyService {
             // ── Validación de población por red conectada ─────────────────────────
             const totalTroops = units.reduce((s, u) => s + u.quantity, 0);
             const connectedH3s = await recruitmentNetwork.getConnectedNetwork(client, h3_index, player_id);
-            const fiefPops = await recruitmentNetwork.getFiefPopulations(client, connectedH3s);
-            const recruitablePool = recruitmentNetwork.calcRecruitablePool(fiefPops);
+            const [fiefPops, turnRow] = await Promise.all([
+                recruitmentNetwork.getFiefPopulations(client, connectedH3s),
+                client.query('SELECT current_turn FROM world_state WHERE id = 1'),
+            ]);
+            const currentTurn     = turnRow.rows[0]?.current_turn || 0;
+            const recruitablePool = recruitmentNetwork.calcRecruitablePool(fiefPops, currentTurn);
 
             if (recruitablePool < totalTroops) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({
                     success: false,
-                    message: `Población insuficiente. Tu red de territorios puede aportar ${recruitablePool} reclutas (mínimo garantizado por territorio: ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab.; límite en Comarca: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_DIVISION}, en territorio libre: ${GAME_CONFIG.DIVISIONS.MAX_RECRUITS_INDEPENDENT}).`
+                    message: `Población insuficiente. Tu red puede aportar ${recruitablePool} reclutas este mes (mín. ${GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION} hab. por feudo, cap. 15% mensual con recuperación en 30 turnos).`
                 });
             }
 
@@ -344,8 +348,7 @@ class ArmyService {
             if (totalCost.stone_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'stone_stored', totalCost.stone_stored);
             if (totalCost.iron_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'iron_stored', totalCost.iron_stored);
 
-            // Deduct population from network (recruiting fief first, then neighbors in BFS order)
-            await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, totalTroops);
+            await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, totalTroops, currentTurn);
 
             let army_id;
             let resolvedName;
@@ -619,10 +622,14 @@ class ArmyService {
 
             const connectedH3s = await recruitmentNetwork.getConnectedNetwork(client, h3_index, player_id);
             // Read-only query (no FOR UPDATE) — just for display
-            const popResult = connectedH3s.length > 0
-                ? await client.query('SELECT h3_index, population, division_id FROM territory_details WHERE h3_index = ANY($1::text[])', [connectedH3s])
-                : { rows: [] };
-            const recruitable  = recruitmentNetwork.calcRecruitablePool(popResult.rows);
+            const [popResult, turnResult] = await Promise.all([
+                connectedH3s.length > 0
+                    ? client.query('SELECT h3_index, population, division_id, recruited_turn, recruited_amount FROM territory_details WHERE h3_index = ANY($1::text[])', [connectedH3s])
+                    : Promise.resolve({ rows: [] }),
+                client.query('SELECT current_turn FROM world_state WHERE id = 1'),
+            ]);
+            const currentTurn  = turnResult.rows[0]?.current_turn || 0;
+            const recruitable  = recruitmentNetwork.calcRecruitablePool(popResult.rows, currentTurn);
             const min_pop      = GAME_CONFIG.ECONOMY.MIN_FIEF_POPULATION;
 
             res.json({ success: true, recruitable, fiefs: connectedH3s.length, min_pop });
@@ -1055,16 +1062,20 @@ class ArmyService {
                 totalQuantity += u.quantity;
             }
 
-            // 4. Validate population via connected network (same criteria as BulkRecruit)
+            // 4. Validate population via connected network
             const connectedH3s = await recruitmentNetwork.getConnectedNetwork(client, h3_index, player_id);
-            const fiefPops = await recruitmentNetwork.getFiefPopulations(client, connectedH3s);
-            const recruitablePool = recruitmentNetwork.calcRecruitablePool(fiefPops);
+            const [fiefPops, turnRow] = await Promise.all([
+                recruitmentNetwork.getFiefPopulations(client, connectedH3s),
+                client.query('SELECT current_turn FROM world_state WHERE id = 1'),
+            ]);
+            const currentTurn     = turnRow.rows[0]?.current_turn || 0;
+            const recruitablePool = recruitmentNetwork.calcRecruitablePool(fiefPops, currentTurn);
 
             if (recruitablePool < totalQuantity) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({
                     success: false,
-                    message: `Población insuficiente. Tu red de territorios puede aportar ${recruitablePool} reclutas.`
+                    message: `Población insuficiente. Tu red puede aportar ${recruitablePool} reclutas este mes.`
                 });
             }
 
@@ -1094,8 +1105,8 @@ class ArmyService {
             if (totalCost.stone_stored > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'stone_stored', totalCost.stone_stored);
             if (totalCost.iron_stored  > 0) await ArmyModel.DeductTerritoryResource(client, h3_index, 'iron_stored',  totalCost.iron_stored);
 
-            // 7. Deduct population from network (recruiting fief first, then neighbors in BFS order)
-            await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, totalQuantity);
+            // 7. Deduct population from network
+            await recruitmentNetwork.deductFromNetwork(client, connectedH3s, fiefPops, totalQuantity, currentTurn);
 
             // 8. Add troops to the existing army (merge with existing unit type rows)
             for (const u of units) {

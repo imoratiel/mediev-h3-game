@@ -61,8 +61,10 @@ const GAME_CONFIG = {
 
     // 🏘️ Economía y Población
     ECONOMY: {
-        MIN_FIEF_POPULATION: 200,       // Población mínima garantizada por feudo (reclutamiento y hambruna no pueden reducirla más)
+        MIN_FIEF_POPULATION: 500,       // Población mínima garantizada por feudo (reclutamiento y hambruna no pueden reducirla más)
         RECRUITMENT_NETWORK_RANGE: 10,  // Radio máximo (hexágonos BFS) de la red de suministro de reclutamiento
+        RECRUITMENT_CAP_RATIO: 0.15,    // Fracción máxima de la población reclutable por mes (15%)
+        RECRUITMENT_RECOVERY_TURNS: 30, // Turnos necesarios para recuperar el 100% de la capacidad de reclutamiento
         STARTING_GOLD:       1_000_000, // Oro inicial al inicializar un jugador (humano o bot)
         STARTING_GOLD_RANDOM: 2_000_000, // Oro inicial si el jugador eligió personaje aleatorio
         // Rangos base para repoblado (populate_economy.py y resetGame.js)
@@ -92,9 +94,7 @@ const GAME_CONFIG = {
 
     // 🏛️ Señoríos y Divisiones Políticas
     DIVISIONS: {
-        HAPPINESS_BONUS:         1.10,  // Multiplicador de felicidad para feudos en un señorío (+10%)
-        MAX_RECRUITS_DIVISION:    400,  // Cap de reclutas por feudo cuando pertenece a un señorío
-        MAX_RECRUITS_INDEPENDENT: 200,  // Cap de reclutas por feudo cuando es independiente
+        HAPPINESS_BONUS: 1.10,  // Multiplicador de felicidad para feudos en un señorío (+10%)
     },
 
     // 👑 Sistema de Personajes y Dinastías
