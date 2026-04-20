@@ -1095,6 +1095,7 @@ class KingdomService {
         const forceCultureId = req.query?.culture_id ? parseInt(req.query.culture_id, 10) : null;
         const randomBonus    = req.query?.random_bonus === 'true';
         const linaje         = (req.query?.linaje ?? '').trim().replace(/\p{L}+/gu, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+        const gender         = req.query?.gender === 'F' ? 'F' : 'M';
 
         // Validate linaje
         if (!linaje || linaje.length < 3 || linaje.length > 30) {
@@ -1107,9 +1108,9 @@ class KingdomService {
             return res.status(400).json({ success: false, message: 'Ese nombre no está permitido.' });
         }
 
-        Logger.action(`[Init] player=${player_id} culture_id=${forceCultureId} random_bonus=${randomBonus} linaje=${linaje}`, player_id);
+        Logger.action(`[Init] player=${player_id} culture_id=${forceCultureId} random_bonus=${randomBonus} linaje=${linaje} gender=${gender}`, player_id);
         try {
-            const result = await initializePlayer(player_id, { forceCultureId, randomBonus, linaje });
+            const result = await initializePlayer(player_id, { forceCultureId, randomBonus, linaje, gender });
             if (result.alreadyInitialized) {
                 return res.status(409).json({ success: false, message: 'El jugador ya ha sido inicializado' });
             }

@@ -63,7 +63,7 @@
             <div class="node-badges">
               <span class="badge badge-age">Edad {{ char.age }}</span>
               <span v-if="char.age >= 16" class="badge badge-level">Nv.{{ displayLevel(char.level) }}</span>
-              <span v-if="char.is_heir" class="badge badge-heir">Heredero</span>
+              <span v-if="char.is_heir" class="badge badge-heir">{{ char.gender === 'F' ? 'Heredera' : 'Heredero' }}</span>
               <span v-if="char.army_id" class="badge badge-war">⚔</span>
             </div>
 
@@ -356,10 +356,11 @@ const canAdopt    = computed(() => adultCount.value < 3);
 const displayLevel = level => Math.floor((level ?? 1) / 10);
 
 const nodeIcon = char => {
-  if (char.is_main_character) return '👑';
-  if (char.is_heir)           return '🤴';
-  if (char.age < 16)          return '🧒';
-  return '⭐';
+  const f = char.gender === 'F';
+  if (char.is_main_character) return f ? '👸' : '👑';
+  if (char.is_heir)           return f ? '👸' : '🤴';
+  if (char.age < 16)          return f ? '👧' : '👦';
+  return f ? '♀️' : '♂️';
 };
 
 const nodeClass = char => {

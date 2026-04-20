@@ -60,6 +60,17 @@
 
       <div class="welcome-divider">✦ ✦ ✦</div>
 
+      <!-- ── Gender selector ── -->
+      <div class="linaje-section">
+        <div class="culture-section-label">— Tu Señoría —</div>
+        <div class="gender-toggle">
+          <button class="gender-btn" :class="{ selected: gender === 'M' }" @click="gender = 'M'">♂ Señor</button>
+          <button class="gender-btn" :class="{ selected: gender === 'F' }" @click="gender = 'F'">♀ Señora</button>
+        </div>
+      </div>
+
+      <div class="welcome-divider">✦ ✦ ✦</div>
+
       <!-- ── Linaje input ── -->
       <div class="linaje-section">
         <div class="culture-section-label">— Nombre de tu Linaje —</div>
@@ -148,6 +159,7 @@ const selectedCulture = ref(null);
 const linaje          = ref('');
 const linajeError     = ref('');
 const termsAccepted   = ref(false);
+const gender          = ref('M');
 
 function validateLinaje() {
   const val = linaje.value.trim();
@@ -227,7 +239,7 @@ async function begin() {
   try {
     const isRandom  = selectedCulture.value.id === 'random';
     const cultureId = isRandom ? null : selectedCulture.value.id;
-    const data = await initializePlayer(cultureId, isRandom, linaje.value.trim());
+    const data = await initializePlayer(cultureId, isRandom, linaje.value.trim(), gender.value);
     if (data.success || data.message?.includes('inicializado')) {
       emit('done', { capital_h3: data.capital_h3 });
     } else {
@@ -478,6 +490,32 @@ async function begin() {
   font-weight: bold;
   padding: 1px 6px;
   letter-spacing: 1px;
+}
+
+/* ── Gender toggle ───────────────────────────────────────────────────────── */
+.gender-toggle {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.gender-btn {
+  flex: 1;
+  max-width: 140px;
+  padding: 8px 0;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid #5a4820;
+  border-radius: 6px;
+  color: #a89060;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.gender-btn.selected {
+  background: rgba(139, 105, 20, 0.35);
+  border-color: #c9a84c;
+  color: #f0d080;
+  font-weight: 600;
 }
 
 /* ── Linaje ──────────────────────────────────────────────────────────────── */
