@@ -11,8 +11,15 @@ const LOG_FILES = {
     engine: path.join(LOGS_DIR, 'engine.log'),
     exceptions: path.join(LOGS_DIR, 'exceptions.log'),
     armies: path.join(LOGS_DIR, 'armies.log'), // Simulación de ejércitos
-    legacy: path.join(LOGS_DIR, 'server.log') // Compatibilidad con código existente
+    legacy: path.join(LOGS_DIR, 'server.log'), // Compatibilidad con código existente
 };
+
+// audit.log se rota por separado (ciclo más largo) y NO entra en LOG_FILES
+// para que la rotación general no lo toque.
+const AUDIT_LOG_FILE    = path.join(LOGS_DIR, 'audit.log');
+const AUDIT_ROTATION_MARKER = path.join(LOGS_DIR, '.last_audit_rotation');
+const AUDIT_ROTATION_DAYS   = 30;
+const AUDIT_MAX_ROTATIONS   = 1; // 30 días × 1 = 30 días de historial
 
 // Archivo que guarda la fecha de la última rotación
 const ROTATION_MARKER = path.join(LOGS_DIR, '.last_rotation');
@@ -72,6 +79,31 @@ function rotateLogs() {
 }
 
 /**
+ * Rota audit.log cada AUDIT_ROTATION_DAYS días.
+ */
+function rotateAuditLog() {
+    try {
+        if (!fs.existsSync(AUDIT_LOG_FILE)) return;
+        const dateTag = new Date().toISOString().slice(0, 10);
+        const rotated = AUDIT_LOG_FILE.replace('.log', `.${dateTag}.log`);
+        fs.renameSync(AUDIT_LOG_FILE, rotated);
+
+        const dir     = path.dirname(AUDIT_LOG_FILE);
+        const base    = path.basename(AUDIT_LOG_FILE, '.log');
+        const oldFiles = fs.readdirSync(dir)
+            .filter(f => f.startsWith(base + '.') && f.endsWith('.log'))
+            .map(f => ({ name: f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+            .sort((a, b) => a.mtime - b.mtime);
+        while (oldFiles.length > AUDIT_MAX_ROTATIONS) {
+            fs.unlinkSync(path.join(dir, oldFiles.shift().name));
+        }
+        fs.writeFileSync(AUDIT_ROTATION_MARKER, new Date().toISOString(), 'utf8');
+    } catch (error) {
+        console.error('Error rotating audit log:', error);
+    }
+}
+
+/**
  * Comprueba si han pasado ROTATION_DAYS días desde la última rotación.
  * Si es así, ejecuta la rotación.
  */
@@ -85,6 +117,19 @@ function checkLogRotation() {
         rotateLogs();
     } catch (error) {
         console.error('Error checking log rotation:', error);
+    }
+}
+
+function checkAuditRotation() {
+    try {
+        if (fs.existsSync(AUDIT_ROTATION_MARKER)) {
+            const last = new Date(fs.readFileSync(AUDIT_ROTATION_MARKER, 'utf8').trim());
+            const daysSince = (Date.now() - last.getTime()) / (1000 * 60 * 60 * 24);
+            if (daysSince < AUDIT_ROTATION_DAYS) return;
+        }
+        rotateAuditLog();
+    } catch (error) {
+        console.error('Error checking audit rotation:', error);
     }
 }
 
@@ -108,6 +153,7 @@ function initializeLogger() {
 
         // Rotar logs si han pasado 15 días desde la última rotación
         checkLogRotation();
+        checkAuditRotation();
 
         const startupMessage = `========== SERVER STARTED: ${new Date().toISOString()} ==========`;
         appendToLog(LOG_FILES.engine, startupMessage);
@@ -257,6 +303,30 @@ function logError(error, context = {}) {
 }
 
 /**
+ * Escribe una entrada de auditoría de jugador en audit.log (JSON Lines).
+ * Solo escribe si auditEnabled es true — el auditLogger.js controla el flag.
+ * @param {Object} entry  campos: ts, pid, un, ip, action, endpoint, status, ms, meta
+ */
+function logAudit(entry) {
+    try {
+        const line = JSON.stringify(entry) + '\n';
+        fs.appendFileSync(AUDIT_LOG_FILE, line, 'utf8');
+    } catch (error) {
+        console.error('Error writing audit log:', error);
+    }
+}
+
+/**
+ * Devuelve el tamaño actual de audit.log en KB.
+ */
+function getAuditLogSizeKb() {
+    try {
+        if (!fs.existsSync(AUDIT_LOG_FILE)) return 0;
+        return Math.round(fs.statSync(AUDIT_LOG_FILE).size / 1024);
+    } catch { return 0; }
+}
+
+/**
  * Compatibilidad con código existente que usa logGameEvent
  * @param {string} message - Mensaje a registrar
  */
@@ -372,5 +442,8 @@ module.exports = {
     logGameEvent,
     initializeLogger,
     rotateLogs,
-    errorLoggingMiddleware
+    errorLoggingMiddleware,
+    logAudit,
+    getAuditLogSizeKb,
+    AUDIT_LOG_FILE,
 };
