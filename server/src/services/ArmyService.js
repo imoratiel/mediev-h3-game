@@ -1,4 +1,5 @@
 const { Logger } = require('../utils/logger');
+const cache = require('./CacheService.js');
 const ArmyModel = require('../models/ArmyModel.js');
 const CharacterModel = require('../models/CharacterModel.js');
 const WorkerModel = require('../models/WorkerModel.js');
@@ -60,9 +61,14 @@ class ArmyService {
         }
     }
     async GetUnitTypes(req, res) {
+        const CACHE_KEY = 'static:unit_types';
+        const cached = cache.get(CACHE_KEY);
+        if (cached) return res.json(cached);
         try {
             const result = await ArmyModel.GetUnitTypes();
-            res.json({ success: true, unit_types: result.rows });
+            const payload = { success: true, unit_types: result.rows };
+            cache.set(CACHE_KEY, payload, 0);
+            res.json(payload);
         } catch (error) {
             Logger.error(error, { endpoint: '/military/unit-types', method: 'GET', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al obtener tipos de unidades' });
@@ -82,6 +88,8 @@ class ArmyService {
             const result = await executeRecruitment(client, player_id, { h3_index, unit_type_id, quantity, army_name });
             await client.query('COMMIT');
 
+            cache.delete(cache.constructor.playerKey('armies', player_id));
+            cache.delete(cache.constructor.playerKey('economy', player_id));
             res.json({ success: true, ...result });
         } catch (error) {
             await client.query('ROLLBACK');
@@ -106,8 +114,11 @@ class ArmyService {
         }
     }
     async GetArmies(req, res) {
+        const player_id = req.user.player_id;
+        const cacheKey = cache.constructor.playerKey('armies', player_id);
+        const cached = cache.get(cacheKey);
+        if (cached) return res.json(cached);
         try {
-            const player_id = req.user.player_id;
             const result = await ArmyModel.GetArmies(player_id);
             const armies = result.rows.map(a => ({
                 ...a,
@@ -118,7 +129,9 @@ class ArmyService {
                 fief_grace_turns:  parseInt(a.fief_grace_turns)  || 0,
                 is_own_fief:       a.is_own_fief === true,
             }));
-            res.json({ success: true, armies });
+            const payload = { success: true, armies };
+            cache.set(cacheKey, payload, 8_000);
+            res.json(payload);
         } catch (error) {
             Logger.error(error, { endpoint: '/military/armies', method: 'GET', userId: req.user?.player_id });
             res.status(500).json({ success: false, message: 'Error al obtener ejércitos' });
@@ -206,6 +219,7 @@ class ArmyService {
                 { army_id, from: army.h3_index, to: target_h3, distance, steps: routeResult.steps }
             );
 
+            cache.delete(cache.constructor.playerKey('armies', player_id));
             res.json({
                 success: true,
                 message: `${army.name} en marcha hacia ${target_h3} (${routeResult.steps} pasos en ruta)`,
@@ -380,6 +394,8 @@ class ArmyService {
 
             await client.query('COMMIT');
 
+            cache.delete(cache.constructor.playerKey('armies', player_id));
+            cache.delete(cache.constructor.playerKey('economy', player_id));
             Logger.action(`Reclutó lote: ${totalTroops} tropas en ${h3_index}`, player_id);
             res.json({ success: true, army_id, army_name: resolvedName, total_troops: totalTroops, mode: 'field' });
         } catch (error) {
@@ -560,6 +576,7 @@ class ArmyService {
 
             await client.query('COMMIT');
 
+            cache.delete(cache.constructor.playerKey('armies', player_id));
             Logger.action(
                 `Fusionó ${others.length} ejércitos en "${host.name}" (${h3_index})`,
                 player_id,
@@ -918,6 +935,7 @@ class ArmyService {
 
             await client.query('COMMIT');
 
+            cache.delete(cache.constructor.playerKey('armies', player_id));
             Logger.action(`Licenció ${qty} tropas (tipo ${unit_type_id}) del ejército ${army_id}`, player_id, { h3_index: army.h3_index, surplus });
             const baseMsg = totalLeft === 0
                 ? `${qty} soldados licenciados. El ejército se ha disuelto y los suministros han vuelto al territorio.`
@@ -1087,6 +1105,8 @@ class ArmyService {
 
             await client.query('COMMIT');
 
+            cache.delete(cache.constructor.playerKey('armies', player_id));
+            cache.delete(cache.constructor.playerKey('economy', player_id));
             Logger.action(`Reforzó ejército ${armyId} "${army.name}" con ${totalQuantity} tropas en ${h3_index}`, player_id, { armyId, units });
             return res.json({
                 success: true,

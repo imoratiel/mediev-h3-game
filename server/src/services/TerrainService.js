@@ -3,6 +3,7 @@ const TerrainModel = require('../models/TerrainModel.js');
 const h3 = require('h3-js');
 const { getTerrainColor } = require('../logic/territory.js');
 const pool = require('../../db.js');
+const cache = require('./CacheService.js');
 const NotificationService = require('./NotificationService.js');
 
 function fmtHex(h3_index) {
@@ -58,6 +59,9 @@ class TerrainService {
         }
     }
     async GetTerrainTypes(req,res){
+        const CACHE_KEY = 'static:terrain_types';
+        const cached = cache.get(CACHE_KEY);
+        if (cached) return res.json(cached);
         try {
             const result = await TerrainModel.GetTerrainTypes();
             const terrainTypes = result.rows.map(row => ({
@@ -66,6 +70,7 @@ class TerrainService {
                 color: getTerrainColor(row.name, row.color),
                 sort_order: row.sort_order
             }));
+            cache.set(CACHE_KEY, terrainTypes, 0);
             res.json(terrainTypes);
         } catch (error) {
             res.status(500).json({ error: 'Failed to fetch terrain types', message: error.message });

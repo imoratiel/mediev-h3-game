@@ -2,6 +2,7 @@
 
 const h3 = require('h3-js');
 const pool = require('../../db.js');
+const cache = require('./CacheService.js');
 const WorkerModel = require('../models/WorkerModel.js');
 const ArmyModel = require('../models/ArmyModel.js');
 const CharacterModel = require('../models/CharacterModel.js');
@@ -16,9 +17,14 @@ class WorkerService {
      * Public — no auth required (same as unit-types).
      */
     async GetTypes(req, res) {
+        const CACHE_KEY = 'static:worker_types';
+        const cached = cache.get(CACHE_KEY);
+        if (cached) return res.json(cached);
         try {
             const result = await WorkerModel.GetWorkerTypes();
-            res.json({ success: true, worker_types: result.rows });
+            const payload = { success: true, worker_types: result.rows };
+            cache.set(CACHE_KEY, payload, 0);
+            res.json(payload);
         } catch (error) {
             Logger.error(error, { endpoint: '/workers/types', method: 'GET' });
             res.status(500).json({ success: false, message: 'Error al obtener tipos de trabajadores' });
