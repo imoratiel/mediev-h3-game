@@ -129,19 +129,31 @@ function calcRecruitablePool(fiefPops) {
  */
 async function deductFromNetwork(client, orderedH3s, fiefPops, totalToDeduct) {
     const popMap = new Map(fiefPops.map(f => [f.h3_index, parseInt(f.population) || 0]));
-    let remaining = totalToDeduct;
 
-    for (const h3_index of orderedH3s) {
-        if (remaining <= 0) break;
-        const pop = popMap.get(h3_index) ?? 0;
-        const available = Math.max(0, pop - MIN_POP);
-        const toDeduct = Math.min(available, remaining);
+    // Surplus disponible por feudo (sin bajar de MIN_POP)
+    const contributors = orderedH3s
+        .map(h3_index => ({ h3_index, surplus: Math.max(0, (popMap.get(h3_index) ?? 0) - MIN_POP) }))
+        .filter(f => f.surplus > 0);
+
+    const totalPool = contributors.reduce((s, f) => s + f.surplus, 0);
+    if (totalPool === 0 || totalToDeduct === 0) return;
+
+    // Reparto proporcional: cada feudo contribuye según su fracción del pool total.
+    // El último feudo absorbe el residuo de redondeo para no perder población.
+    let deducted = 0;
+    for (let i = 0; i < contributors.length; i++) {
+        const f = contributors[i];
+        const isLast = i === contributors.length - 1;
+        const share = isLast
+            ? totalToDeduct - deducted
+            : Math.floor(totalToDeduct * (f.surplus / totalPool));
+        const toDeduct = Math.min(share, f.surplus);
         if (toDeduct > 0) {
             await client.query(
                 'UPDATE territory_details SET population = population - $1 WHERE h3_index = $2',
-                [toDeduct, h3_index]
+                [toDeduct, f.h3_index]
             );
-            remaining -= toDeduct;
+            deducted += toDeduct;
         }
     }
 }
