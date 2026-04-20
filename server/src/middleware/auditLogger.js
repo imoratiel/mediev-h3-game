@@ -57,7 +57,7 @@ async function setAuditEnabled(enabled) {
     await pool.query(
         `INSERT INTO game_config ("group", "key", "value")
          VALUES ('system', 'player_audit_enabled', $1)
-         ON CONFLICT ("group", "key") DO UPDATE SET value = $1`,
+         ON CONFLICT ("key") DO UPDATE SET value = $1`,
         [_enabled ? 'true' : 'false']
     );
 }
@@ -73,30 +73,28 @@ function getAuditStatus() {
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 function auditMiddleware(req, res, next) {
-    if (!_enabled || !WRITE_METHODS.has(req.method) || !req.user) return next();
+    if (!_enabled || !WRITE_METHODS.has(req.method)) return next();
 
     const started = Date.now();
-    const originalJson = res.json.bind(res);
 
-    res.json = function (body) {
-        const ms     = Date.now() - started;
+    // res.on('finish') fires after the full middleware chain (including authenticateToken)
+    // so req.user is populated by the time this callback runs.
+    res.on('finish', () => {
+        if (!req.user) return; // ruta pública sin auth, ignorar
         const status = res.statusCode;
-        if (status < 500) {
-            const entry = {
-                ts:       new Date().toISOString(),
-                pid:      req.user.player_id,
-                un:       req.user.username || '',
-                ip:       req.ip || req.headers['x-forwarded-for'] || '',
-                action:   resolveAction(req.path),
-                endpoint: `${req.method} ${req.path}`,
-                status,
-                ms,
-                meta:     buildMeta(req),
-            };
-            logAudit(entry);
-        }
-        return originalJson(body);
-    };
+        if (status >= 500) return; // errores de servidor, no auditar
+        logAudit({
+            ts:       new Date().toISOString(),
+            pid:      req.user.player_id,
+            un:       req.user.username || '',
+            ip:       req.ip || req.headers['x-forwarded-for'] || '',
+            action:   resolveAction(req.path),
+            endpoint: `${req.method} ${req.path}`,
+            status,
+            ms:       Date.now() - started,
+            meta:     buildMeta(req),
+        });
+    });
 
     next();
 }
