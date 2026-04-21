@@ -531,6 +531,11 @@ export async function transferArmy(fromArmyId, toArmyId, troops, provisions) {
   return response.data;
 }
 
+export async function supplyArmy(armyId, food_delta, gold_delta) {
+  const res = await axios.post(`${API_URL}/api/military/supply`, { army_id: armyId, food_delta, gold_delta });
+  return res.data;
+}
+
 export async function scoutArmy(armyId, targetArmyId) {
   const response = await axios.post(`${API_URL}/api/military/scout`, {
     attacker_army_id: armyId,

@@ -128,6 +128,7 @@ module.exports = function () {
     router.post('/military/scout', authenticateToken, (req, res) => ScoutingService.scoutArmy(req, res));
     router.post('/military/dismiss', authenticateToken, (req, res) => ArmyService.DismissTroops(req, res));
     router.post('/military/reinforce', authenticateToken, (req, res) => ArmyService.ReinforceArmy(req, res));
+    router.post('/military/supply',   authenticateToken, (req, res) => ArmyService.Supply(req, res));
 
     // ============================================
     // NAVAL

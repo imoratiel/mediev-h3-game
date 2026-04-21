@@ -159,6 +159,7 @@ class ArmyService {
             detail.army.wood_provisions  = parseFloat(detail.army.wood_provisions)  || 0;
             detail.army.fief_population  = parseInt(detail.army.fief_population)    || 0;
             detail.army.fief_grace_turns = parseInt(detail.army.fief_grace_turns)   || 0;
+            detail.army.fief_food        = parseInt(detail.army.fief_food)          || 0;
             detail.army.fief_wood        = parseInt(detail.army.fief_wood)          || 0;
             detail.army.fief_stone       = parseInt(detail.army.fief_stone)         || 0;
             detail.army.fief_iron        = parseInt(detail.army.fief_iron)          || 0;
@@ -1129,6 +1130,148 @@ class ArmyService {
             await client.query('ROLLBACK');
             Logger.error(error, { endpoint: '/military/reinforce', method: 'POST', userId: req.user?.player_id, payload: req.body });
             return res.status(500).json({ success: false, message: 'Error al reforzar el ejército' });
+        } finally {
+            client.release();
+        }
+    }
+
+    async Supply(req, res) {
+        const playerId = req.user.player_id;
+        const { army_id, food_delta = 0, gold_delta = 0 } = req.body;
+
+        if (!army_id) return res.status(400).json({ success: false, message: 'army_id requerido' });
+        const foodDelta = Math.floor(Number(food_delta) || 0);
+        const goldDelta = Math.floor(Number(gold_delta) || 0);
+        if (foodDelta === 0 && goldDelta === 0) return res.status(400).json({ success: false, message: 'Indica al menos una cantidad' });
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // Lock army row and verify ownership
+            const armyRes = await client.query(
+                'SELECT army_id, player_id, h3_index, food_provisions, gold_provisions FROM armies WHERE army_id = $1 FOR UPDATE',
+                [army_id]
+            );
+            if (!armyRes.rows[0]) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, message: 'Ejército no encontrado' });
+            }
+            const army = armyRes.rows[0];
+            if (army.player_id !== playerId) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'No es tu ejército' });
+            }
+
+            // Verify army is on a hex owned by the player
+            const hexRes = await client.query(
+                'SELECT player_id FROM h3_map WHERE h3_index = $1',
+                [army.h3_index]
+            );
+            if (!hexRes.rows[0] || hexRes.rows[0].player_id !== playerId) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'El ejército debe estar en un feudo de tu propiedad para abastecerse' });
+            }
+
+            // Food validation — takes from / returns to comarca (all player fiefs in the same division)
+            if (foodDelta !== 0) {
+                const armyFood = parseInt(army.food_provisions) || 0;
+
+                // Get division of the army's hex
+                const divRes = await client.query(
+                    'SELECT division_id FROM territory_details WHERE h3_index = $1',
+                    [army.h3_index]
+                );
+                const divisionId = divRes.rows[0]?.division_id ?? null;
+
+                // Get all player fiefs in the comarca, ordered by food DESC (for greedy deduction)
+                const comarcaRes = await client.query(
+                    `SELECT td.h3_index, td.food_stored FROM territory_details td
+                     JOIN h3_map m ON m.h3_index = td.h3_index
+                     WHERE m.player_id = $1
+                       AND (($2::int IS NULL AND td.h3_index = $3) OR td.division_id = $2)
+                     ORDER BY td.food_stored DESC
+                     FOR UPDATE`,
+                    [playerId, divisionId, army.h3_index]
+                );
+                const comarcaTotal = comarcaRes.rows.reduce((s, r) => s + (parseInt(r.food_stored) || 0), 0);
+
+                if (foodDelta > 0 && comarcaTotal < foodDelta) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: `Comida insuficiente en la comarca (disponible: ${comarcaTotal})` });
+                }
+                if (foodDelta < 0 && armyFood < Math.abs(foodDelta)) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: `El ejército no tiene suficiente comida (tiene: ${armyFood})` });
+                }
+
+                if (foodDelta > 0) {
+                    // Deduct greedily from fiefs with most food first
+                    let remaining = foodDelta;
+                    for (const fief of comarcaRes.rows) {
+                        if (remaining <= 0) break;
+                        const take = Math.min(remaining, parseInt(fief.food_stored) || 0);
+                        if (take <= 0) continue;
+                        await client.query(
+                            'UPDATE territory_details SET food_stored = food_stored - $1 WHERE h3_index = $2',
+                            [take, fief.h3_index]
+                        );
+                        remaining -= take;
+                    }
+                } else {
+                    // Return food to army's current hex
+                    await client.query(
+                        'UPDATE territory_details SET food_stored = food_stored + $1 WHERE h3_index = $2',
+                        [Math.abs(foodDelta), army.h3_index]
+                    );
+                }
+
+                await client.query(
+                    'UPDATE armies SET food_provisions = food_provisions + $1 WHERE army_id = $2',
+                    [foodDelta, army_id]
+                );
+            }
+
+            // Gold validation
+            if (goldDelta !== 0) {
+                const goldRes = await client.query(
+                    'SELECT gold FROM players WHERE player_id = $1 FOR UPDATE',
+                    [playerId]
+                );
+                const playerGold = parseInt(goldRes.rows[0]?.gold) || 0;
+                const armyGold = parseInt(army.gold_provisions) || 0;
+
+                if (goldDelta > 0 && playerGold < goldDelta) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: `Oro insuficiente en el tesoro (disponible: ${playerGold})` });
+                }
+                if (goldDelta < 0 && armyGold < Math.abs(goldDelta)) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, message: `El ejército no tiene suficiente oro (tiene: ${armyGold})` });
+                }
+
+                await client.query(
+                    'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
+                    [goldDelta, playerId]
+                );
+                await client.query(
+                    'UPDATE armies SET gold_provisions = gold_provisions + $1 WHERE army_id = $2',
+                    [goldDelta, army_id]
+                );
+            }
+
+            await client.query('COMMIT');
+
+            Logger.action(
+                `[ACTION][Jugador ${playerId}]: Abastecimiento ejército ${army_id} — comida: ${foodDelta > 0 ? '+' : ''}${foodDelta}, oro: ${goldDelta > 0 ? '+' : ''}${goldDelta}`,
+                playerId
+            );
+
+            res.json({ success: true, message: 'Abastecimiento realizado con éxito', food_delta: foodDelta, gold_delta: goldDelta });
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(error, { endpoint: 'POST /api/military/supply', userId: playerId });
+            res.status(500).json({ success: false, message: 'Error al abastecer el ejército' });
         } finally {
             client.release();
         }
