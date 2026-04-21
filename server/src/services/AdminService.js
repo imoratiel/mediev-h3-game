@@ -259,6 +259,107 @@ class AdminService {
             res.status(500).json({ success: false, message: 'Error al actualizar configuración de juego' });
         }
     }
+
+    // ── Player Audit ──────────────────────────────────────────────────────────
+
+    async GetPlayerAuditStatus(req, res) {
+        const { getAuditStatus } = require('../middleware/auditLogger');
+        res.json({ success: true, ...getAuditStatus() });
+    }
+
+    async EnablePlayerAudit(req, res) {
+        const { setAuditEnabled } = require('../middleware/auditLogger');
+        await setAuditEnabled(true);
+        Logger.action('Auditoría de jugadores ACTIVADA', req.user.player_id);
+        res.json({ success: true, message: 'Auditoría activada' });
+    }
+
+    async DisablePlayerAudit(req, res) {
+        const { setAuditEnabled } = require('../middleware/auditLogger');
+        await setAuditEnabled(false);
+        Logger.action('Auditoría de jugadores DESACTIVADA', req.user.player_id);
+        res.json({ success: true, message: 'Auditoría desactivada' });
+    }
+
+    async GetSuspiciousAlerts(req, res) {
+        try {
+            const reviewed = req.query.reviewed === 'true';
+            const limit    = Math.min(100, parseInt(req.query.limit) || 50);
+            const clause   = reviewed ? '' : 'AND reviewed_at IS NULL';
+            const result   = await pool.query(
+                `SELECT se.id, se.player_id, se.username, se.rule, se.severity,
+                        se.details, se.created_at, se.reviewed_at,
+                        p.display_name AS display_name
+                 FROM suspicious_events se
+                 LEFT JOIN players p ON p.player_id = se.player_id
+                 WHERE true ${clause}
+                 ORDER BY se.created_at DESC
+                 LIMIT $1`,
+                [limit]
+            );
+            res.json({ success: true, alerts: result.rows });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/player-audit/alerts', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener alertas' });
+        }
+    }
+
+    async ReviewAlert(req, res) {
+        const alertId = parseInt(req.params.id);
+        if (!alertId) return res.status(400).json({ success: false, message: 'ID inválido' });
+        try {
+            await pool.query(
+                `UPDATE suspicious_events SET reviewed_by = $1, reviewed_at = NOW() WHERE id = $2`,
+                [req.user.player_id, alertId]
+            );
+            res.json({ success: true, message: 'Alerta marcada como revisada' });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/player-audit/alerts/:id/review', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al actualizar alerta' });
+        }
+    }
+
+    async GetAuditStats(req, res) {
+        const fs = require('fs');
+        const { AUDIT_LOG_FILE } = require('../utils/logger');
+        try {
+            const minutes  = Math.min(60, parseInt(req.query.minutes) || 10);
+            const pid      = req.query.pid ? parseInt(req.query.pid) : null;
+            const cutoff   = Date.now() - minutes * 60_000;
+            const entries  = [];
+
+            if (fs.existsSync(AUDIT_LOG_FILE)) {
+                const lines = fs.readFileSync(AUDIT_LOG_FILE, 'utf8').split('\n');
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const e = JSON.parse(line);
+                        if (new Date(e.ts).getTime() < cutoff) continue;
+                        if (pid && e.pid !== pid) continue;
+                        entries.push(e);
+                    } catch { /* skip */ }
+                }
+            }
+
+            // Aggregate: actions per player per minute
+            const byPlayer = {};
+            for (const e of entries) {
+                const key = e.pid || 'anon';
+                if (!byPlayer[key]) byPlayer[key] = { pid: e.pid, un: e.un, total: 0, by_action: {} };
+                byPlayer[key].total++;
+                byPlayer[key].by_action[e.action] = (byPlayer[key].by_action[e.action] || 0) + 1;
+            }
+
+            const top = Object.values(byPlayer)
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 20);
+
+            res.json({ success: true, window_minutes: minutes, total_entries: entries.length, top_players: top });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/admin/player-audit/stats', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al generar estadísticas' });
+        }
+    }
 }
 
 module.exports = new AdminService();

@@ -1,0 +1,34 @@
+meta {
+  name: RL-08 Conquer - Boundary 4to intento (pasa, no 429)
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{base_url}}/api/military/conquer
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "h3_index": "8928308280fffff"
+  }
+}
+
+tests {
+  test("el 4to intento conquer NO devuelve 429", function() {
+    expect(res.getStatus()).to.not.equal(429);
+  });
+  test("respuesta es logica de juego, no rate limit", function() {
+    const status = res.getStatus();
+    // 400/403/404 = logica de negocio rechaza el intento invalido
+    // 200 = exito (improbable con army_id 99999)
+    expect([200, 400, 401, 403, 404]).to.include(status);
+  });
+}

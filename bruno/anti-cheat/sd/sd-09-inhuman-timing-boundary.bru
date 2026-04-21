@@ -1,0 +1,33 @@
+meta {
+  name: SD-09 INHUMAN_TIMING - Boundary 150ms exactos (sin alerta)
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:post-response {
+  bru.setVar("sd09_ts1", Date.now());
+  console.log("SD-09 ts1:", bru.getVar("sd09_ts1"), "— esperar ~150ms antes del segundo request");
+}
+
+tests {
+  test("primer request de boundary pair enviado", function() {
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}

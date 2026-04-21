@@ -12,7 +12,7 @@
           <div class="bsm-header">
             <div class="bsm-crest">{{ resultCrest }}</div>
             <h1 class="bsm-title" :class="`bsm-title-${battle.result}`">{{ resultLabel }}</h1>
-            <p class="bsm-fief">{{ battle.fief_name }}</p>
+            <p class="bsm-fief">{{ fiefLabel }}</p>
           </div>
 
           <!-- Bloque atacante -->
@@ -100,12 +100,23 @@
 
 <script setup>
 import { computed, watch, onUnmounted } from 'vue';
+import * as h3 from 'h3-js';
 
 const props = defineProps({
   show:   { type: Boolean, default: false },
   battle: { type: Object,  default: () => ({}) }
 });
 const emit = defineEmits(['close']);
+
+const H3_RE = /^[0-9a-fA-F]{15,16}$/;
+const fiefLabel = computed(() => {
+  const name = props.battle?.fief_name;
+  if (!name || !H3_RE.test(name)) return name;
+  const [lat, lng] = h3.cellToLatLng(name);
+  const fmtLat = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'}`;
+  const fmtLng = `${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'O'}`;
+  return `${fmtLat}, ${fmtLng}`;
+});
 
 const resultLabel = computed(() => ({
   victory: 'VICTORIA',

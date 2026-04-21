@@ -1,0 +1,35 @@
+meta {
+  name: SD-04 HIGH_4XX_RATE - 15 requests a endpoint invalido (sin alerta)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:post-response {
+  const count = (bru.getVar("sd04_count") || 0) + 1;
+  bru.setVar("sd04_count", count);
+  console.log("SD-04 4xx request #" + count + " | Status:", res.getStatus());
+}
+
+tests {
+  test("request devuelve 4xx (contabilizable para HIGH_4XX_RATE)", function() {
+    const status = res.getStatus();
+    expect(status).to.be.within(400, 499);
+  });
+}

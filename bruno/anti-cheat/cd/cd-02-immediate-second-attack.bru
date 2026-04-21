@@ -1,0 +1,40 @@
+meta {
+  name: CD-02 Cooldown - Segundo ataque inmediato (COOLDOWN_ACTIVE)
+  type: http
+  seq: 2
+}
+
+
+post {
+  url: {{base_url}}/api/military/attack
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "armyId": {{test_army_id}}
+  }
+}
+
+tests {
+  test("segundo ataque inmediato devuelve 400", function() {
+    expect(res.getStatus()).to.equal(400);
+  });
+  test("code es COOLDOWN_ACTIVE", function() {
+    expect(res.getBody().code).to.equal("COOLDOWN_ACTIVE");
+  });
+  test("success es false", function() {
+    expect(res.getBody().success).to.equal(false);
+  });
+  test("mensaje de cooldown en espanol", function() {
+    const msg = res.getBody().message || "";
+    expect(msg.toLowerCase()).to.satisfy(function(m) {
+      return m.includes("enfriamiento") || m.includes("cooldown") || m.includes("esperar");
+    });
+  });
+}

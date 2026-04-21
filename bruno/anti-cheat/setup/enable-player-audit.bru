@@ -1,0 +1,25 @@
+meta {
+  name: Setup - Activar Player Audit
+  type: http
+  seq: 3
+}
+
+# IMPORTANTE: ejecutar con sesion de admin activa (despues de login-admin.bru).
+# Activa el auditMiddleware que escribe en audit.log.
+# Sin esto, SuspicionDetector no tiene datos que analizar.
+
+post {
+  url: {{base_url}}/api/admin/player-audit/enable
+  body: none
+  auth: none
+}
+
+tests {
+  test("audit activado", function() {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().success).to.equal(true);
+  });
+  test("mensaje de confirmacion", function() {
+    expect(res.getBody().message).to.be.a("string");
+  });
+}

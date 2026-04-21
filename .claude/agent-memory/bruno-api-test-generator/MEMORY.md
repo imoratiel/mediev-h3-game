@@ -22,52 +22,68 @@
 - Everything else requires `authenticateToken`
 
 ## /api/map/region Endpoint (confirmed)
-- Method: GET
-- Auth: none (public)
+- Method: GET, Auth: none (public)
 - Query params: `minLat`, `maxLat`, `minLng`, `maxLng` (all required), `res` (optional, default 8)
-- Response: JSON array of hexagon objects (NOT wrapped in `{ success, data }`)
-- Response shape per item:
-  ```
-  h3_index: string
-  terrain_type_id: number
-  terrain_color: string (fallback '#9e9e9e', never null)
-  has_road: boolean (fallback false)
-  is_capital: boolean (fallback false)
-  player_id: number | null
-  player_color: string | null
-  building_type_id: number (fallback 0, never null)
-  icon_slug: string | null
-  location_name: string | null
-  settlement_type: string | null
-  coord_x: number
-  coord_y: number
-  ```
-- Error 400 cases:
-  - Any of the 4 required params missing: `{ error: "Missing bounding box parameters" }`
-  - Any param is non-numeric (NaN after parseFloat): `{ error: "Invalid bounding box parameters" }`
-- Empty bounding box / no DB rows: returns `[]` with status 200
-- Data source: `v_map_display` view (materialized view with player JOIN for is_capital)
+- Response: JSON array (NOT wrapped in `{ success, data }`)
+- Error 400: missing params `{ error: "Missing bounding box parameters" }`, non-numeric `{ error: "Invalid bounding box parameters" }`
 
 ## Response Format Inconsistency
 - Map endpoints return raw arrays or objects (NOT `{ success: true, data: ... }`)
 - Game/military/auth endpoints use `{ success: true/false, data/error: ... }` pattern
-- Always check individual endpoint code before assuming wrapper format
 
-## Bruno Syntax Notes
-- `res.body: isArray` works for array assertions
-- Script assertions via `script:post-response` for complex structural checks
-- `bru.setVar()` for session-scope variables, `bru.setEnvVar()` for persistent env vars
-- `auth: none` for public endpoints; `auth: inherit` follows folder-level auth config
-- Folder-level auth set in `folder.bru` with `auth { mode: inherit }`
+## Bruno Syntax — Critical Notes
+- `tests {}` blocks use Chai: `expect(res.getStatus()).to.equal(200)` NOT `res.status: eq 200`
+- `res.getStatus()`, `res.getBody()`, `res.getHeader("X-Header")` in scripts/tests
+- `script:pre-request {}` supports `await` — use for sleep: `await new Promise(r => setTimeout(r, ms))`
+- `settings { timeout: 40000 }` required for requests with pre-request sleep > default timeout
+- `bru.setVar()` session scope, `bru.setEnvVar()` persistent env scope
+- `auth: none` for public endpoints; cookies shared automatically in Bruno session
 
-## Environment Variables Used
-- `base_url`: http://localhost:3000
-- `jwt_token`: JWT token string (set by login test)
-- `username` / `password`: test credentials
-- `region_minLat/maxLat/minLng/maxLng`: bounding box for map tests (set to Madrid area ~40.4-40.5, -3.8--3.7)
+## Rate Limiter (rateLimiter.js) — confirmed limits
+- AUTH: max 5 / 60s by IP → POST /api/auth/login → 429: `{ success: false, message: "Demasiados intentos..." }`
+- WRITE_MILITARY: max 8 / 60s by player_id → move-army, attack, attack-army, recruit, merge
+- WRITE_CONQUER: max 4 / 60s by player_id → conquer, conquer-fief, claim
+- byPlayer: 429 message: `"Demasiadas peticiones. Espera un momento antes de continuar."`
+- byPlayer skips if no req.user (unauthenticated) — returns next(), not 429
+- Boundary: `hits.length <= max` → hit N = max IS allowed; hit N+1 is blocked
 
-## Test File Conventions
-- Files in `bruno/map/` for map endpoints, `bruno/auth/` for auth, etc.
-- Each folder needs `folder.bru` with `meta { name, seq }`
-- `seq` controls execution order within a folder
-- Use descriptive names: "Map Region - Error Sin Parametros"
+## Attack Cooldown (CombatService.js) — confirmed
+- Table: `army_actions_cooldowns` with `turns_remaining`
+- Cooldown applied ONLY after successful combat
+- 400 response: `{ success: false, code: "COOLDOWN_ACTIVE", message: "...enfriamiento..." }`
+- Cooldown is PER ARMY (army_id), not per player — other armies unaffected
+
+## SuspicionDetector.js — confirmed rules
+- Runs every 30s. Reads `audit.log` JSONL (fields: ts, pid, un, ip, action, endpoint, status, ms, meta)
+- FAST_ACTIONS: pid count > 6 WRITE in 30s → severity: high
+- HIGH_4XX_RATE: pid count > 15 status 4xx in 60s → severity: medium
+- REPEATED_PAYLOAD: same pid:action:meta.h3 >= 3 times in 10s → severity: high (meta.h3 must be present)
+- INHUMAN_TIMING: gap < 150ms between consecutive WRITEs from same pid → severity: high
+- LOGIN_BRUTE_WIN: >= 4 status 401 then 200 from same IP in /auth/login → severity: high
+- Dedup: no new alert if same (player_id, rule) unreviewed in last 10 min
+- CAVEAT: auditMiddleware skips if !req.user → public login requests NOT in audit.log
+
+## auditMiddleware — confirmed behavior
+- Activated via POST /admin/player-audit/enable (requireAdmin)
+- Only logs POST/PUT/PATCH/DELETE, only if req.user exists, skips 5xx
+- meta.h3 from body.h3_index or req.params.h3_index
+
+## Admin Player Audit Endpoints
+- `POST /api/admin/player-audit/enable` → `{ success: true, message: "Auditoría activada" }`
+- `GET /api/admin/player-audit/alerts?reviewed=false&limit=50` → `{ success: true, alerts: [...] }`
+  - Alert fields: id, player_id, username, rule, severity, details (JSON string or object), created_at, reviewed_at
+- Both require admin JWT (requireAdmin)
+
+## SD Test Design Pattern
+- Pattern: enable audit → actions → sleep 35s → check alerts
+- Sleep: dedicated .bru file with `script:pre-request { await new Promise(r => setTimeout(r, 35000)); }` + `settings { timeout: 40000 }`
+- Negative checks: sd-check-no-alert.bru with `bru.setVar("sd_check_rule", "RULE_NAME")` before running
+- INHUMAN_TIMING is unreliable via Bruno on non-localhost (network latency often > 150ms)
+- details field in alerts may be JSON string — always parse: `typeof d === "string" ? JSON.parse(d) : d`
+
+## Environment Variables (dev.bru)
+- `base_url`, `username`, `password`, `jwt_token`, `region_*` (existing)
+- `admin_username` / `admin_password`: admin credentials (new)
+- `test_army_id` / `test_army_id_2`: army IDs for CD tests
+- `sd_repeated_h3` / `sd_boundary_h3`: h3 indices for SD payload tests
+- `sd_check_rule`: rule name for sd-check-no-alert.bru

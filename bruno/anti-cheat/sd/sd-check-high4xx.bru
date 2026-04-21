@@ -1,0 +1,54 @@
+meta {
+  name: SD Check - Verificar alerta HIGH_4XX_RATE
+  type: http
+  seq: 21
+}
+
+
+get {
+  url: {{base_url}}/api/admin/player-audit/alerts
+  body: none
+  auth: none
+}
+
+tests {
+  test("endpoint devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("respuesta tiene formato correcto", function() {
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().alerts).to.be.an("array");
+  });
+  test("existe alerta HIGH_4XX_RATE", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "HIGH_4XX_RATE");
+    expect(alert).to.exist;
+  });
+  test("alerta HIGH_4XX_RATE es severity medium", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "HIGH_4XX_RATE");
+    if (alert) {
+      expect(alert.severity).to.equal("medium");
+    }
+  });
+  test("alerta HIGH_4XX_RATE tiene details con count > 15", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "HIGH_4XX_RATE");
+    if (alert && alert.details) {
+      const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+      expect(details.count).to.be.above(15);
+      expect(details.window_s).to.equal(60);
+    }
+  });
+}
+
+script:post-response {
+  const alerts = res.getBody().alerts || [];
+  const alert = alerts.find(a => a.rule === "HIGH_4XX_RATE");
+  if (alert) {
+    const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+    console.log("HIGH_4XX_RATE alerta encontrada:", JSON.stringify({ severity: alert.severity, details }));
+  } else {
+    console.warn("No se encontro HIGH_4XX_RATE — verificar > 15 respuestas 4xx de jugador autenticado en 60s");
+  }
+}

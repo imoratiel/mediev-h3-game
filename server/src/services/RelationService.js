@@ -82,6 +82,7 @@ function _dipMsg(action, typeCode, params) {
 
 const pool = require('../../db.js');
 const { Logger } = require('../utils/logger');
+const cache = require('./CacheService.js');
 const RelationModel = require('../models/RelationModel.js');
 const NotificationService = require('./NotificationService.js');
 const {
@@ -457,10 +458,15 @@ class RelationService {
      * Catálogo público de todos los tipos de relación.
      */
     async getTypes(req, res) {
+        const CACHE_KEY = 'static:relation_types';
+        const cached = cache.get(CACHE_KEY);
+        if (cached) return res.json(cached);
         const client = await pool.connect();
         try {
             const types = await RelationModel.getAllTypes(client);
-            return res.json({ success: true, types });
+            const payload = { success: true, types };
+            cache.set(CACHE_KEY, payload, 0);
+            return res.json(payload);
         } catch (err) {
             Logger.error(err, { endpoint: '/relations/types' });
             return res.status(500).json({ success: false, message: 'Error al obtener tipos de relación.' });

@@ -1,11 +1,13 @@
 const bcrypt = require('bcrypt');
-const { Logger } = require('../utils/logger');
+const { Logger, logAudit } = require('../utils/logger');
 const PlayerModel = require('../models/PlayerModel.js');
 const { generateToken } = require('../middleware/auth');
 const displayNameValidator = require('../utils/displayNameValidator');
 
 class LoginService {
     async Login(req,res){
+        const _loginStart = Date.now();
+        const _loginIp = req.ip || req.headers['x-forwarded-for'] || '';
         try {
             const { username, password } = req.body;
 
@@ -25,6 +27,7 @@ class LoginService {
                     method: 'POST',
                     username
                 });
+                logAudit({ ts: new Date().toISOString(), pid: 0, un: username, ip: _loginIp, action: 'LOGIN_FAIL', endpoint: 'POST /api/auth/login', status: 401, ms: Date.now() - _loginStart, meta: {} });
                 return res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
             }
 
@@ -38,6 +41,7 @@ class LoginService {
                     userId: user.player_id,
                     username: user.username
                 });
+                logAudit({ ts: new Date().toISOString(), pid: user.player_id, un: user.username, ip: _loginIp, action: 'LOGIN_FAIL', endpoint: 'POST /api/auth/login', status: 401, ms: Date.now() - _loginStart, meta: {} });
                 return res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
             }
 
@@ -63,6 +67,7 @@ class LoginService {
             // Log successful login
             Logger.action(`JWT generado y enviado para usuario ${username} (${user.role})`, user.player_id);
             console.log(`✓ User logged in: ${user.username} (${user.role}) - JWT issued`);
+            logAudit({ ts: new Date().toISOString(), pid: user.player_id, un: user.username, ip: _loginIp, action: 'LOGIN_OK', endpoint: 'POST /api/auth/login', status: 200, ms: Date.now() - _loginStart, meta: {} });
 
             res.json({
                 success: true,

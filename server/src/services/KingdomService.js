@@ -13,6 +13,7 @@ const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = requir
 const DivisionModel = require('../models/DivisionModel.js');
 const pool = require('../../db.js');
 const h3 = require('h3-js');
+const cache = require('./CacheService.js');
 const { executeConstruction, canPerformAction, applyCooldown, processConquestLoot, GameActionError } = require('./gameActions.js');
 
 /**
@@ -488,6 +489,7 @@ class KingdomService {
             logGameEvent(`[COLONIZACIÓN] Jugador ${player_id} colonizó ${h3_index}${isFirstTerritory || isExiled ? ` (capital) + ${bonusHexes.length} adyacentes` : ''}`);
 
             const updatedGold = playerRow.gold - CLAIM_COST;
+            cache.invalidatePrefix(`economy:${player_id}`);
             res.json({
                 success: true,
                 new_gold_balance: updatedGold,
@@ -729,6 +731,7 @@ class KingdomService {
 
             await client.query('COMMIT');
 
+            cache.invalidatePrefix(`economy:${player_id}`);
             Logger.action(`Player ${player_id} conquered ${h3_index} (prev owner: ${currentOwner}, result: ${result})`, { player_id, h3_index, previous_owner: currentOwner, result, cascaded: cascadedFiefs.length });
             logGameEvent(`[CONQUISTA] Jugador ${player_id} conquistó ${h3_index} (dueño anterior: ${currentOwner}) — ${isCapital ? `¡CAPITAL! Cascada: ${cascadedFiefs.length} territorios` : 'territorio normal'}`);
 
@@ -1001,6 +1004,7 @@ class KingdomService {
 
             await client.query('COMMIT');
 
+            cache.invalidatePrefix(`economy:${player_id}`);
             Logger.action(`Player ${player_id} conquerFief ${h3_index} → ${result}${isCapital ? ` [CAPITAL, cascade: ${cascadedFiefs.length}]` : ''}`, { player_id, h3_index, result, attacker_losses, defender_losses });
             logGameEvent(`[CONQUISTA-FEUDO] Jugador ${player_id} atacó ${h3_index}: ${result}${isCapital ? ` — ¡CAPITAL! Cascada: ${cascadedFiefs.length} feudos` : ''}`);
 
@@ -1095,6 +1099,7 @@ class KingdomService {
         const forceCultureId = req.query?.culture_id ? parseInt(req.query.culture_id, 10) : null;
         const randomBonus    = req.query?.random_bonus === 'true';
         const linaje         = (req.query?.linaje ?? '').trim().replace(/\p{L}+/gu, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+        const gender         = req.query?.gender === 'F' ? 'F' : 'M';
 
         // Validate linaje
         if (!linaje || linaje.length < 3 || linaje.length > 30) {
@@ -1107,9 +1112,9 @@ class KingdomService {
             return res.status(400).json({ success: false, message: 'Ese nombre no está permitido.' });
         }
 
-        Logger.action(`[Init] player=${player_id} culture_id=${forceCultureId} random_bonus=${randomBonus} linaje=${linaje}`, player_id);
+        Logger.action(`[Init] player=${player_id} culture_id=${forceCultureId} random_bonus=${randomBonus} linaje=${linaje} gender=${gender}`, player_id);
         try {
-            const result = await initializePlayer(player_id, { forceCultureId, randomBonus, linaje });
+            const result = await initializePlayer(player_id, { forceCultureId, randomBonus, linaje, gender });
             if (result.alreadyInitialized) {
                 return res.status(409).json({ success: false, message: 'El jugador ya ha sido inicializado' });
             }

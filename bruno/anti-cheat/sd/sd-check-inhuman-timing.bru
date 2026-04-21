@@ -1,0 +1,55 @@
+meta {
+  name: SD Check - Verificar alerta INHUMAN_TIMING
+  type: http
+  seq: 23
+}
+
+
+get {
+  url: {{base_url}}/api/admin/player-audit/alerts
+  body: none
+  auth: none
+}
+
+tests {
+  test("endpoint devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("respuesta tiene formato correcto", function() {
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().alerts).to.be.an("array");
+  });
+  test("existe alerta INHUMAN_TIMING", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "INHUMAN_TIMING");
+    expect(alert).to.exist;
+  });
+  test("alerta INHUMAN_TIMING es severity high", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "INHUMAN_TIMING");
+    if (alert) {
+      expect(alert.severity).to.equal("high");
+    }
+  });
+  test("alerta INHUMAN_TIMING tiene gap_ms < 150", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "INHUMAN_TIMING");
+    if (alert && alert.details) {
+      const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+      expect(details.gap_ms).to.be.below(150);
+      expect(details.ts_a).to.be.a("string");
+      expect(details.ts_b).to.be.a("string");
+    }
+  });
+}
+
+script:post-response {
+  const alerts = res.getBody().alerts || [];
+  const alert = alerts.find(a => a.rule === "INHUMAN_TIMING");
+  if (alert) {
+    const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+    console.log("INHUMAN_TIMING alerta:", JSON.stringify({ severity: alert.severity, gap_ms: details.gap_ms }));
+  } else {
+    console.warn("No se encontro INHUMAN_TIMING — el gap entre requests puede ser >= 150ms en este entorno");
+  }
+}

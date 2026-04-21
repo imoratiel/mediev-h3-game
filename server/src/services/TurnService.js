@@ -1,4 +1,5 @@
 const { Logger } = require('../utils/logger');
+const cache = require('./CacheService.js');
 const WorldStateModel = require('../models/TurnModel.js');
 const AdminModel = require('../models/AdminModel.js');
 const pool = require('../../db.js');
@@ -19,15 +20,21 @@ class TurnService {
     // PUBLIC (non-admin)
     // ─────────────────────────────────────────────────────────────────────
     async GetWorldState(req, res) {
+        const CACHE_KEY = 'world_state';
+        const cached = cache.get(CACHE_KEY);
+        if (cached) return res.json(cached);
         try {
             const state = await WorldStateModel.GetWorldState();
-            res.json({
+            const payload = {
                 success: true,
                 turn: state.current_turn,
                 date: { day: state.day, month: state.month, year: state.year, era: state.era },
                 is_paused: state.is_paused,
                 is_processing: state.is_processing ?? false,
-            });
+            };
+            // No cachear si el turno está procesando (estado muy transitorio)
+            if (!payload.is_processing) cache.set(CACHE_KEY, payload, 3_000);
+            res.json(payload);
         } catch (error) {
             Logger.error(error, { endpoint: '/game/world-state', method: 'GET', userId: req.user?.player_id });
             res.status(500).json({ success: false, error: error.message });

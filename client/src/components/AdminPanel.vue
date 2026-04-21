@@ -208,6 +208,92 @@
           </p>
         </section>
 
+        <!-- ── PLAYER AUDIT ──────────────────────────────────────────────── -->
+        <section class="admin-section">
+          <h3 class="section-title">
+            🔍 Auditoría de Jugadores
+            <span class="ai-count-badge" :class="playerAuditEnabled ? 'badge-green' : 'badge-grey'">
+              {{ playerAuditEnabled ? 'activa' : 'inactiva' }}
+            </span>
+            <span v-if="pendingAlerts > 0" class="alert-badge-red">{{ pendingAlerts }} alerta{{ pendingAlerts !== 1 ? 's' : '' }}</span>
+          </h3>
+
+          <!-- Toggle + stats -->
+          <div class="audit-control-row">
+            <button
+              class="ai-toggle-btn"
+              :class="playerAuditEnabled ? 'toggle-on' : 'toggle-off'"
+              :disabled="auditTogglingPlayer"
+              @click="handleTogglePlayerAudit"
+            >
+              <span class="toggle-dot"></span>
+              <span class="toggle-label">{{ playerAuditEnabled ? 'Auditoría On' : 'Auditoría Off' }}</span>
+            </button>
+            <span class="kafka-meta">audit.log: {{ playerAuditSizeKb }} KB</span>
+          </div>
+
+          <!-- Stats rápidas -->
+          <div class="audit-stats-row" style="margin-top:8px">
+            <select v-model.number="auditStatsMins" class="ai-spawn-select" style="width:100px">
+              <option :value="5">5 min</option>
+              <option :value="10">10 min</option>
+              <option :value="30">30 min</option>
+              <option :value="60">60 min</option>
+            </select>
+            <button class="ctrl-btn btn-force" @click="fetchAuditStats">📊 Ver stats</button>
+          </div>
+
+          <div v-if="playerAuditStats" class="audit-stats-block">
+            <span class="kafka-meta">{{ playerAuditStats.total_entries }} acciones en los últimos {{ playerAuditStats.window_minutes }} min</span>
+            <table v-if="playerAuditStats.top_players.length" class="ai-table" style="margin-top:6px">
+              <thead><tr>
+                <th class="ai-th">Jugador</th>
+                <th class="ai-th ai-th-num">Acciones</th>
+                <th class="ai-th">Detalle</th>
+              </tr></thead>
+              <tbody>
+                <tr v-for="p in playerAuditStats.top_players" :key="p.pid">
+                  <td class="ai-td">{{ p.un || p.pid }}</td>
+                  <td class="ai-td ai-td-num">{{ p.total }}</td>
+                  <td class="ai-td" style="font-size:11px;color:#94a3b8">
+                    {{ Object.entries(p.by_action).map(([k,v]) => `${k}×${v}`).join(' · ') }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Alertas de seguridad -->
+          <div style="margin-top:10px">
+            <div class="force-hint" style="margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">
+              <span>Alertas sin revisar</span>
+              <button class="ctrl-btn btn-force" style="padding:2px 8px;font-size:11px" @click="fetchAlerts">↻</button>
+            </div>
+            <div v-if="playerAuditAlerts.filter(a=>!a.reviewed_at).length === 0" class="ai-empty">
+              Sin alertas pendientes
+            </div>
+            <div v-else class="alert-list">
+              <div
+                v-for="alert in playerAuditAlerts.filter(a=>!a.reviewed_at)"
+                :key="alert.id"
+                class="alert-row"
+                :style="{ borderLeftColor: severityColor(alert.severity) }"
+              >
+                <div class="alert-header">
+                  <span class="alert-severity" :style="{ color: severityColor(alert.severity) }">
+                    {{ alert.severity.toUpperCase() }}
+                  </span>
+                  <span class="alert-rule">{{ ruleLabel(alert.rule) }}</span>
+                  <span class="alert-player">{{ alert.display_name || alert.username || `pid:${alert.player_id}` }}</span>
+                  <span class="alert-time">{{ new Date(alert.created_at).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}) }}</span>
+                </div>
+                <div class="alert-detail">{{ JSON.stringify(alert.details) }}</div>
+                <button class="alert-review-btn" @click="handleReviewAlert(alert)">✓ Revisar</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- ── AI AGENTS ──────────────────────────────────────────────────── -->
         <section class="admin-section">
           <h3 class="section-title">
@@ -464,6 +550,8 @@ import {
   getAISettings, updateAISetting, getAIUsageStats, resetAIUsageStats, testAIConnection,
   deleteAIAgent, resetGame,
   getAuditStatus, testKafkaEvent,
+  getPlayerAuditStatus, enablePlayerAudit, disablePlayerAudit,
+  getSuspiciousAlerts, reviewAlert, getAuditStats,
   createAdminPagus,
 } from '../services/mapApi.js';
 
@@ -877,18 +965,99 @@ const handleResetGame = async () => {
   }
 };
 
-// ── Lifecycle ───────────────────────────────────────────────────────────────
+// ── Player Audit ─────────────────────────────────────────────────────────────
+const playerAuditEnabled  = ref(false);
+const playerAuditSizeKb   = ref(0);
+const playerAuditAlerts   = ref([]);
+const playerAuditStats    = ref(null);
+const auditTogglingPlayer = ref(false);
+const auditStatsMins      = ref(10);
+
+const pendingAlerts = computed(() => playerAuditAlerts.value.filter(a => !a.reviewed_at).length);
+
+const SEVERITY_COLORS = { high: '#f87171', medium: '#fb923c', low: '#facc15' };
+const severityColor = (s) => SEVERITY_COLORS[s] || '#94a3b8';
+
+const RULE_LABELS = {
+  FAST_ACTIONS:     'Acciones rápidas',
+  HIGH_4XX_RATE:    'Alta tasa de errores',
+  REPEATED_PAYLOAD: 'Payload repetido',
+  INHUMAN_TIMING:   'Timing inhumano',
+  LOGIN_BRUTE_WIN:  'Fuerza bruta login',
+};
+const ruleLabel = (r) => RULE_LABELS[r] || r;
+
+const fetchPlayerAuditStatus = async () => {
+  try {
+    const data = await getPlayerAuditStatus();
+    if (data.success) {
+      playerAuditEnabled.value = data.enabled;
+      playerAuditSizeKb.value  = data.log_size_kb;
+    }
+  } catch { /* silencioso */ }
+};
+
+const fetchAlerts = async () => {
+  try {
+    const data = await getSuspiciousAlerts(false);
+    if (data.success) playerAuditAlerts.value = data.alerts;
+  } catch { /* silencioso */ }
+};
+
+const fetchAuditStats = async () => {
+  try {
+    const data = await getAuditStats(auditStatsMins.value);
+    if (data.success) playerAuditStats.value = data;
+  } catch { /* silencioso */ }
+};
+
+const handleTogglePlayerAudit = async () => {
+  if (auditTogglingPlayer.value) return;
+  auditTogglingPlayer.value = true;
+  try {
+    const fn = playerAuditEnabled.value ? disablePlayerAudit : enablePlayerAudit;
+    const data = await fn();
+    if (data.success) {
+      playerAuditEnabled.value = !playerAuditEnabled.value;
+      showMsg(data.message);
+    } else {
+      showMsg(data.message || 'Error', 'msg-err');
+    }
+  } catch (e) {
+    showMsg(e?.response?.data?.message || e.message, 'msg-err');
+  } finally {
+    auditTogglingPlayer.value = false;
+  }
+};
+
+const handleReviewAlert = async (alert) => {
+  try {
+    const data = await reviewAlert(alert.id);
+    if (data.success) {
+      alert.reviewed_at = new Date().toISOString();
+      showMsg('Alerta marcada como revisada');
+    }
+  } catch (e) {
+    showMsg(e?.response?.data?.message || e.message, 'msg-err');
+  }
+};
+
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(() => {
   fetchStatus();
   fetchAgents();
   fetchAISettings();
   fetchUsageStats();
   fetchAuditStatus();
+  fetchPlayerAuditStatus();
+  fetchAlerts();
   refreshTimer = setInterval(() => {
     fetchStatus();
     fetchAgents();
     fetchUsageStats();
     fetchAuditStatus();
+    fetchPlayerAuditStatus();
+    fetchAlerts();
   }, 10000);
 });
 
@@ -1623,5 +1792,93 @@ onUnmounted(() => {
 }
 .btn-kafka-test:hover:not(:disabled) {
   background: rgba(33, 150, 243, 0.3);
+}
+
+/* ── Player Audit ──────────────────────────────────────────────────── */
+.audit-control-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.audit-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.audit-stats-block {
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 6px;
+}
+.alert-badge-red {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.alert-row {
+  background: rgba(255,255,255,0.04);
+  border-left: 3px solid #f87171;
+  border-radius: 0 6px 6px 0;
+  padding: 8px 10px;
+  position: relative;
+}
+.alert-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.alert-severity {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.alert-rule {
+  font-weight: 600;
+  font-size: 12px;
+  color: #e8d5b5;
+}
+.alert-player {
+  font-size: 12px;
+  color: #c5a059;
+}
+.alert-time {
+  font-size: 11px;
+  color: #64748b;
+  margin-left: auto;
+}
+.alert-detail {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: monospace;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+.alert-review-btn {
+  background: rgba(134, 239, 172, 0.1);
+  border: 1px solid rgba(134, 239, 172, 0.3);
+  color: #86efac;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.alert-review-btn:hover {
+  background: rgba(134, 239, 172, 0.2);
 }
 </style>

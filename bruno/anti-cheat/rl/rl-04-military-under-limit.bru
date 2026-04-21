@@ -1,0 +1,34 @@
+meta {
+  name: RL-04 Military - 8 move-army (todos pasan rate limit)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+tests {
+  test("rate limiter no bloquea (no 429)", function() {
+    expect(res.getStatus()).to.not.equal(429);
+  });
+  test("respuesta es error de negocio o exito, no rate limit", function() {
+    const status = res.getStatus();
+    // 400 = army no encontrado/logica de juego, 200 = exito, 401 = sin auth
+    // Cualquiera de estos es valido — lo importante es que NO sea 429
+    expect([200, 400, 401, 403, 404]).to.include(status);
+  });
+}

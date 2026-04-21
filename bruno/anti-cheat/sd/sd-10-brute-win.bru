@@ -1,0 +1,38 @@
+meta {
+  name: SD-10 LOGIN_BRUTE_WIN - 4 logins fallidos + 1 exitoso (genera alerta)
+  type: http
+  seq: 12
+}
+
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "usuario_brute_win_sd10",
+    "password": "password_incorrecta_XXXXXXX"
+  }
+}
+
+tests {
+  test("login fallido devuelve 401", function() {
+    expect(res.getStatus()).to.equal(401);
+  });
+}
+
+script:post-response {
+  const count = (bru.getVar("sd10_fail_count") || 0) + 1;
+  bru.setVar("sd10_fail_count", count);
+  console.log("SD-10 login fallido #" + count + " | IP registrada en log");
+  if (count >= 4) {
+    console.log("4 logins fallidos — ahora ejecutar sd-10b-brute-win-success.bru");
+  }
+}

@@ -184,7 +184,7 @@ async function bfsExpandTerritory(client, capitalHex, targetCount) {
  * Returns { alreadyInitialized: true } if the player was already initialized,
  * or { success: true, capitalHex, allHexes, senorio } on first-time initialization.
  */
-async function initializePlayer(player_id, { forceCultureId = null, randomBonus = false, linaje = 'Desconocido' } = {}) {
+async function initializePlayer(player_id, { forceCultureId = null, randomBonus = false, linaje = 'Desconocido', gender = 'M' } = {}) {
     const client = await pool.connect();
     let divisionId = null;
     try {
@@ -307,11 +307,10 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
         }
 
         // ── 8. Create starting characters (líder + heredero + niño) ──────────
-        const playerResult = await client.query(
-            'SELECT gender FROM players WHERE player_id = $1',
-            [player_id]
+        await client.query(
+            `UPDATE players SET gender = $1 WHERE player_id = $2`,
+            [gender, player_id]
         );
-        const gender = playerResult.rows[0]?.gender ?? 'M';
 
         const turnResult = await client.query('SELECT current_turn FROM world_state LIMIT 1');
         const currentTurn = turnResult.rows[0]?.current_turn ?? 0;
@@ -336,6 +335,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
             h3_index:          capitalHex,
             birth_turn:        currentTurn - leaderAge * 365,
             xp:                0,
+            gender,
         });
         await CharacterModel.assignToArmy(client, leader.id, armyId);
 
@@ -354,6 +354,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
             h3_index:            capitalHex,
             birth_turn:          currentTurn - heirAge * 365,
             xp:                  0,
+            gender,
         });
 
         // Niño (hijo del líder, aún no puede actuar)
@@ -372,6 +373,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
             h3_index:            capitalHex,
             birth_turn:          currentTurn - childAge * 365,
             xp:                  0,
+            gender:              childGender,
         });
 
         // ── 9. Create initial Señorío ────────────────────────────────────────

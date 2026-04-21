@@ -275,6 +275,7 @@ class AIManagerService {
                 h3_index:          spawnHex,
                 birth_turn:        currentTurn - leaderAge * 365,
                 xp:                0,
+                gender:            botGender,
             });
 
             const heirName = CharacterNameGenerator.generate(aiCultureId, botGender, aiName);
@@ -291,6 +292,7 @@ class AIManagerService {
                 h3_index:            spawnHex,
                 birth_turn:          currentTurn - heirAge * 365,
                 xp:                  0,
+                gender:              botGender,
             });
 
             const childGender = Math.random() < 0.5 ? 'M' : 'F';
@@ -306,6 +308,7 @@ class AIManagerService {
                 is_heir:             false,
                 parent_character_id: leader.id,
                 h3_index:            spawnHex,
+                gender:              childGender,
                 birth_turn:          currentTurn - childAge * 365,
                 xp:                  0,
             });

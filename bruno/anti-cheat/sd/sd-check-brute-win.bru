@@ -1,0 +1,54 @@
+meta {
+  name: SD Check - Verificar alerta LOGIN_BRUTE_WIN
+  type: http
+  seq: 24
+}
+
+
+get {
+  url: {{base_url}}/api/admin/player-audit/alerts
+  body: none
+  auth: none
+}
+
+tests {
+  test("endpoint devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("respuesta tiene formato correcto", function() {
+    expect(res.getBody().success).to.equal(true);
+    expect(res.getBody().alerts).to.be.an("array");
+  });
+  test("existe alerta LOGIN_BRUTE_WIN", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "LOGIN_BRUTE_WIN");
+    expect(alert).to.exist;
+  });
+  test("alerta LOGIN_BRUTE_WIN es severity high", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "LOGIN_BRUTE_WIN");
+    if (alert) {
+      expect(alert.severity).to.equal("high");
+    }
+  });
+  test("alerta LOGIN_BRUTE_WIN tiene fail_count >= 4 en details", function() {
+    const alerts = res.getBody().alerts;
+    const alert = alerts.find(a => a.rule === "LOGIN_BRUTE_WIN");
+    if (alert && alert.details) {
+      const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+      expect(details.fail_count).to.be.at.least(4);
+      expect(details.ip).to.be.a("string");
+    }
+  });
+}
+
+script:post-response {
+  const alerts = res.getBody().alerts || [];
+  const alert = alerts.find(a => a.rule === "LOGIN_BRUTE_WIN");
+  if (alert) {
+    const details = typeof alert.details === "string" ? JSON.parse(alert.details) : alert.details;
+    console.log("LOGIN_BRUTE_WIN alerta:", JSON.stringify({ severity: alert.severity, details }));
+  } else {
+    console.warn("No se encontro LOGIN_BRUTE_WIN — verificar que logins se auditan en audit.log con pid/ip/status");
+  }
+}

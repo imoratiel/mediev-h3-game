@@ -1,0 +1,47 @@
+meta {
+  name: SD-09b INHUMAN_TIMING - Segundo request con delay 150ms (no alerta)
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:pre-request {
+  // Esperar 150ms antes de enviar este request
+  // para que el gap en audit.log sea ~150ms (boundary exacto)
+  await new Promise(resolve => setTimeout(resolve, 150));
+}
+
+script:post-response {
+  const ts2 = Date.now();
+  const ts1 = bru.getVar("sd09_ts1") || 0;
+  const gap = ts2 - ts1;
+  bru.setVar("sd09_gap", gap);
+  console.log("SD-09b gap real:", gap + "ms (objetivo: >= 150ms para NO disparar alerta)");
+  if (gap >= 150) {
+    console.log("Correcto: gap >= 150ms — NO deberia generar INHUMAN_TIMING");
+  } else {
+    console.warn("Gap < 150ms (" + gap + "ms) — puede disparar alerta inesperada (latencia muy baja)");
+  }
+}
+
+tests {
+  test("segundo request boundary enviado", function() {
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}

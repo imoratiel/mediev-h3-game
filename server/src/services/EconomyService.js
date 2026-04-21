@@ -1,5 +1,6 @@
 const { Logger } = require('../utils/logger');
 const pool = require('../../db.js');
+const cache = require('./CacheService.js');
 
 class EconomyService {
     /**
@@ -9,6 +10,9 @@ class EconomyService {
      */
     async GetEconomySummary(req, res) {
         const player_id = req.user.player_id;
+        const cacheKey = cache.constructor.playerKey('economy', player_id);
+        const cached = cache.get(cacheKey);
+        if (cached) return res.json(cached);
         try {
             const [totalsResult, playerResult] = await Promise.all([
                 pool.query(`
@@ -38,7 +42,7 @@ class EconomyService {
 
             const estimatedTaxYield = Math.floor(Number(totals.total_gold) * taxRate / 100);
 
-            res.json({
+            const payload = {
                 success: true,
                 summary: {
                     fief_count:       totals.fief_count,
@@ -55,7 +59,9 @@ class EconomyService {
                     tithe_active:        titheActive,
                     estimated_tax_yield: estimatedTaxYield,
                 }
-            });
+            };
+            cache.set(cacheKey, payload, 10_000);
+            res.json(payload);
         } catch (error) {
             Logger.error(error, { context: 'EconomyService.GetEconomySummary', userId: player_id });
             res.status(500).json({ success: false, message: 'Error al obtener resumen económico' });
@@ -103,6 +109,7 @@ class EconomyService {
                 params
             );
 
+            cache.delete(cache.constructor.playerKey('economy', player_id));
             Logger.action(`Configuración fiscal actualizada por jugador ${player_id}: ${updates.join(', ')}`, player_id);
             res.json({ success: true, message: 'Configuración guardada' });
 

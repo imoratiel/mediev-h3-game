@@ -1,0 +1,44 @@
+meta {
+  name: CD-01 Cooldown - Primer ataque (sin cooldown activo)
+  type: http
+  seq: 1
+}
+
+
+post {
+  url: {{base_url}}/api/military/attack
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "armyId": {{test_army_id}}
+  }
+}
+
+tests {
+  test("primer ataque no devuelve COOLDOWN_ACTIVE", function() {
+    const body = res.getBody();
+    if (body.code) {
+      expect(body.code).to.not.equal("COOLDOWN_ACTIVE");
+    }
+  });
+  test("no devuelve 400 por cooldown", function() {
+    const body = res.getBody();
+    // Si es 400, verificar que NO sea por cooldown
+    if (res.getStatus() === 400) {
+      expect(body.code).to.not.equal("COOLDOWN_ACTIVE");
+    }
+  });
+}
+
+script:post-response {
+  // Guardar el army_id para CD-02
+  bru.setVar("cd_army_id", bru.getEnvVar("test_army_id"));
+  console.log("CD-01 status:", res.getStatus(), "| army_id:", bru.getEnvVar("test_army_id"));
+}

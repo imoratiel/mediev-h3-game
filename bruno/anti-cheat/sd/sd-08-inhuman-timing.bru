@@ -1,0 +1,33 @@
+meta {
+  name: SD-08 INHUMAN_TIMING - 2 POSTs con < 150ms entre ellos (genera alerta)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:post-response {
+  bru.setVar("sd08_ts1", Date.now());
+  console.log("SD-08 primer request ts:", bru.getVar("sd08_ts1"));
+}
+
+tests {
+  test("primer request de par INHUMAN_TIMING enviado", function() {
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}

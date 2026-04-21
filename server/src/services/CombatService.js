@@ -108,6 +108,9 @@ class CombatService {
                 attacker.army_id   // ← identifica al atacante para calcular el bono
             );
 
+            // 6. Aplicar cooldown de ataque (1 turno) al ejército atacante
+            await applyCooldown(client, armyId, 'attack');
+
             await client.query('COMMIT');
 
             Logger.action(
@@ -213,6 +216,9 @@ class CombatService {
                 attacker.h3_index, turn,
                 attackerArmyId
             );
+
+            // 7. Aplicar cooldown de ataque (1 turno) al ejército atacante
+            await applyCooldown(client, attackerArmyId, 'attack');
 
             await client.query('COMMIT');
 

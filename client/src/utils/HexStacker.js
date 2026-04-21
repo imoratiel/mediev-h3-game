@@ -247,7 +247,7 @@ export function createStackerHTML({
       : '';
     const turnsLeft = building.remaining_construction_turns ?? 0;
     const turnsTag  = building.is_under_construction && turnsLeft > 0
-      ? `<span style="position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);background:#222;color:#fff;font-size:7px;font-weight:700;border-radius:2px;padding:0 2px;line-height:11px;white-space:nowrap;border:1px solid ${bBorder};">${turnsLeft}t</span>`
+      ? `<span style="position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);background:#222;color:#fff;font-size:7px;font-weight:700;border-radius:2px;padding:0 2px;line-height:11px;white-space:nowrap;border:1px solid ${bBorder};">${turnsLeft}⏳</span>`
       : '';
     const pos = hasEntities ? POS.building : POS.buildingCenter;
     parts.push(`<div class="hs-building" style="position:absolute;left:${pos.left.toFixed(1)}%;top:${pos.top.toFixed(1)}%;transform:translate(-50%,-50%);z-index:2;opacity:${opacity};pointer-events:none;"><div style="background:${bBg};border:1.5px solid ${bBorder};border-radius:4px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 4px rgba(0,0,0,0.5);user-select:none;position:relative;">${icon}${foodTag}${turnsTag}</div></div>`);

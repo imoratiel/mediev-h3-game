@@ -12,6 +12,7 @@ const { processWorkerMovements } = require('./workerMovement');
 const GAME_CONFIG = require('../config/constants');
 const { getPopulationCap } = require('../config/gameFunctions');
 const { Logger } = require('../utils/logger');
+const cache = require('../services/CacheService');
 const ArmySimulationService = require('../services/ArmySimulationService');
 const NotificationService = require('../services/NotificationService');
 const CharacterService = require('../services/CharacterService');
@@ -1508,6 +1509,7 @@ async function processActionCooldowns(client, turn) {
 async function processGameTurn(pool, config) {
     // Activar flag de procesamiento (fuera de transacción para que sea visible inmediatamente)
     await pool.query('UPDATE world_state SET is_processing = TRUE WHERE id = 1');
+    cache.delete('world_state');
 
     const client = await pool.connect();
     try {
@@ -1811,6 +1813,9 @@ async function processGameTurn(pool, config) {
         if (client) client.release();
         // Desactivar flag siempre, incluso si hubo error
         await pool.query('UPDATE world_state SET is_processing = FALSE WHERE id = 1').catch(() => {});
+        cache.delete('world_state');
+        cache.invalidatePrefix('economy:');
+        cache.invalidatePrefix('armies:');
     }
 }
 

@@ -240,11 +240,12 @@ export async function getCapital() {
  * Trigger Epic Initialization for a new player (first-time setup).
  * Idempotent — safe to call multiple times; returns 409 if already initialized.
  */
-export async function initializePlayer(cultureId = null, randomBonus = false, linaje = '') {
+export async function initializePlayer(cultureId = null, randomBonus = false, linaje = '', gender = 'M') {
   const params = {};
   if (cultureId !== null) params.culture_id = cultureId;
   if (randomBonus) params.random_bonus = true;
   if (linaje) params.linaje = linaje;
+  if (gender) params.gender = gender;
   const response = await axios.post(`${API_URL}/api/game/initialize`, null, { params });
   return response.data;
 }
@@ -709,6 +710,33 @@ export async function resetGame() {
 
 export async function getAuditStatus() {
   const response = await axios.get(`${API_URL}/api/admin/audit/status`);
+  return response.data;
+}
+
+export async function getPlayerAuditStatus() {
+  const response = await axios.get(`${API_URL}/api/admin/player-audit/status`);
+  return response.data;
+}
+export async function enablePlayerAudit() {
+  const response = await axios.post(`${API_URL}/api/admin/player-audit/enable`);
+  return response.data;
+}
+export async function disablePlayerAudit() {
+  const response = await axios.post(`${API_URL}/api/admin/player-audit/disable`);
+  return response.data;
+}
+export async function getSuspiciousAlerts(reviewed = false) {
+  const response = await axios.get(`${API_URL}/api/admin/player-audit/alerts`, { params: { reviewed } });
+  return response.data;
+}
+export async function reviewAlert(id) {
+  const response = await axios.put(`${API_URL}/api/admin/player-audit/alerts/${id}/review`);
+  return response.data;
+}
+export async function getAuditStats(minutes = 10, pid = null) {
+  const params = { minutes };
+  if (pid) params.pid = pid;
+  const response = await axios.get(`${API_URL}/api/admin/player-audit/stats`, { params });
   return response.data;
 }
 

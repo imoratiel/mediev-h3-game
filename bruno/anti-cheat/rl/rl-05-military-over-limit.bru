@@ -1,0 +1,42 @@
+meta {
+  name: RL-05 Military - 9no move-army dispara 429
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "path": ["8928308280fffff"]
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 429) {
+    const retryAfter = res.getHeader("Retry-After");
+    console.log("429 WRITE_MILITARY. Retry-After:", retryAfter, "s");
+  }
+}
+
+tests {
+  test("el 9no intento devuelve 429", function() {
+    expect(res.getStatus()).to.equal(429);
+  });
+  test("body de rate limit tiene success false y mensaje", function() {
+    expect(res.getBody().success).to.equal(false);
+    expect(res.getBody().message).to.be.a("string");
+  });
+  test("header Retry-After presente", function() {
+    expect(res.getHeader("Retry-After")).to.exist;
+  });
+}

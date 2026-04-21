@@ -1,0 +1,38 @@
+meta {
+  name: SD-06 REPEATED_PAYLOAD - 3x mismo h3_index en 10s (genera alerta)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{base_url}}/api/military/conquer
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": {{test_army_id}},
+    "h3_index": "{{sd_repeated_h3}}"
+  }
+}
+
+script:post-response {
+  const count = (bru.getVar("sd06_count") || 0) + 1;
+  bru.setVar("sd06_count", count);
+  const h3 = bru.getEnvVar("sd_repeated_h3");
+  console.log("SD-06 CONQUER #" + count + " h3=" + h3 + " | Status:", res.getStatus());
+  if (count >= 3) {
+    console.log("3 payloads identicos enviados — ejecutar sd-sleep-35s.bru y sd-check-repeated-payload.bru");
+  }
+}
+
+tests {
+  test("request CONQUER con h3_index fijo enviado", function() {
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}

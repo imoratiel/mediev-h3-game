@@ -1,0 +1,32 @@
+meta {
+  name: RL-01 Auth - 4 logins fallidos (bajo limite)
+  type: http
+  seq: 1
+}
+
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "usuario_inexistente_rl01",
+    "password": "password_incorrecta_123"
+  }
+}
+
+tests {
+  test("intento fallido devuelve 401, no 429", function() {
+    expect(res.getStatus()).to.equal(401);
+  });
+  test("no es rate limit", function() {
+    expect(res.getStatus()).to.not.equal(429);
+  });
+}

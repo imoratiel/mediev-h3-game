@@ -1,0 +1,37 @@
+meta {
+  name: SD-01 FAST_ACTIONS - 6 requests (sin alerta)
+  type: http
+  seq: 1
+}
+
+
+post {
+  url: {{base_url}}/api/military/move-army
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "army_id": 99999,
+    "path": ["8928308280fffff"]
+  }
+}
+
+tests {
+  test("request enviado (cualquier status de negocio)", function() {
+    // El status puede ser 400/401/404 — lo que importa es que se registro en audit.log
+    expect(res.getStatus()).to.not.equal(500);
+  });
+}
+
+script:post-response {
+  // Incrementar contador local para tracking
+  const count = (bru.getVar("sd01_count") || 0) + 1;
+  bru.setVar("sd01_count", count);
+  console.log("SD-01 request #" + count + " enviado. Status:", res.getStatus());
+}

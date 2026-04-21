@@ -291,6 +291,7 @@ async function _tryBirth(client, player, characters, currentTurn, forced = false
         parent_character_id: father.id,
         h3_index:            capital_h3 ?? null,
         birth_turn:          currentTurn,
+        gender:              childGender,
         xp:                  0,
     });
 

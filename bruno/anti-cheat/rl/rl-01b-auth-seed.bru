@@ -1,0 +1,28 @@
+meta {
+  name: RL-01b Auth - seed 2/5
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "usuario_inexistente_rl01",
+    "password": "password_incorrecta_123"
+  }
+}
+
+tests {
+  test("seed 2 devuelve 401, no 429", function() {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

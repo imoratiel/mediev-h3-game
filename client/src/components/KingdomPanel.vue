@@ -75,8 +75,8 @@
                 <span
                   v-if="fief.fief_building.is_under_construction"
                   class="building-badge building-badge-wip"
-                  :title="`En construcción: ${fief.fief_building.name} (${fief.fief_building.turns_left ?? '?'}t)`"
-                >🏗️ {{ fief.fief_building.turns_left ?? '?' }}t</span>
+                  :title="`En construcción: ${fief.fief_building.name} (${fief.fief_building.turns_left ?? '?'}⏳)`"
+                >🏗️ {{ fief.fief_building.turns_left ?? '?' }}⏳</span>
                 <span
                   v-else
                   class="building-badge building-badge-done"
@@ -114,7 +114,7 @@
                 v-if="fief.fief_building && !fief.fief_building.is_under_construction && fief.fief_building.upgrade"
                 class="btn-micro btn-upgrade-micro"
                 @click="$emit('openUpgrade', { h3_index: fief.h3_index, upgrade: fief.fief_building.upgrade })"
-                :title="`Ampliar a ${fief.fief_building.upgrade.name} (${fief.fief_building.upgrade.gold_cost}💰, ${fief.fief_building.upgrade.turns}t)`"
+                :title="`Ampliar a ${fief.fief_building.upgrade.name} (${fief.fief_building.upgrade.gold_cost}💰, ${fief.fief_building.upgrade.turns}⏳)`"
               >🏰</button>
               <!-- Worker hire button: visible on Capital or fief with completed Mercado -->
               <button

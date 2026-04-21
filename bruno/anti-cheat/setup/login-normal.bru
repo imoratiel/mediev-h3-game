@@ -1,0 +1,39 @@
+meta {
+  name: Setup - Login Normal (jugador)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "{{username}}",
+    "password": "{{password}}"
+  }
+}
+
+tests {
+  test("login devuelve 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+}
+
+script:post-response {
+  // Guardar el cookie access_token para requests autenticados.
+  // Bruno maneja las cookies automaticamente si "send cookies" esta activo.
+  // Aqui guardamos el player_id para tests de rate limiter por jugador.
+  const data = res.getBody();
+  if (data && data.player_id) {
+    bru.setVar("player_id", data.player_id);
+    console.log("player_id guardado:", data.player_id);
+  }
+}

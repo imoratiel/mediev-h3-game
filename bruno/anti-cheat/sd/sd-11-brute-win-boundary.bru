@@ -1,0 +1,38 @@
+meta {
+  name: SD-11 LOGIN_BRUTE_WIN - Boundary 3 fallidos + 1 exitoso (sin alerta)
+  type: http
+  seq: 14
+}
+
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "usuario_boundary_sd11",
+    "password": "password_incorrecta_BOUNDARY"
+  }
+}
+
+tests {
+  test("login fallido boundary devuelve 401", function() {
+    expect(res.getStatus()).to.equal(401);
+  });
+}
+
+script:post-response {
+  const count = (bru.getVar("sd11_fail_count") || 0) + 1;
+  bru.setVar("sd11_fail_count", count);
+  console.log("SD-11 boundary login fallido #" + count);
+  if (count >= 3) {
+    console.log("3 logins fallidos — ahora ejecutar sd-11b-brute-win-boundary-success.bru");
+  }
+}

@@ -10,6 +10,8 @@ const { requireTurnUnlocked } = require('../src/middleware/turnLock');
 // For now, I'll export a function that configures the router
 
 module.exports = function () {
+    const { auditMiddleware } = require('../src/middleware/auditLogger.js');
+    const { byPlayer, byIp }  = require('../src/middleware/rateLimiter.js');
     const TurnService = require('../src/services/TurnService.js');
     const MessageService = require('../src/services/MessageService.js');
     const NotificationService = require('../src/services/NotificationService.js');
@@ -40,10 +42,13 @@ module.exports = function () {
         requireTurnUnlocked(req, res, next);
     });
 
+    // ── Audit middleware: registra acciones de escritura autenticadas ────────────
+    router.use(auditMiddleware);
+
     // ============================================
     // AUTHENTICATION ENDPOINTS
     // ============================================
-    router.post('/auth/login', LoginService.Login);
+    router.post('/auth/login', byIp('AUTH'), LoginService.Login);
     router.post('/auth/logout', authenticateToken, LoginService.Logout);
     router.get('/auth/me', authenticateToken, LoginService.AuthMe);
     router.put('/auth/profile', authenticateToken, (req, res) => LoginService.UpdateProfile(req, res));
@@ -63,7 +68,7 @@ module.exports = function () {
     // GAME LOGIC ENDPOINTS
     // ============================================
     router.get('/game/capital', authenticateToken, KingdomService.GetCapital);
-    router.post('/game/claim', authenticateToken, (req, res) => KingdomService.ClaimTerritory(req, res));
+    router.post('/game/claim', authenticateToken, byPlayer('WRITE_CONQUER'), (req, res) => KingdomService.ClaimTerritory(req, res));
     router.post('/game/initialize', authenticateToken, (req, res) => KingdomService.InitializePlayer(req, res));
 
     router.get('/map/cell-details/:h3_index', authenticateToken, (req, res) => TerrainService.GetCellDetails(req, res));
@@ -102,22 +107,22 @@ module.exports = function () {
     // MILITARY RECRUITMENT
     // ============================================
     router.get('/military/unit-types', ArmyService.GetUnitTypes);
-    router.post('/military/recruit', authenticateToken, ArmyService.Recruit);
+    router.post('/military/recruit', authenticateToken, byPlayer('WRITE_MILITARY'), ArmyService.Recruit);
     router.get('/military/troops', authenticateToken, ArmyService.GetTroops);
     router.get('/military/armies', authenticateToken, (req, res) => ArmyService.GetArmies(req, res));
     router.get('/military/armies/:id', authenticateToken, (req, res) => ArmyService.GetArmyDetail(req, res));
     router.get('/military/capacity', authenticateToken, (req, res) => ArmyService.GetCapacity(req, res));
     router.post('/military/bulk-recruit', authenticateToken, (req, res) => ArmyService.BulkRecruit(req, res));
-    router.post('/military/move-army', authenticateToken, ArmyService.MoveArmy);
+    router.post('/military/move-army', authenticateToken, byPlayer('WRITE_MILITARY'), ArmyService.MoveArmy);
     router.get('/military/my-routes', authenticateToken, ArmyService.GetMyRoutes);
     router.patch('/military/rename', authenticateToken, (req, res) => ArmyService.renameArmy(req, res));
     router.post('/military/stop', authenticateToken, (req, res) => ArmyService.StopArmy(req, res));
-    router.post('/military/attack', authenticateToken, (req, res) => CombatService.manualAttack(req, res));
-    router.post('/military/attack-army', authenticateToken, (req, res) => CombatService.attackSpecificArmy(req, res));
-    router.post('/military/conquer', authenticateToken, (req, res) => KingdomService.conquestTerritory(req, res));
-    router.post('/military/conquer-fief', authenticateToken, (req, res) => KingdomService.conquerFief(req, res));
-    router.post('/military/merge', authenticateToken, (req, res) => ArmyService.MergeArmies(req, res));
-    router.post('/military/transfer', authenticateToken, (req, res) => ArmyService.TransferArmy(req, res));
+    router.post('/military/attack',      authenticateToken, byPlayer('WRITE_MILITARY'), (req, res) => CombatService.manualAttack(req, res));
+    router.post('/military/attack-army', authenticateToken, byPlayer('WRITE_MILITARY'), (req, res) => CombatService.attackSpecificArmy(req, res));
+    router.post('/military/conquer',     authenticateToken, byPlayer('WRITE_CONQUER'),  (req, res) => KingdomService.conquestTerritory(req, res));
+    router.post('/military/conquer-fief',authenticateToken, byPlayer('WRITE_CONQUER'),  (req, res) => KingdomService.conquerFief(req, res));
+    router.post('/military/merge',       authenticateToken, byPlayer('WRITE_MILITARY'), (req, res) => ArmyService.MergeArmies(req, res));
+    router.post('/military/transfer',    authenticateToken, byPlayer('WRITE_MILITARY'), (req, res) => ArmyService.TransferArmy(req, res));
     router.get('/military/armies-at-hex/:h3_index', authenticateToken, (req, res) => ArmyService.GetArmiesAtHex(req, res));
     router.get('/military/recruitable-pool', authenticateToken, (req, res) => ArmyService.GetRecruitablePool(req, res));
     router.post('/military/scout', authenticateToken, (req, res) => ScoutingService.scoutArmy(req, res));
@@ -215,6 +220,14 @@ module.exports = function () {
             return res.status(500).json({ ok: false, message: err.message });
         }
     });
+    // ── Player Audit ─────────────────────────────────────────────────────────
+    router.get('/admin/player-audit/status',        authenticateToken, requireAdmin, (req, res) => AdminService.GetPlayerAuditStatus(req, res));
+    router.post('/admin/player-audit/enable',       authenticateToken, requireAdmin, (req, res) => AdminService.EnablePlayerAudit(req, res));
+    router.post('/admin/player-audit/disable',      authenticateToken, requireAdmin, (req, res) => AdminService.DisablePlayerAudit(req, res));
+    router.get('/admin/player-audit/alerts',        authenticateToken, requireAdmin, (req, res) => AdminService.GetSuspiciousAlerts(req, res));
+    router.put('/admin/player-audit/alerts/:id/review', authenticateToken, requireAdmin, (req, res) => AdminService.ReviewAlert(req, res));
+    router.get('/admin/player-audit/stats',         authenticateToken, requireAdmin, (req, res) => AdminService.GetAuditStats(req, res));
+
     router.post('/admin/create-pagus', authenticateToken, requireAdmin, (req, res) => AdminService.CreateAdminPagus(req, res));
     router.post('/admin/reset-explorations', authenticateToken, requireAdmin, AdminService.ResetExplorations);
     router.post('/admin/config', authenticateToken, requireAdmin, AdminService.UpdateConfig);

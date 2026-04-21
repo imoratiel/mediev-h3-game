@@ -1,0 +1,46 @@
+meta {
+  name: CD-03 Cooldown - Ejercito diferente no tiene cooldown
+  type: http
+  seq: 3
+}
+
+
+post {
+  url: {{base_url}}/api/military/attack
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "armyId": {{test_army_id_2}}
+  }
+}
+
+tests {
+  test("ejercito diferente no tiene COOLDOWN_ACTIVE", function() {
+    const body = res.getBody();
+    if (body.code) {
+      expect(body.code).to.not.equal("COOLDOWN_ACTIVE");
+    }
+  });
+  test("cooldown es por-ejercito, no por jugador", function() {
+    // Si hay cooldown activo con test_army_id_2, fallo inesperado
+    if (res.getStatus() === 400) {
+      const body = res.getBody();
+      expect(body.code).to.not.equal("COOLDOWN_ACTIVE");
+    }
+  });
+}
+
+script:post-response {
+  console.log("CD-03 army_id_2:", bru.getEnvVar("test_army_id_2"), "| status:", res.getStatus());
+  const body = res.getBody();
+  if (body.code === "COOLDOWN_ACTIVE") {
+    console.warn("FALLO: ejercito_2 tiene cooldown activo — verificar que no fue usado en CD-01");
+  }
+}
