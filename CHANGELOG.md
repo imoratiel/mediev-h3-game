@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.15.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.14.0...v0.15.0) (2026-04-21)
+
+
+### Nuevas funcionalidades
+
+* añadir genero para personajes ([f510176](https://github.com/imoratiel/hipania210ac-game/commit/f51017608444fa4982b8bcfcd7156a02266620ba))
+* auditoria de eventos en el juego ([ec28645](https://github.com/imoratiel/hipania210ac-game/commit/ec2864590e7c81bc85065463193a7d3a45e05314))
+* eliminar buscador de feudos al resultar inutil ([28f789a](https://github.com/imoratiel/hipania210ac-game/commit/28f789a76c480207abb4399c5cac57c8640988a9))
+* evitar trampas con la ejecucion de scripts ([ff5b677](https://github.com/imoratiel/hipania210ac-game/commit/ff5b6774a02b319acee4cfbb0a3c00c5f049979f))
+* formulario para aprovisionar ejercitos ([8f67a6b](https://github.com/imoratiel/hipania210ac-game/commit/8f67a6b7dec0c0bd5144e94f1c59013018fd9838))
+* la presencia de un ejercito enemigo impide poder demoler un edificio ([c3d13ca](https://github.com/imoratiel/hipania210ac-game/commit/c3d13caa81060240692af256ef37bc4a6a14bfc0))
+* licenciar tropas ([9fc34cd](https://github.com/imoratiel/hipania210ac-game/commit/9fc34cdddb262943f86b91ac5c56f017f3b1a739))
+* sistema de cacheado ([be96c33](https://github.com/imoratiel/hipania210ac-game/commit/be96c339304e499d09c3cc48acea8c8dd6419099))
+
+
+### Correcciones
+
+* cambiar el h3 index en los combates por las coordenadas lat lon ([6c0054f](https://github.com/imoratiel/hipania210ac-game/commit/6c0054fc750a0b5151c8808fede20aa731df4060))
+* cambiar la t de turno por un reloj ([837d3b5](https://github.com/imoratiel/hipania210ac-game/commit/837d3b55aefd4b50c38126c1d1708036b02e0857))
+* error en la publicacion ([f8837c1](https://github.com/imoratiel/hipania210ac-game/commit/f8837c1b941020dd2465819184fafd17e4ca0bbf))
+* limitar ataques por turno a 1 acción ([fea6a13](https://github.com/imoratiel/hipania210ac-game/commit/fea6a13aabadaeb363fd28a650b08e9745f67320))
+* no estaba registrando la auditoria ([50fd51e](https://github.com/imoratiel/hipania210ac-game/commit/50fd51ef6a30e92c24099a1bdb2dc240014f46b9))
+* problema con traducciones en los iphones ([e4016ce](https://github.com/imoratiel/hipania210ac-game/commit/e4016ceac4bd9d9ae6abeb4d0c4e0735f5dac5db))
+* reclutamiento de las comarcas no se calculaba bien ([d00b32a](https://github.com/imoratiel/hipania210ac-game/commit/d00b32aafe6595586eb902dad6903c5f7b1a4ff8))
+* reclutar de toda la comarca, no solo del principal ([9d0dc1c](https://github.com/imoratiel/hipania210ac-game/commit/9d0dc1c5baca53fc305361418edef32ef7e5519b))
+* tiles como volumen Docker persistente y deploy limpio ([cc03cf0](https://github.com/imoratiel/hipania210ac-game/commit/cc03cf032472fb4ef119ad9204428a303032465c))
+
 ## [0.14.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.13.1...v0.14.0) (2026-04-19)
 
 
