@@ -195,7 +195,7 @@ export function generateCellPopupContent(cell, config) {
   // Upgrade button - requires active building (conservation > 20)
   if (cell.player_id === playerId && buildingActive && cell.fief_building.upgrade) {
     const upg = cell.fief_building.upgrade;
-    popupContent += `<button id="upgrade-btn-${h3_index}" class="btn-popup btn-upgrade" data-upgrade='${JSON.stringify(upg)}' title="Ampliar a ${upg.name} (${upg.gold_cost}💰, ${upg.turns}t)">🏰 Ampliar → ${upg.name}</button>`;
+    popupContent += `<button id="upgrade-btn-${h3_index}" class="btn-popup btn-upgrade" data-upgrade='${JSON.stringify(upg)}' title="Ampliar a ${upg.name} (${upg.gold_cost}💰, ${upg.turns}⏳)">🏰 Ampliar → ${upg.name}</button>`;
   }
 
   // Recruit button - requires active military building (conservation > 20)
@@ -466,7 +466,7 @@ export function generateArmyPopup(armyData, config) {
       }
       const isGarrison = army.is_garrison === true;
       if (isGarrison) popupContent += `<p class="status-text">🏰 Guarnición</p>`;
-      else if (isRecovering) popupContent += `<p class="status-text">🛌 Recuperando (${Number(army.recovering)}t)</p>`;
+      else if (isRecovering) popupContent += `<p class="status-text">🛌 Recuperando (${Number(army.recovering)}⏳)</p>`;
       else if (isMoving) popupContent += `<p class="status-text">🏃 → ${army.destination}</p>`;
       else popupContent += `<p class="status-text">📍 Estacionado</p>`;
       popupContent += '</div>';

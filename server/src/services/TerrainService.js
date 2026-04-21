@@ -274,7 +274,7 @@ class TerrainService {
     }
 
     async StartBridgeDestruction(req, res) {
-        const BRIDGE_DESTRUCTION_TURNS = Math.ceil(365 / 2); // 183 turnos
+        const BRIDGE_DESTRUCTION_TURNS = 15;
         try {
             const playerId   = req.user.player_id;
             const { h3_index } = req.body;

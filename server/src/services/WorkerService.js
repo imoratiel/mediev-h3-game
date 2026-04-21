@@ -224,8 +224,7 @@ class WorkerService {
      * workers of this player at the hex.
      */
     async StartConstruction(req, res) {
-        // Construction takes 365 turns (1 in-game year) — same default as the table.
-        const BRIDGE_TURNS = 365;
+        const BRIDGE_TURNS = 30;
         const BUILDABLE_TERRAINS = ['Río', 'Agua'];
 
         const client = await pool.connect();

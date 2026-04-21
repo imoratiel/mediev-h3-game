@@ -1185,7 +1185,7 @@
               <p v-if="building.description" class="build-card-desc">{{ building.description }}</p>
               <div class="build-card-stats">
                 <span class="build-stat">💰 {{ building.gold_cost }}</span>
-                <span class="build-stat">⏱️ {{ building.construction_time_turns }}t</span>
+                <span class="build-stat">⏱️ {{ building.construction_time_turns }}⏳</span>
               </div>
             </div>
             <button
@@ -1226,7 +1226,7 @@
               <p class="build-card-type">Mejora del edificio actual</p>
               <div class="build-card-stats">
                 <span class="build-stat">💰 {{ upgradeModalBuilding.gold_cost }}</span>
-                <span class="build-stat">⏱️ {{ upgradeModalBuilding.turns }}t</span>
+                <span class="build-stat">⏱️ {{ upgradeModalBuilding.turns }}⏳</span>
               </div>
             </div>
             <button
@@ -2059,7 +2059,7 @@ const filteredAndSortedFiefs = computed(() => {
       const turnsRemaining = (fief.exploration_end_turn && currentTurn.value)
         ? Math.max(0, fief.exploration_end_turn - currentTurn.value)
         : '?';
-      explorationStatusShort = `${turnsRemaining}t`;
+      explorationStatusShort = `${turnsRemaining}⏳`;
       explorationStatusText = `Explorando... (Faltan ${turnsRemaining} turno${turnsRemaining !== 1 ? 's' : ''})`;
     } else {
       explorationStatus = 'pending';
@@ -2733,7 +2733,7 @@ const renderConstructionMarkers = (constructions, currentPlayerId) => {
             box-shadow:0 2px 6px rgba(0,0,0,0.5);cursor:default;"
             title="${c.player_name} · Puente ${pct}% · ${c.remaining_turns} turnos restantes">
           <span style="font-size:14px;line-height:1;">🏗️</span>
-          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${c.remaining_turns}t</span>
+          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${c.remaining_turns}⏳</span>
         </div>`,
         iconSize: [36, 36],
         iconAnchor: [18, 18],
@@ -2795,7 +2795,7 @@ const renderBridgeDestructionMarkers = (destructions, currentPlayerId) => {
             box-shadow:0 2px 6px rgba(0,0,0,0.5);cursor:default;"
             title="${d.player_name} · Demolición · ${d.turns_remaining} turnos restantes">
           <span style="font-size:14px;line-height:1;">💥</span>
-          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${d.turns_remaining}t</span>
+          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${d.turns_remaining}⏳</span>
         </div>`,
         iconSize: [36, 36],
         iconAnchor: [18, 18],
@@ -2848,7 +2848,7 @@ const renderBuildingDemolitionMarkers = (demolitions, currentPlayerId) => {
             box-shadow:0 2px 6px rgba(0,0,0,0.5);cursor:default;"
             title="${d.player_name} · Derribo · ${d.turns_remaining} turnos restantes">
           <span style="font-size:14px;line-height:1;">🔨</span>
-          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${d.turns_remaining}t</span>
+          <span style="font-size:9px;font-weight:700;color:#fff;line-height:1.1;margin-top:1px;">${d.turns_remaining}⏳</span>
         </div>`,
         iconSize: [36, 36],
         iconAnchor: [18, 18],
