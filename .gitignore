@@ -6,6 +6,7 @@ config.json
 .env_pro
 logs/*.log
 *.log
+server/logs/
 
 # Carpetas de Dependencias
 vendor/
