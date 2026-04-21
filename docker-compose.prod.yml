@@ -26,7 +26,7 @@ services:
       start_period: 20s
     volumes:
       - ./CHANGELOG.md:/app/CHANGELOG.md:ro
-      - ./tiles:/app/tiles:ro
+      - tiles_data:/app/tiles:ro
       - avatars_data:/app/uploads/avatars
     networks:
       - game-network
@@ -78,4 +78,6 @@ volumes:
   pgdata:
     driver: local
   avatars_data:
+    driver: local
+  tiles_data:
     driver: local
