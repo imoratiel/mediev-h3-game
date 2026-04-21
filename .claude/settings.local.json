@@ -104,7 +104,8 @@
       "Bash(find d:/claude/mediev-h3-game -name mapApi.js -o -name *mapApi*)",
       "Bash(find d:/claude/mediev-h3-game/server -name *route* -o -name *router*)",
       "Bash(python3 -c ' *)",
-      "Bash(sort -t: -k3 -n)"
+      "Bash(sort -t: -k3 -n)",
+      "Bash(git checkout *)"
     ]
   }
 }

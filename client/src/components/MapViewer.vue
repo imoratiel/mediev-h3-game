@@ -1003,15 +1003,6 @@
               <h4 class="sidebar-subtitle">🔍 Filtros</h4>
               <div class="kingdom-filters-vertical">
                 <div class="filter-group">
-                  <label>Nombre del territorio</label>
-                  <input
-                    v-model="kingdomFilters.name"
-                    type="text"
-                    placeholder="Buscar..."
-                    class="kingdom-filter-input-sidebar"
-                  />
-                </div>
-                <div class="filter-group">
                   <label>Comarca</label>
                   <select
                     v-model="kingdomFilters.division"
@@ -1642,7 +1633,6 @@ const isExiled = ref(false);      // True when the player has no territories (ex
 
 // Kingdom management state
 const kingdomFilters = ref({
-  name: '',
   maxPopulation: null,
   division: '',
 });
@@ -3924,7 +3914,6 @@ const updateFiefsUI = async ({ page, limit } = {}) => {
     const data = await mapApi.getMyFiefs({
       page:             requestPage,
       limit:            requestLimit,
-      filter_name:      kingdomFilters.value.name     || '',
       filter_maxpop:    kingdomFilters.value.maxPopulation ?? null,
       filter_division:  kingdomFilters.value.division || '',
       sort_field:       fiefsSort.value.field,
