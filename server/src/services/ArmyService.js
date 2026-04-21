@@ -11,6 +11,7 @@ const { getArmyLimit, getPopulationCap } = require('../config/gameFunctions.js')
 const NameGenerator = require('../logic/NameGenerator.js');
 const recruitmentNetwork = require('../logic/recruitmentNetwork.js');
 const { executeRecruitment, GameActionError } = require('./gameActions.js');
+const NotificationService = require('./NotificationService.js');
 
 class ArmyService {
     async GetArmyDetails(req, res) {
@@ -1130,6 +1131,175 @@ class ArmyService {
             await client.query('ROLLBACK');
             Logger.error(error, { endpoint: '/military/reinforce', method: 'POST', userId: req.user?.player_id, payload: req.body });
             return res.status(500).json({ success: false, message: 'Error al reforzar el ejército' });
+        } finally {
+            client.release();
+        }
+    }
+
+    async Discharge(req, res) {
+        const client = await pool.connect();
+        try {
+            const playerId = req.user.player_id;
+            const { army_id, troops, full } = req.body;
+
+            if (!army_id) return res.status(400).json({ success: false, message: 'army_id requerido' });
+
+            await client.query('BEGIN');
+
+            // Army ownership check
+            const armyRes = await client.query(
+                `SELECT a.army_id, a.player_id, a.h3_index,
+                        a.food_provisions, a.gold_provisions, a.wood_provisions, a.stone_provisions, a.iron_provisions,
+                        m.player_id AS fief_owner,
+                        td.division_id,
+                        td.population AS fief_population,
+                        tt.name AS terrain_name,
+                        p.capital_h3
+                 FROM armies a
+                 JOIN h3_map m ON m.h3_index = a.h3_index
+                 JOIN territory_details td ON td.h3_index = a.h3_index
+                 JOIN terrain_types tt ON tt.terrain_type_id = m.terrain_type_id
+                 JOIN players p ON p.player_id = a.player_id
+                 WHERE a.army_id = $1 FOR UPDATE`,
+                [army_id]
+            );
+            if (!armyRes.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ success: false, message: 'Ejército no encontrado' }); }
+            const army = armyRes.rows[0];
+            if (army.player_id !== playerId) { await client.query('ROLLBACK'); return res.status(403).json({ success: false, message: 'No es tu ejército' }); }
+            if (army.fief_owner !== playerId) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: 'Solo puedes licenciar tropas en territorio propio' }); }
+
+            // Resolve troop list to discharge
+            let troopsToDischarge;
+            if (full) {
+                const allTroops = await client.query(
+                    'SELECT unit_type_id, SUM(quantity)::int AS quantity FROM troops WHERE army_id = $1 GROUP BY unit_type_id',
+                    [army_id]
+                );
+                troopsToDischarge = allTroops.rows.map(r => ({ ...r, currentTotal: r.quantity }));
+            } else {
+                if (!troops || !troops.length) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: 'Indica las tropas a licenciar' }); }
+                troopsToDischarge = [];
+                for (const t of troops) {
+                    if (!t.quantity || t.quantity <= 0) continue;
+                    const current = await client.query(
+                        'SELECT COALESCE(SUM(quantity),0)::int AS total FROM troops WHERE army_id = $1 AND unit_type_id = $2',
+                        [army_id, t.unit_type_id]
+                    );
+                    const currentTotal = current.rows[0].total;
+                    if (currentTotal === 0) { await client.query('ROLLBACK'); return res.status(404).json({ success: false, message: `Tipo de tropa ${t.unit_type_id} no encontrado` }); }
+                    if (currentTotal < t.quantity) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: `Solo tienes ${currentTotal} unidades del tipo ${t.unit_type_id}` }); }
+                    troopsToDischarge.push({ unit_type_id: t.unit_type_id, quantity: t.quantity, currentTotal });
+                }
+            }
+            if (!troopsToDischarge.length) { await client.query('ROLLBACK'); return res.status(400).json({ success: false, message: 'No hay tropas que licenciar' }); }
+
+            const totalTroops = troopsToDischarge.reduce((s, t) => s + parseInt(t.quantity), 0);
+
+            // Distribute population across comarca fiefs
+            const divisionId = army.division_id ?? null;
+            const fiefRes = await client.query(
+                `SELECT td.h3_index, td.population, tt.name AS terrain_name, (m.h3_index = p.capital_h3) AS is_capital
+                 FROM territory_details td
+                 JOIN h3_map m ON m.h3_index = td.h3_index
+                 JOIN terrain_types tt ON tt.terrain_type_id = m.terrain_type_id
+                 JOIN players p ON p.player_id = m.player_id
+                 WHERE m.player_id = $1
+                   AND (($2::int IS NULL AND td.h3_index = $3) OR td.division_id = $2)
+                 FOR UPDATE`,
+                [playerId, divisionId, army.h3_index]
+            );
+
+            const fiefs = fiefRes.rows.map(f => ({
+                ...f,
+                cap: getPopulationCap(f.terrain_name, f.is_capital),
+                room: Math.max(0, getPopulationCap(f.terrain_name, f.is_capital) - parseInt(f.population))
+            }));
+            const totalRoom = fiefs.reduce((s, f) => s + f.room, 0);
+            let surplus = 0;
+
+            if (totalRoom > 0) {
+                let remaining = totalTroops;
+                for (let i = 0; i < fiefs.length; i++) {
+                    const f = fiefs[i];
+                    if (f.room <= 0) continue;
+                    const isLast = i === fiefs.length - 1 || fiefs.slice(i + 1).every(x => x.room <= 0);
+                    const add = isLast ? Math.min(remaining, f.room) : Math.min(f.room, Math.floor(totalTroops * f.room / totalRoom));
+                    if (add <= 0) continue;
+                    await client.query(
+                        'UPDATE territory_details SET population = population + $1 WHERE h3_index = $2',
+                        [add, f.h3_index]
+                    );
+                    remaining -= add;
+                    if (remaining <= 0) break;
+                }
+                surplus = Math.max(0, totalTroops - totalRoom);
+            } else {
+                surplus = totalTroops;
+            }
+
+            // Apply troop deductions (consolidate duplicate rows per unit_type_id)
+            for (const t of troopsToDischarge) {
+                const newTotal = t.currentTotal - parseInt(t.quantity);
+                if (newTotal <= 0) {
+                    await client.query('DELETE FROM troops WHERE army_id = $1 AND unit_type_id = $2', [army_id, t.unit_type_id]);
+                } else {
+                    const firstRes = await client.query(
+                        'SELECT troop_id FROM troops WHERE army_id = $1 AND unit_type_id = $2 ORDER BY troop_id LIMIT 1',
+                        [army_id, t.unit_type_id]
+                    );
+                    if (firstRes.rows[0]) {
+                        await client.query('DELETE FROM troops WHERE army_id = $1 AND unit_type_id = $2 AND troop_id != $3',
+                            [army_id, t.unit_type_id, firstRes.rows[0].troop_id]);
+                        await client.query('UPDATE troops SET quantity = $1 WHERE troop_id = $2',
+                            [newTotal, firstRes.rows[0].troop_id]);
+                    }
+                }
+            }
+
+            // Check if army empty
+            const totResult = await client.query(
+                'SELECT COALESCE(SUM(quantity), 0)::int AS total FROM troops WHERE army_id = $1',
+                [army_id]
+            );
+            const totalLeft = totResult.rows[0].total;
+
+            if (totalLeft === 0) {
+                await client.query(
+                    `UPDATE territory_details SET food_stored = food_stored + $1, wood_stored = wood_stored + $2, stone_stored = stone_stored + $3, iron_stored = iron_stored + $4 WHERE h3_index = $5`,
+                    [army.food_provisions, army.wood_provisions, army.stone_provisions, army.iron_provisions, army.h3_index]
+                );
+                if (army.gold_provisions > 0) {
+                    await client.query('UPDATE players SET gold = gold + $1 WHERE player_id = $2', [army.gold_provisions, playerId]);
+                }
+                await client.query('UPDATE characters SET army_id = NULL WHERE army_id = $1', [army_id]);
+                await client.query('DELETE FROM army_routes WHERE army_id = $1', [army_id]);
+                await client.query('DELETE FROM armies WHERE army_id = $1', [army_id]);
+            } else {
+                await ArmyModel.refreshDetectionRange(client, army_id);
+            }
+
+            await client.query('COMMIT');
+            cache.delete(cache.constructor.playerKey('armies', playerId));
+            Logger.action(`Licenció ${totalTroops} tropas del ejército ${army_id}${full ? ' (ejército completo)' : ''}`, playerId);
+
+            const notifMsg = totalLeft === 0
+                ? `🏳️ **Ejército disuelto**\n\n${totalTroops.toLocaleString()} soldados han sido licenciados y regresado a sus hogares en la comarca.${surplus > 0 ? ` ${surplus.toLocaleString()} no encontraron acomodo y se dispersaron.` : ''}`
+                : `🏳️ **Tropas licenciadas**\n\n${totalTroops.toLocaleString()} soldados han sido licenciados y devueltos a la población de la comarca.`;
+            await NotificationService.createSystemNotification(playerId, 'Militar', notifMsg, null);
+
+            res.json({
+                success: true,
+                army_dissolved: totalLeft === 0,
+                total_discharged: totalTroops,
+                surplus,
+                message: totalLeft === 0
+                    ? `Ejército disuelto. ${totalTroops} soldados licenciados${surplus > 0 ? `, ${surplus} no encontraron acomodo.` : '.'}`
+                    : `${totalTroops} soldados licenciados y devueltos a la comarca.`
+            });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            Logger.error(error, { endpoint: '/military/discharge', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al licenciar tropas' });
         } finally {
             client.release();
         }

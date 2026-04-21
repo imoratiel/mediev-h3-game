@@ -144,6 +144,12 @@
                     :title="`Unir con ${coLocatedCount(army)} ejército(s) co-ubicado(s)`"
                     @click="openTransfer(army)"
                   >🔗</button>
+                  <button
+                    v-if="army.is_own_fief"
+                    class="btn-icon btn-icon-discharge"
+                    title="Licenciar tropas"
+                    @click="openDischarge(army)"
+                  >🏳️</button>
                 </div>
               </td>
             </tr>
@@ -182,6 +188,14 @@
     @close="transferPanelVisible = false"
     @done="emit('armiesTransferred')"
   />
+
+  <!-- Army Discharge Panel -->
+  <ArmyDischargePanel
+    :show="dischargePanelVisible"
+    :armyId="dischargeArmy?.army_id"
+    @close="dischargePanelVisible = false"
+    @done="(payload) => { dischargePanelVisible = false; if (payload?.message) emit('armyDischarged', { message: payload.message, dissolved: payload.dissolved }); if (payload?.dissolved) emit('armyDismissed', { army_id: dischargeArmy?.army_id }); }"
+  />
 </template>
 
 <script setup>
@@ -190,6 +204,7 @@ import { cellToLatLng } from 'h3-js';
 import { stopArmy, attackArmy } from '../services/mapApi.js';
 import ArmyDetailModal from './ArmyDetailModal.vue';
 import ArmyTransferPanel from './ArmyTransferPanel.vue';
+import ArmyDischargePanel from './ArmyDischargePanel.vue';
 import CharacterProfileModal from './CharacterProfileModal.vue';
 
 const props = defineProps({
@@ -204,7 +219,7 @@ const props = defineProps({
   playerCultureId: { type: Number, default: null },
 });
 
-const emit = defineEmits(['locate', 'armyStopped', 'armyStopFailed', 'armyAttacked', 'armyAttackFailed', 'armyDismissed', 'armiesTransferred']);
+const emit = defineEmits(['locate', 'armyStopped', 'armyStopFailed', 'armyAttacked', 'armyAttackFailed', 'armyDismissed', 'armiesTransferred', 'armyDischarged']);
 
 const stoppingArmies = ref(new Set());
 const attackingArmies = ref(new Set());
@@ -247,6 +262,15 @@ const openTransfer = (army) => {
   transferArmyA.value = army;
   transferArmyB.value = others.length === 1 ? others[0].army_id : null;
   transferPanelVisible.value = true;
+};
+
+// Discharge panel
+const dischargePanelVisible = ref(false);
+const dischargeArmy = ref(null);
+
+const openDischarge = (army) => {
+  dischargeArmy.value = army;
+  dischargePanelVisible.value = true;
 };
 
 const getReinforceTooltip = (army) => {
@@ -784,5 +808,13 @@ const handleAttack = async (army) => {
 .btn-icon-transfer:hover {
   background: rgba(200, 184, 240, 0.2);
   border-color: #c8b8f0;
+}
+.btn-icon-discharge {
+  border: 1px solid #6b4a2a;
+  color: #d4a870;
+}
+.btn-icon-discharge:hover {
+  background: rgba(212, 168, 112, 0.2);
+  border-color: #d4b870;
 }
 </style>

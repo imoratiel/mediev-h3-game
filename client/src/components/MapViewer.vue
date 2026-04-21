@@ -1108,6 +1108,7 @@
             @armyAttackFailed="(msg) => showToast(msg, 'error')"
             @armyDismissed="handleArmyDismissed"
             @armiesTransferred="handleArmiesTransferred"
+            @armyDischarged="(p) => showToast(`🏳️ ${p.message}`, p.dissolved ? 'warning' : 'success')"
           />
         </div>
       </div>
