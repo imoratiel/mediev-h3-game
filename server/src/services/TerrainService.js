@@ -289,6 +289,26 @@ class TerrainService {
                 return res.status(400).json({ success: false, message: 'El hexágono no es un puente' });
             }
 
+            // Player must own at least one hex adjacent to the bridge
+            const vicinity = h3.gridDisk(h3_index, 1);
+            const ownerRes = await pool.query(
+                'SELECT h3_index FROM h3_map WHERE h3_index = ANY($1::text[]) AND player_id = $2 LIMIT 1',
+                [vicinity, playerId]
+            );
+            if (ownerRes.rows.length === 0) {
+                return res.status(403).json({ success: false, message: 'No controlas ningún feudo adyacente a este puente' });
+            }
+
+            // No enemy troops in the bridge hex or adjacent
+            const enemyBridgeRes = await pool.query(`
+                SELECT a.army_id FROM armies a
+                WHERE a.h3_index = ANY($1::text[]) AND a.player_id != $2 AND NOT a.is_garrison
+                LIMIT 1
+            `, [vicinity, playerId]);
+            if (enemyBridgeRes.rows.length > 0) {
+                return res.status(403).json({ success: false, message: 'Hay tropas enemigas cerca del puente, no puedes ordenar la demolición' });
+            }
+
             // No active destruction order already
             const existing = await pool.query(
                 'SELECT id FROM bridge_destructions WHERE h3_index = $1',
@@ -299,7 +319,6 @@ class TerrainService {
             }
 
             // Player must have an army with 1000+ troops on or adjacent to the bridge
-            const vicinity = h3.gridDisk(h3_index, 1); // incluye el hex del puente
             const armyRes = await pool.query(`
                 SELECT a.army_id
                 FROM armies a
@@ -394,6 +413,16 @@ class TerrainService {
                 return res.status(400).json({ success: false, message: 'No hay ningún edificio completado en este feudo' });
             }
             const building = buildingRes.rows[0];
+
+            // No enemy troops in the same hex
+            const enemyRes = await pool.query(`
+                SELECT a.army_id FROM armies a
+                WHERE a.h3_index = $1 AND a.player_id != $2 AND NOT a.is_garrison
+                LIMIT 1
+            `, [h3_index, playerId]);
+            if (enemyRes.rows.length > 0) {
+                return res.status(403).json({ success: false, message: 'Hay tropas enemigas en el feudo, no puedes ordenar la demolición' });
+            }
 
             // No active demolition already
             const existing = await pool.query(

@@ -411,6 +411,15 @@ class ArmyModel {
                     a.gold_provisions, a.food_provisions, a.wood_provisions,
                     COALESCE(td.population, 0) AS fief_population,
                     COALESCE(td.grace_turns, 0) AS fief_grace_turns,
+                    COALESCE((
+                        SELECT SUM(td2.food_stored) FROM territory_details td2
+                        JOIN h3_map m2 ON m2.h3_index = td2.h3_index
+                        WHERE m2.player_id = a.player_id
+                          AND (
+                            (td.division_id IS NOT NULL AND td2.division_id = td.division_id)
+                            OR (td.division_id IS NULL AND td2.h3_index = a.h3_index)
+                          )
+                    ), 0) AS comarca_food,
                     COALESCE(td.wood_stored, 0) AS fief_wood,
                     COALESCE(td.stone_stored, 0) AS fief_stone,
                     COALESCE(td.iron_stored, 0) AS fief_iron,

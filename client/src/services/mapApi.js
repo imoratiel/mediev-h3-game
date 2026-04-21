@@ -405,6 +405,11 @@ export async function getArmyDetail(armyId) {
   return response.data;
 }
 
+export async function dischargeArmy(armyId, troops, full = false) {
+  const res = await axios.post(`${API_URL}/api/military/discharge`, { army_id: armyId, troops, full });
+  return res.data;
+}
+
 export async function getNotifications() {
   const response = await axios.get(`${API_URL}/api/notifications`);
   return response.data;
@@ -529,6 +534,11 @@ export async function transferArmy(fromArmyId, toArmyId, troops, provisions) {
     provisions,
   });
   return response.data;
+}
+
+export async function supplyArmy(armyId, food_delta, gold_delta) {
+  const res = await axios.post(`${API_URL}/api/military/supply`, { army_id: armyId, food_delta, gold_delta });
+  return res.data;
 }
 
 export async function scoutArmy(armyId, targetArmyId) {

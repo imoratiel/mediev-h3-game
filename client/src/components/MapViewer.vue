@@ -1108,6 +1108,7 @@
             @armyAttackFailed="(msg) => showToast(msg, 'error')"
             @armyDismissed="handleArmyDismissed"
             @armiesTransferred="handleArmiesTransferred"
+            @armyDischarged="(p) => showToast(`🏳️ ${p.message}`, p.dissolved ? 'warning' : 'success')"
           />
         </div>
       </div>
@@ -1292,6 +1293,16 @@
       @done="handleArmiesTransferred"
     />
 
+    <!-- Army Supply Panel (opened from map popup supply button) -->
+    <ArmySupplyPanel
+      :show="showSupplyPanel"
+      :armyId="supplyPanelArmyId"
+      :h3Index="supplyPanelHex"
+      :fiefName="supplyPanelFiefName"
+      @close="showSupplyPanel = false"
+      @done="showSupplyPanel = false"
+    />
+
     <!-- Epic Initialization Panel (first-time players only) -->
     <WelcomePanel
       v-if="showWelcomePanel"
@@ -1461,6 +1472,7 @@ import BattleSummaryModal from './BattleSummaryModal.vue';
 import EconomyPanel from './EconomyPanel.vue';
 import AdminPanel from './AdminPanel.vue';
 import ArmyTransferPanel from './ArmyTransferPanel.vue';
+import ArmySupplyPanel   from './ArmySupplyPanel.vue';
 import WelcomePanel from './WelcomePanel.vue';
 import FueroPanel from './FueroPanel.vue';
 import DivisionsTab from './DivisionsTab.vue';
@@ -1960,6 +1972,12 @@ const battleSummaryData = ref({});
 
 // Transfer panel state (opened from map popup)
 const showTransferPanel      = ref(false);
+
+// Supply panel state
+const showSupplyPanel     = ref(false);
+const supplyPanelArmyId   = ref(null);
+const supplyPanelHex      = ref('');
+const supplyPanelFiefName = ref('');
 const transferPanelArmyAId   = ref(null);
 const transferPanelArmyBId   = ref(null);
 const transferPanelHex       = ref('');
@@ -5623,7 +5641,13 @@ const handleArmyMerge = async (army) => {
     showToast(`❌ ${msg}`, 'error');
   }
 };
-const handleArmySupply = (_army) => showToast('⚙️ Función "Abastecer" próximamente', 'info');
+const handleArmySupply = (army) => {
+  map.closePopup();
+  supplyPanelArmyId.value   = army.army_id;
+  supplyPanelHex.value      = army.h3_index || _pp_h3;
+  supplyPanelFiefName.value = army.location_name || army.h3_index || _pp_h3;
+  showSupplyPanel.value     = true;
+};
 
 const handleArmyCommander = async (army, h3_index) => {
   try {
