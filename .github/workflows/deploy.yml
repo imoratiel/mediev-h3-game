@@ -21,7 +21,9 @@ jobs:
             cd /opt/mediev-h3
 
             echo "--- Pulling latest code ---"
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
 
             echo "--- Building updated images ---"
             docker compose -f docker-compose.prod.yml build --no-cache backend client
