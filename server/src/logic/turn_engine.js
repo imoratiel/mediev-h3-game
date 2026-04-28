@@ -957,15 +957,15 @@ async function processCultureRadiation(client, turn) {
             3: 'culture_iberos',
             4: 'culture_celtas',
         };
-        const ALL_COLS   = Object.values(CULTURE_COL);
-        const RING_BONUS = GAME_CONFIG.MILITARY.CULTURE_TEMPLE_RINGS;
-        const MAX_RING   = RING_BONUS.length - 1;  // 4
+        const ALL_COLS = Object.values(CULTURE_COL);
+        const BONUS    = GAME_CONFIG.MILITARY.CULTURE_TEMPLE_RINGS[0]; // bonus fijo por comarca
 
         const templesRes = await client.query(`
-            SELECT fb.h3_index, b.culture_id
+            SELECT fb.h3_index, b.culture_id, td.division_id
             FROM fief_buildings fb
-            JOIN buildings b ON b.id = fb.building_id
-            JOIN building_types bt ON bt.building_type_id = b.type_id
+            JOIN buildings b         ON b.id                  = fb.building_id
+            JOIN building_types bt   ON bt.building_type_id   = b.type_id
+            LEFT JOIN territory_details td ON td.h3_index     = fb.h3_index
             WHERE bt.name = 'religious'
               AND fb.is_under_construction = FALSE
               AND fb.conservation > 20
@@ -978,38 +978,26 @@ async function processCultureRadiation(client, turn) {
             const col = CULTURE_COL[temple.culture_id];
             if (!col) continue;
 
-            // Construir mapa hex → bonus acumulado (un hex puede estar en varios radios si hay varios templos)
-            const hexBonus = new Map();
-            const allDisk  = h3.gridDisk(temple.h3_index, MAX_RING);
-            for (const hex of allDisk) {
-                const dist = h3.gridDistance(temple.h3_index, hex);
-                const bonus = RING_BONUS[dist] ?? 0;
-                if (bonus > 0) hexBonus.set(hex, (hexBonus.get(hex) || 0) + bonus);
-            }
-
-            // Agrupar por valor de bonus para minimizar queries
-            const byBonus = new Map();
-            for (const [hex, bonus] of hexBonus) {
-                if (!byBonus.has(bonus)) byBonus.set(bonus, []);
-                byBonus.get(bonus).push(hex);
-            }
-
             const otherCols = ALL_COLS.filter(c => c !== col);
             const decaySet  = otherCols.map(c => `${c} = GREATEST(0, fief_culture.${c} - 1)`).join(', ');
 
-            for (const [bonus, hexes] of byBonus) {
-                await client.query(`
-                    INSERT INTO fief_culture (h3_index, ${col}, updated_at)
-                    SELECT h.h3_index, $1, NOW()
-                    FROM h3_map h
-                    WHERE h.h3_index = ANY($2)
-                      AND h.player_id IS NOT NULL
-                    ON CONFLICT (h3_index) DO UPDATE
-                    SET ${col}     = LEAST($3, fief_culture.${col} + $1),
-                        ${decaySet},
-                        updated_at = NOW()
-                `, [bonus, hexes, GAME_CONFIG.MILITARY.CULTURE_MAX]);
-            }
+            // Hexes objetivo: toda la comarca si hay division_id, o solo el propio hex
+            const hexFilter = temple.division_id
+                ? `td2.division_id = ${parseInt(temple.division_id)}`
+                : `h.h3_index = '${temple.h3_index}'`;
+
+            await client.query(`
+                INSERT INTO fief_culture (h3_index, ${col}, updated_at)
+                SELECT h.h3_index, $1, NOW()
+                FROM h3_map h
+                ${temple.division_id ? 'JOIN territory_details td2 ON td2.h3_index = h.h3_index' : ''}
+                WHERE h.player_id IS NOT NULL
+                  AND ${hexFilter}
+                ON CONFLICT (h3_index) DO UPDATE
+                SET ${col}     = LEAST($2, fief_culture.${col} + $1),
+                    ${decaySet},
+                    updated_at = NOW()
+            `, [BONUS, GAME_CONFIG.MILITARY.CULTURE_MAX]);
         }
 
         Logger.engine(`[TURN ${turn}] Cultura irradiada (mensual) desde ${templesRes.rows.length} templos.`);
