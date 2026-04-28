@@ -382,16 +382,14 @@ async function processMilitaryConsumption(client, turn, config) {
                 COALESCE(SUM(t.quantity * ut.food_consumption * $1), 0)  AS consumption,
                 COALESCE(SUM(t.quantity * ut.gold_upkeep), 0)::int       AS monthly_wages,
                 COALESCE(SUM(t.quantity), 0)::int AS total_troops,
-                (m.player_id = a.player_id) AS in_own_territory,
-                COALESCE(td.food_stored, 0) AS comarca_food
+                (m.player_id = a.player_id) AS in_own_territory
             FROM armies a
             LEFT JOIN troops t        ON t.army_id       = a.army_id
             LEFT JOIN unit_types ut   ON ut.unit_type_id = t.unit_type_id
             JOIN h3_map m             ON m.h3_index      = a.h3_index
-            LEFT JOIN territory_details td ON td.h3_index = a.h3_index
             WHERE a.h3_index IS NOT NULL
             GROUP BY a.army_id, a.player_id, a.h3_index, a.food_provisions, a.gold_provisions,
-                     a.food_threshold_notified, a.gold_threshold_notified, a.name, m.player_id, td.food_stored
+                     a.food_threshold_notified, a.gold_threshold_notified, a.name, m.player_id
             HAVING COALESCE(SUM(t.quantity * ut.food_consumption * $1), 0) > 0
         `, [MONTHLY_MULTIPLIER]);
 
@@ -399,24 +397,38 @@ async function processMilitaryConsumption(client, turn, config) {
         const awayArmies  = armyResult.rows.filter(r => !r.in_own_territory);
         const starving    = [];
 
-        // ── CASO 1: En territorio propio → consumen de la comarca ─────────────
-        if (inTerritory.length > 0) {
-            const hexes        = inTerritory.map(r => r.h3_index);
-            const consumptions = inTerritory.map(r => parseFloat(r.consumption));
-            await client.query(`
-                UPDATE territory_details td
-                SET food_stored = GREATEST(0, td.food_stored - v.consumption)
-                FROM (
-                    SELECT unnest($1::text[]) AS h3_index, unnest($2::float[]) AS consumption
-                ) v
-                WHERE td.h3_index = v.h3_index
-            `, [hexes, consumptions]);
+        // ── CASO 1: En territorio propio → consumen de cualquier feudo de la comarca ──
+        for (const army of inTerritory) {
+            const consumption = parseFloat(army.consumption);
 
-            // Hambre en territorio: comarca sin reservas suficientes
-            for (const army of inTerritory) {
-                if (parseFloat(army.comarca_food) < parseFloat(army.consumption)) {
-                    starving.push(army);
-                }
+            // Obtener todos los feudos de la comarca con comida, ordenados de mayor a menor
+            const fiefsRes = await client.query(`
+                SELECT td.h3_index, td.food_stored::float AS food_stored
+                FROM territory_details td
+                JOIN h3_map m              ON m.h3_index   = td.h3_index
+                LEFT JOIN territory_details atd ON atd.h3_index = $1
+                WHERE m.player_id = $2
+                  AND td.food_stored > 0
+                  AND (
+                    (atd.division_id IS NOT NULL AND td.division_id = atd.division_id)
+                    OR (atd.division_id IS NULL  AND td.h3_index    = $1)
+                  )
+                ORDER BY td.food_stored DESC
+            `, [army.h3_index, army.player_id]);
+
+            const totalFood = fiefsRes.rows.reduce((s, r) => s + r.food_stored, 0);
+            if (totalFood < consumption) starving.push(army);
+
+            // Descontar greedy de mayor a menor reserva
+            let remaining = consumption;
+            for (const fief of fiefsRes.rows) {
+                if (remaining <= 0) break;
+                const take = Math.min(fief.food_stored, remaining);
+                await client.query(
+                    'UPDATE territory_details SET food_stored = GREATEST(0, food_stored - $1) WHERE h3_index = $2',
+                    [take, fief.h3_index]
+                );
+                remaining -= take;
             }
         }
 
@@ -490,14 +502,14 @@ async function processMilitaryConsumption(client, turn, config) {
                 Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} pierde ${(rate * 100).toFixed(0)}% tropas por ${reason}`);
                 await NotificationService.createSystemNotification(
                     army.player_id, 'Militar',
-                    `⚠️ **Desgaste — ${army.army_name}**\n\nEl ejército sufre bajas por ${reason}: **−${lost.toLocaleString('es-ES')} soldados**.\n📍 Posición: ${army.h3_index}`,
+                    `⚠️ **Desgaste — ${army.army_name}**\n\nEl ejército sufre bajas por ${reason}: **−${lost.toLocaleString('es-ES')} soldados**.\n📍 Posición: ${fmtHex(army.h3_index)}`,
                     turn
                 );
             }
         }
 
         // ── CASO 5: Umbrales de provisiones (una sola notif por umbral) ──────
-        const THRESHOLDS = [30, 20, 10];
+        const THRESHOLDS = [90, 60, 30];
         for (const army of awayArmies) {
             const dailyFood = parseFloat(army.consumption) / 30;
             const dailyGold = parseInt(army.monthly_wages) / 30;
@@ -513,25 +525,23 @@ async function processMilitaryConsumption(client, turn, config) {
             let newGoldThreshold = army.gold_threshold_notified;
 
             // Resetear si las provisiones han vuelto a estar por encima de 30 días
-            if (foodDays > 30 && army.food_threshold_notified !== null) newFoodThreshold = null;
-            if (goldDays > 30 && army.gold_threshold_notified !== null) newGoldThreshold = null;
+            if (foodDays > 90 && army.food_threshold_notified !== null) newFoodThreshold = null;
+            if (goldDays > 90 && army.gold_threshold_notified !== null) newGoldThreshold = null;
 
             for (const thr of THRESHOLDS) {
                 if (foodDays < thr && (newFoodThreshold === null || newFoodThreshold > thr)) {
                     newFoodThreshold = thr;
-                    await NotificationService.createSystemNotification(
-                        army.player_id, 'Militar',
-                        `🌾 **Reservas bajas — ${army.army_name}**\n\nQuedan menos de **${thr} días** de comida (${Math.floor(foodDays)} días restantes).\n📍 Posición: ${army.h3_index}`,
-                        turn
-                    );
+                    const foodMsg = foodDays <= 0
+                        ? `🌾 **Sin comida — ${army.army_name}**\n\nLas reservas de comida se han agotado. El ejército comenzará a sufrir bajas por hambre.\n📍 Posición: ${fmtHex(army.h3_index)}`
+                        : `🌾 **Reservas bajas — ${army.army_name}**\n\nQuedan menos de **${thr} días** de comida (${Math.floor(foodDays)} días restantes).\n📍 Posición: ${fmtHex(army.h3_index)}`;
+                    await NotificationService.createSystemNotification(army.player_id, 'Militar', foodMsg, turn);
                 }
                 if (goldDays < thr && (newGoldThreshold === null || newGoldThreshold > thr)) {
                     newGoldThreshold = thr;
-                    await NotificationService.createSystemNotification(
-                        army.player_id, 'Militar',
-                        `💰 **Reservas bajas — ${army.army_name}**\n\nQuedan menos de **${thr} días** de oro para soldadas (${Math.floor(goldDays)} días restantes).\n📍 Posición: ${army.h3_index}`,
-                        turn
-                    );
+                    const goldMsg = goldDays <= 0
+                        ? `💰 **Sin fondos — ${army.army_name}**\n\nLas reservas de oro se han agotado. Los soldados comenzarán a desertar por falta de paga.\n📍 Posición: ${fmtHex(army.h3_index)}`
+                        : `💰 **Reservas bajas — ${army.army_name}**\n\nQuedan menos de **${thr} días** de oro para soldadas (${Math.floor(goldDays)} días restantes).\n📍 Posición: ${fmtHex(army.h3_index)}`;
+                    await NotificationService.createSystemNotification(army.player_id, 'Militar', goldMsg, turn);
                 }
             }
 
