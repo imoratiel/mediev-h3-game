@@ -109,7 +109,7 @@ async function processTaxCollection(client, turn, gameDate) {
                 const messageBody = [
                     `💰 **Recaudación Fiscal — Turno ${turn}**`,
                     ``,
-                    `Centurias tributarias (en un Pagus): ${taxableFiefs} de ${territoriesResult.rows.length}`,
+                    `Centurias tributarias (en una comarca): ${taxableFiefs} de ${territoriesResult.rows.length}`,
                     ``,
                     `Oro recaudado e ingresado al tesoro real: **+${playerGoldCollected} 💰**`,
                 ].join('\n');

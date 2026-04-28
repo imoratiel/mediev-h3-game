@@ -210,11 +210,11 @@ async function processHarvest(client, turn, config) {
                 const messageBody = `
 📜 **Informe de cosecha del reino**
 
-🌾 **Rendimiento de los feudos:**
+🌾 **Rendimiento de los territorios:**
 • Comida: +${totalFoodProduced}
 • Oro: +${totalGoldProduced}
 
-${territories.rows.length > 0 ? `Feudos productivos este ciclo: ${territories.rows.length}` : '⚠️ Ningún feudo ha rendido frutos este ciclo'}${miracleSection}${marketSection}
+${territories.rows.length > 0 ? `Territorios productivos este ciclo: ${territories.rows.length}` : '⚠️ Ningún territorio ha rendido frutos este ciclo'}${miracleSection}${marketSection}
                 `.trim();
 
                 await NotificationService.createSystemNotification(player.player_id, 'Económico', messageBody, turn);
@@ -469,17 +469,34 @@ async function processMilitaryConsumption(client, turn, config) {
             }
         }
 
-        for (const { army, rate } of armiesNeedingAttrition.values()) {
+        const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+        const SMALL_ARMY = 200;
+
+        for (const { army } of armiesNeedingAttrition.values()) {
             const isStarving = starving.some(s => s.army_id === army.army_id);
             const isUnpaid   = unpaid.some(u => u.army_id === army.army_id);
             const reason = isStarving && isUnpaid ? 'hambre y falta de paga'
                          : isStarving             ? 'hambre'
                          :                          'falta de paga';
 
+            const totalTroops = parseInt(army.total_troops);
+            let lost;
+
+            if (totalTroops < SMALL_ARMY) {
+                // Bajas fijas para ejércitos pequeños
+                const starvationLoss  = isStarving ? randInt(20, 30) : 0;
+                const desertionLoss   = isUnpaid   ? randInt(10, 20) : 0;
+                lost = starvationLoss + desertionLoss;
+            } else {
+                // Porcentaje para ejércitos grandes
+                const rate = (isStarving ? STARVATION_ATTRITION : 0) + (isUnpaid ? DESERTION_ATTRITION : 0);
+                lost = Math.ceil(totalTroops * rate);
+            }
+
             await client.query(`
-                UPDATE troops SET quantity = GREATEST(0, quantity - CEIL(quantity * $1::float))
-                WHERE army_id = $2
-            `, [rate, army.army_id]);
+                UPDATE troops SET quantity = GREATEST(0, quantity - CEIL(quantity::float / $1 * $2))
+                WHERE army_id = $3
+            `, [totalTroops, lost, army.army_id]);
             await client.query('DELETE FROM troops WHERE army_id = $1 AND quantity <= 0', [army.army_id]);
 
             const totRes = await client.query(
@@ -494,12 +511,11 @@ async function processMilitaryConsumption(client, turn, config) {
                 Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} disuelto por ${reason}`);
                 await NotificationService.createSystemNotification(
                     army.player_id, 'Militar',
-                    `⚠️ **Ejército disuelto — ${army.army_name}**\n\nEl ejército ha desaparecido por ${reason}. No quedaba ningún soldado.\n📍 Última posición: ${army.h3_index}`,
+                    `⚠️ **Ejército disuelto — ${army.army_name}**\n\nEl ejército ha desaparecido por ${reason}. No quedaba ningún soldado.\n📍 Última posición: ${fmtHex(army.h3_index)}`,
                     turn
                 );
             } else {
-                const lost = Math.ceil(parseInt(army.total_troops) * rate);
-                Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} pierde ${(rate * 100).toFixed(0)}% tropas por ${reason}`);
+                Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} pierde ${lost} tropas por ${reason}`);
                 await NotificationService.createSystemNotification(
                     army.player_id, 'Militar',
                     `⚠️ **Desgaste — ${army.army_name}**\n\nEl ejército sufre bajas por ${reason}: **−${lost.toLocaleString('es-ES')} soldados**.\n📍 Posición: ${fmtHex(army.h3_index)}`,
@@ -1049,7 +1065,7 @@ async function processConstructionTicks(client, turn) {
                         await NotificationService.createSystemNotification(
                             player_id,
                             'Económico',
-                            `🏛️ **Obra concluida**\n\nLos maestros de obras anuncian que **"${building_name}"** está en pie en el feudo ${fmtHex(building.h3_index)} y listo para servir al reino.`,
+                            `🏛️ **Obra concluida**\n\nLos maestros de obras anuncian que **"${building_name}"** está en pie en el territorio ${fmtHex(building.h3_index)} y listo para servir al reino.`,
                             turn
                         );
                     }
