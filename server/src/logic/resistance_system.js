@@ -2,12 +2,12 @@ const NotificationService = require('../services/NotificationService');
 const { Logger } = require('../utils/logger');
 const h3 = require('h3-js');
 
-// ── Parámetros de rebelión ────────────────────────────────────────────────────
+// ── Parámetros de rebelión (valores por turno) ────────────────────────────────
 const CONQUEST_AFTERSHOCK    = 20;   // Shock por conquistar la capital de comarca
-const AFTERSHOCK_DECAY_RATE  = 0.80; // 20 % del aftershock se disipa cada mes
-const CULTURE_MISMATCH_INC   = 5;    // Resistencia extra mensual por desajuste cultural
-const NATURAL_DECAY          = 2;    // Reducción natural mensual (mínimo 0)
-const ARMY_DECAY_PER_UNIT    = 3;    // Reducción extra por cada ejército amigo en comarca
+const AFTERSHOCK_DECAY       = 1;    // Aftershock que se disipa cada turno (lineal)
+const CULTURE_MISMATCH_INC   = 0.5;  // Resistencia extra por turno con desajuste cultural
+const NATURAL_DECAY          = 1;    // Reducción natural por turno (mínimo 0)
+const ARMY_DECAY_PER_UNIT    = 0.5;  // Reducción extra por cada ejército amigo en comarca por turno
 const REBELLION_THRESHOLD    = 100;  // Umbral que dispara la rebelión
 const REBEL_ARMY_SIZE        = 500;  // Campesinos en armas al rebelarse
 const RESISTANCE_AFTER_REBEL = 30;   // Resistencia residual tras rebelión (no vuelve a 0)
@@ -93,57 +93,42 @@ async function addConquestResistance(client, h3Indices, newOwnerId, prevOwnerId)
 }
 
 /**
- * Procesamiento mensual de resistencia (día 15 de cada mes de juego).
- * - Decae el aftershock
- * - Sube resistencia por desajuste cultural
- * - Baja resistencia por ejércitos amigos y decaimiento natural
- * - Dispara rebeliones cuando resistance + aftershock >= 100
+ * Procesamiento de resistencia por turno.
+ * - Aftershock decae linealmente -1/turno
+ * - Resistencia sube +0.5/turno por desajuste cultural
+ * - Resistencia baja -0.3/turno natural y -0.5/turno por ejército amigo
+ * - Dispara rebelión cuando resistance + aftershock >= 100
  *
- * Debe llamarse DENTRO de una transacción activa.
+ * Debe llamarse DENTRO de una transacción activa, cada turno.
  *
- * @param {Object} client    - pg client
- * @param {number} turn      - turno actual
- * @param {Date}   gameDate  - fecha del calendario de juego
+ * @param {Object} client - pg client
+ * @param {number} turn   - turno actual
  */
-async function processComarcaResistance(client, turn, gameDate) {
-    const gd = new Date(gameDate);
-    if (gd.getDate() !== 15) return;
-
-    const gYM = `${gd.getFullYear()}-${String(gd.getMonth() + 1).padStart(2, '0')}`;
-
-    const lastRun = await client.query(
-        `SELECT value FROM game_config WHERE "group" = 'system' AND key = 'last_resistance_month'`
-    );
-    if (lastRun.rows[0]?.value === gYM) {
-        Logger.engine(`[TURN ${turn}] Comarca resistance skipped (already processed for ${gYM})`);
-        return;
-    }
-
-    Logger.engine(`[TURN ${turn}] Processing comarca resistance — game month ${gYM}`);
-
+async function processComarcaResistance(client, turn) {
     const resistances = await client.query(`
-        SELECT cr.id, cr.division_id, cr.player_id,
+        SELECT cr.division_id, cr.player_id,
                cr.resistance::float AS resistance,
                cr.aftershock::float AS aftershock,
                pd.name AS comarca_name,
                pd.capital_h3,
                p.culture_id AS owner_culture_id
         FROM comarca_resistance cr
-        JOIN political_divisions pd ON pd.id = cr.division_id AND pd.player_id = cr.player_id
+        JOIN political_divisions pd ON pd.id = cr.division_id
         JOIN players p ON p.player_id = cr.player_id
         WHERE cr.resistance + cr.aftershock > 0
     `);
+
+    if (resistances.rows.length === 0) return;
 
     for (const row of resistances.rows) {
         try {
             let resistance = row.resistance;
             let aftershock = row.aftershock;
 
-            // 1. Decaimiento del aftershock
-            aftershock *= AFTERSHOCK_DECAY_RATE;
-            if (aftershock < 0.5) aftershock = 0;
+            // 1. Aftershock: decaimiento lineal
+            aftershock = Math.max(0, aftershock - AFTERSHOCK_DECAY);
 
-            // 2. Desajuste cultural: cultura dominante en comarca vs cultura del propietario
+            // 2. Desajuste cultural
             const cultureRes = await client.query(`
                 SELECT
                     COALESCE(SUM(fc.culture_romanos),       0)::float AS r,
@@ -210,14 +195,6 @@ async function processComarcaResistance(client, turn, gameDate) {
             });
         }
     }
-
-    await client.query(`
-        INSERT INTO game_config ("group", key, value)
-        VALUES ('system', 'last_resistance_month', $1)
-        ON CONFLICT ("group", key) DO UPDATE SET value = EXCLUDED.value
-    `, [gYM]);
-
-    Logger.engine(`[TURN ${turn}] Comarca resistance processing completed.`);
 }
 
 // ── Disparo de rebelión ───────────────────────────────────────────────────────
@@ -225,10 +202,13 @@ async function processComarcaResistance(client, turn, gameDate) {
 async function triggerRebellion(client, divisionId, playerId, comarcaName, capitalH3, dominantCultureId, turn) {
     Logger.engine(`[TURN ${turn}] REBELLION in comarca ${divisionId} (${comarcaName}), owner: ${playerId}`);
 
-    const fiefsRes = await client.query(
-        `SELECT h3_index FROM territory_details WHERE division_id = $1`,
-        [divisionId]
-    );
+    // Solo los feudos que pertenecen al jugador conquistador dentro de esta comarca
+    const fiefsRes = await client.query(`
+        SELECT td.h3_index
+        FROM territory_details td
+        JOIN h3_map m ON m.h3_index = td.h3_index
+        WHERE td.division_id = $1 AND m.player_id = $2
+    `, [divisionId, playerId]);
     if (fiefsRes.rows.length === 0) return;
 
     // 50 % de los feudos se liberan; al menos uno siempre escapa

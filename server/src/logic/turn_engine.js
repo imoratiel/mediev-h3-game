@@ -1939,8 +1939,8 @@ async function processGameTurn(pool, config) {
         // Building decay (day 5 of each game month)
         await processBuildingDecay(client, newTurn, gameDate);
 
-        // Comarca resistance & rebellion (day 15 of each game month)
-        await processComarcaResistance(client, newTurn, gameDate);
+        // Comarca resistance & rebellion (cada turno)
+        await processComarcaResistance(client, newTurn);
 
         // Soldadas y consumo de comida (día 2 de cada mes de juego)
         if (dayOfMonth === 2) {
