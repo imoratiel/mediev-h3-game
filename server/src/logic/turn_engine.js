@@ -8,6 +8,7 @@ const { processTithe } = require('./tithe_system');
 const { processBuildingDecay } = require('./building_decay');
 const MarketModel = require('../models/MarketModel');
 const { processGraceTurns } = require('./conquest_system');
+const { processComarcaResistance } = require('./resistance_system');
 const { processWorkerMovements } = require('./workerMovement');
 const GAME_CONFIG = require('../config/constants');
 const { getPopulationCap } = require('../config/gameFunctions');
@@ -387,7 +388,7 @@ async function processMilitaryConsumption(client, turn, config) {
             LEFT JOIN troops t        ON t.army_id       = a.army_id
             LEFT JOIN unit_types ut   ON ut.unit_type_id = t.unit_type_id
             JOIN h3_map m             ON m.h3_index      = a.h3_index
-            WHERE a.h3_index IS NOT NULL
+            WHERE a.h3_index IS NOT NULL AND a.is_rebel = FALSE
             GROUP BY a.army_id, a.player_id, a.h3_index, a.food_provisions, a.gold_provisions,
                      a.food_threshold_notified, a.gold_threshold_notified, a.name, m.player_id
             HAVING COALESCE(SUM(t.quantity * ut.food_consumption * $1), 0) > 0
@@ -1937,6 +1938,9 @@ async function processGameTurn(pool, config) {
 
         // Building decay (day 5 of each game month)
         await processBuildingDecay(client, newTurn, gameDate);
+
+        // Comarca resistance & rebellion (day 15 of each game month)
+        await processComarcaResistance(client, newTurn, gameDate);
 
         // Soldadas y consumo de comida (día 2 de cada mes de juego)
         if (dayOfMonth === 2) {

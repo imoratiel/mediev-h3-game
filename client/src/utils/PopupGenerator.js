@@ -135,6 +135,20 @@ export function generateCellPopupContent(cell, config) {
       popupContent += `</div>`;
     }
 
+    // REBELLION (only when comarca has resistance > 0)
+    if (cell.rebellion && cell.rebellion.total > 0) {
+      const pct   = cell.rebellion.total;
+      const color = pct >= 80 ? '#ef4444' : pct >= 60 ? '#f97316' : pct >= 30 ? '#eab308' : '#22c55e';
+      popupContent += `
+        <div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:6px;margin-bottom:4px;">
+          <span style="color:#9ca3af;white-space:nowrap;">Riesgo de Rebelión</span>
+          <div style="flex:1;background:#374151;border-radius:3px;height:6px;overflow:hidden;">
+            <div style="width:${pct}%;background:${color};height:100%;border-radius:3px;"></div>
+          </div>
+          <span style="color:${color};font-weight:bold;">${pct}</span>
+        </div>`;
+    }
+
     // Resources (DISABLED: wood/stone/iron hidden; exploration hidden)
     popupContent += '<p class="popup-resources-label">Recursos Almacenados:</p>';
     popupContent += '<div class="popup-resource-grid">';

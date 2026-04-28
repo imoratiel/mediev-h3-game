@@ -190,6 +190,25 @@ class TerrainService {
                 }
             }
 
+            // Resistencia / rebelión de la comarca contra el jugador actual
+            let rebellion = null;
+            if (cell.division_id && playerId && cell.player_id === playerId) {
+                const rebRes = await pool.query(`
+                    SELECT (resistance + aftershock)::float AS total,
+                           resistance::float                AS base,
+                           aftershock::float                AS aftershock
+                    FROM comarca_resistance
+                    WHERE division_id = $1 AND player_id = $2
+                `, [cell.division_id, playerId]);
+                if (rebRes.rows.length > 0 && rebRes.rows[0].total > 0) {
+                    rebellion = {
+                        total:     Math.round(rebRes.rows[0].total),
+                        base:      Math.round(rebRes.rows[0].base),
+                        aftershock: Math.round(rebRes.rows[0].aftershock),
+                    };
+                }
+            }
+
             res.json({
                 h3_index,
                 terrain_type: cell.terrain_type,
@@ -233,6 +252,7 @@ class TerrainService {
                 can_destroy_bridge,
                 building_demolition,
                 can_demolish_building,
+                rebellion,
                 territory: cell.population ? {
                     population: cell.population,
                     happiness: cell.division_id

@@ -15,6 +15,7 @@ const pool = require('../../db.js');
 const h3 = require('h3-js');
 const cache = require('./CacheService.js');
 const { executeConstruction, canPerformAction, applyCooldown, processConquestLoot, GameActionError } = require('./gameActions.js');
+const { addConquestResistance } = require('../logic/resistance_system.js');
 
 /**
  * Captura o dispersa a los personajes enemigos presentes en un hex conquistado.
@@ -682,6 +683,7 @@ class KingdomService {
 
             // 8. Victoria o Empate → transferir propiedad
             await client.query('UPDATE h3_map SET player_id = $1 WHERE h3_index = $2', [player_id, h3_index]);
+            await addConquestResistance(client, h3_index, player_id, currentOwner);
             await client.query('UPDATE territory_details SET grace_turns = $1 WHERE h3_index = $2', [GRACE_TURNS_DEFAULT, h3_index]);
             await captureCharactersOnConquest(client, h3_index, armyId, player_id);
 
@@ -950,6 +952,7 @@ class KingdomService {
             let isCapital = false;
             if (result === 'victory' || result === 'draw') {
                 await client.query('UPDATE h3_map SET player_id = $1 WHERE h3_index = $2', [player_id, h3_index]);
+                await addConquestResistance(client, h3_index, player_id, previousOwner);
                 // Período de gracia para el feudo recién conquistado
                 await client.query('UPDATE territory_details SET grace_turns = $1 WHERE h3_index = $2', [GRACE_TURNS_DEFAULT, h3_index]);
                 await captureCharactersOnConquest(client, h3_index, armyId, player_id);

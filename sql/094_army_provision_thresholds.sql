@@ -5,4 +5,4 @@ ALTER TABLE armies
     ADD COLUMN IF NOT EXISTS food_threshold_notified INT DEFAULT NULL,
     ADD COLUMN IF NOT EXISTS gold_threshold_notified INT DEFAULT NULL;
 
-INSERT INTO schema_migrations (filename) VALUES ('094_army_provision_thresholds.sql') ON CONFLICT DO NOTHING;
+INSERT INTO schema_migrations (script_name) VALUES ('094_army_provision_thresholds.sql') ON CONFLICT DO NOTHING;
