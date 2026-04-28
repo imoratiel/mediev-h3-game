@@ -279,8 +279,8 @@ export function generateCellPopupContent(cell, config) {
       </p>`;
   }
 
-  // Market button — own Capital or fief with active economic building
-  if (isCapitalHex || hasMarket) {
+  // Market button — solo en feudos con mercado activo (no en capital)
+  if (hasMarket) {
     popupContent += `<button id="open-market-btn-${h3_index}" class="btn-popup btn-market" title="Abrir panel de comercio">🏪 Mercado</button>`;
   }
 
