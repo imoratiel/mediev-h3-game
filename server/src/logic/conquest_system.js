@@ -1,7 +1,6 @@
 const h3 = require('h3-js');
 const { Logger } = require('../utils/logger');
 const NotificationService = require('../services/NotificationService');
-const { addConquestResistance } = require('./resistance_system.js');
 
 /** Default number of turns a freshly-conquered fief stays in "grace period". */
 const GRACE_TURNS_DEFAULT = 3;
@@ -115,7 +114,6 @@ async function processCapitalCollapse(client, capitalH3, newOwnerId, defeatedPla
         'UPDATE h3_map SET player_id = $1 WHERE h3_index = ANY($2::text[])',
         [newOwnerId, toConquer]
     );
-    await addConquestResistance(client, toConquer, newOwnerId, defeatedPlayerId);
     await client.query(
         'UPDATE territory_details SET grace_turns = $1 WHERE h3_index = ANY($2::text[])',
         [GRACE_TURNS_DEFAULT, toConquer]

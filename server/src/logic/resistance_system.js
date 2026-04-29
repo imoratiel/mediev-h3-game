@@ -84,15 +84,47 @@ async function addConquestResistance(client, h3Indices, newOwnerId, prevOwnerId)
             : countRes.rows[0].cnt * CONQUEST_RESIST_FIEF;
 
         if (capitalConquered) {
+            // Tier del aftershock según ratio ejército conquistador / población de la comarca
+            const troopsRes = await client.query(`
+                SELECT COALESCE(SUM(t.quantity), 0)::int AS total_troops
+                FROM troops t
+                JOIN armies a ON a.army_id = t.army_id
+                WHERE a.h3_index = ANY($1::text[])
+                  AND a.player_id = $2
+                  AND a.is_naval  = FALSE
+                  AND a.is_rebel  = FALSE
+            `, [indices, newOwnerId]);
+
+            const popRes = await client.query(`
+                SELECT COALESCE(SUM(td.population), 1)::int AS total_pop
+                FROM territory_details td
+                WHERE td.division_id = $1
+            `, [row.division_id]);
+
+            const ratio = troopsRes.rows[0].total_troops / popRes.rows[0].total_pop;
+            // > 10%: aftershock fijo de 1/turno durante AFTERSHOCK_START turnos
+            // >  5%: aftershock a la mitad (multiplier 0.5)
+            // <=5%:  aftershock normal
+            let aftershockMultiplier = 1.0;
+            let aftershockOverride   = null;
+            if (ratio >= 0.10) {
+                aftershockOverride = 1.0;
+            } else if (ratio >= 0.05) {
+                aftershockMultiplier = 0.5;
+            }
+
             await client.query(`
-                INSERT INTO comarca_resistance (division_id, player_id, resistance, aftershock, updated_at)
-                VALUES ($1, $2, $3, $4, NOW())
+                INSERT INTO comarca_resistance
+                    (division_id, player_id, resistance, aftershock, aftershock_multiplier, aftershock_override, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())
                 ON CONFLICT (division_id, player_id)
                 DO UPDATE SET
-                    resistance = LEAST(100, comarca_resistance.resistance + EXCLUDED.resistance),
-                    aftershock = $4,
-                    updated_at = NOW()
-            `, [row.division_id, newOwnerId, immediateResist, AFTERSHOCK_START]);
+                    resistance           = LEAST(100, comarca_resistance.resistance + EXCLUDED.resistance),
+                    aftershock           = $4,
+                    aftershock_multiplier = $5,
+                    aftershock_override  = $6,
+                    updated_at           = NOW()
+            `, [row.division_id, newOwnerId, immediateResist, AFTERSHOCK_START, aftershockMultiplier, aftershockOverride]);
         } else {
             await client.query(`
                 INSERT INTO comarca_resistance (division_id, player_id, resistance, aftershock, updated_at)
@@ -121,8 +153,10 @@ async function addConquestResistance(client, h3Indices, newOwnerId, prevOwnerId)
 async function processComarcaResistance(client, turn) {
     const resistances = await client.query(`
         SELECT cr.division_id, cr.player_id,
-               cr.resistance::float AS resistance,
-               cr.aftershock::float AS aftershock,
+               cr.resistance::float            AS resistance,
+               cr.aftershock::float            AS aftershock,
+               cr.aftershock_multiplier::float AS aftershock_multiplier,
+               cr.aftershock_override,
                pd.name AS comarca_name,
                pd.capital_h3,
                p.culture_id AS owner_culture_id
@@ -139,10 +173,12 @@ async function processComarcaResistance(client, turn) {
             let resistance = row.resistance;
             let aftershock = row.aftershock;
 
-            // 1. Aftershock: suma su valor actual a la resistencia y decrementa
+            // 1. Aftershock: suma su contribución a la resistencia y decrementa el contador
             if (aftershock > 0) {
-                resistance += aftershock;
-                aftershock = aftershock - 1;
+                const override    = row.aftershock_override !== null ? parseFloat(row.aftershock_override) : null;
+                const multiplier  = parseFloat(row.aftershock_multiplier) || 1.0;
+                resistance += override !== null ? override : aftershock * multiplier;
+                aftershock -= 1;
             }
 
             // 2. Desajuste cultural
