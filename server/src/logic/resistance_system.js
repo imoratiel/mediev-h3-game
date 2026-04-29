@@ -223,7 +223,12 @@ async function processComarcaResistance(client, turn) {
 
             resistance = Math.min(100, resistance);
 
-            // 5. Comprobación de umbral de rebelión
+            // 5. Suelo cultural: desajuste cultural → mínimo 40 de resistencia
+            if (dominantCultureId !== parseInt(row.owner_culture_id)) {
+                resistance = Math.max(40, resistance);
+            }
+
+            // 7. Comprobación de umbral de rebelión
             if (resistance + aftershock >= REBELLION_THRESHOLD) {
                 await triggerRebellion(
                     client, row.division_id, row.player_id,
