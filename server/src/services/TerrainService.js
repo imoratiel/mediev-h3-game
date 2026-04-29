@@ -194,18 +194,12 @@ class TerrainService {
             let rebellion = null;
             if (cell.division_id && playerId && cell.player_id === playerId) {
                 const rebRes = await pool.query(`
-                    SELECT (resistance + aftershock)::float AS total,
-                           resistance::float                AS base,
-                           aftershock::float                AS aftershock
+                    SELECT resistance::float AS total
                     FROM comarca_resistance
                     WHERE division_id = $1 AND player_id = $2
                 `, [cell.division_id, playerId]);
                 if (rebRes.rows.length > 0 && rebRes.rows[0].total > 0) {
-                    rebellion = {
-                        total:     Math.round(rebRes.rows[0].total),
-                        base:      Math.round(rebRes.rows[0].base),
-                        aftershock: Math.round(rebRes.rows[0].aftershock),
-                    };
+                    rebellion = { total: Math.round(rebRes.rows[0].total) };
                 }
             }
 

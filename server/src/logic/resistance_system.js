@@ -2,15 +2,18 @@ const NotificationService = require('../services/NotificationService');
 const { Logger } = require('../utils/logger');
 const h3 = require('h3-js');
 
-// ── Parámetros de rebelión (valores por turno) ────────────────────────────────
-const CONQUEST_AFTERSHOCK    = 20;   // Shock por conquistar la capital de comarca
-const AFTERSHOCK_DECAY       = 1;    // Aftershock que se disipa cada turno (lineal)
-const CULTURE_MISMATCH_INC   = 0.5;  // Resistencia extra por turno con desajuste cultural
-const NATURAL_DECAY          = 1;    // Reducción natural por turno (mínimo 0)
-const ARMY_DECAY_PER_UNIT    = 0.5;  // Reducción extra por cada ejército amigo en comarca por turno
-const REBELLION_THRESHOLD    = 100;  // Umbral que dispara la rebelión
-const REBEL_ARMY_SIZE        = 500;  // Campesinos en armas al rebelarse
-const RESISTANCE_AFTER_REBEL = 30;   // Resistencia residual tras rebelión (no vuelve a 0)
+// ── Parámetros de rebelión ────────────────────────────────────────────────────
+// Conquista inmediata: +5 feudo normal, +20 capital de comarca
+const CONQUEST_RESIST_FIEF    = 5;
+const CONQUEST_RESIST_CAPITAL = 20;
+// Aftershock: contador que empieza en 10 y se suma a la rebelión cada turno hasta llegar a 0
+const AFTERSHOCK_START        = 10;
+const CULTURE_MISMATCH_INC    = 0.5;  // +0.5/turno con desajuste cultural
+const NATURAL_DECAY           = 1;    // -1/turno de decay natural (mínimo 0)
+const ARMY_DECAY_PER_UNIT     = 0.5;  // -0.5/turno por ejército amigo en comarca
+const REBELLION_THRESHOLD     = 100;  // Umbral que dispara la rebelión
+const REBEL_ARMY_SIZE         = 500;  // Campesinos en armas al rebelarse
+const RESISTANCE_AFTER_REBEL  = 30;   // Resistencia residual tras rebelión
 
 // Unidad de infantería ligera de cada cultura para los ejércitos rebeldes
 const REBEL_UNIT_BY_CULTURE = {
@@ -40,15 +43,14 @@ function fmtHex(h3_index) {
  * @param {number|null}     prevOwnerId - propietario anterior (null si era tierra libre)
  */
 async function addConquestResistance(client, h3Indices, newOwnerId, prevOwnerId) {
-    if (!prevOwnerId) return;
-
     const indices = Array.isArray(h3Indices) ? h3Indices : [h3Indices];
 
-    // Registrar propietario anterior
-    await client.query(
-        'UPDATE h3_map SET previous_player_id = $1 WHERE h3_index = ANY($2::text[])',
-        [prevOwnerId, indices]
-    );
+    if (prevOwnerId) {
+        await client.query(
+            'UPDATE h3_map SET previous_player_id = $1 WHERE h3_index = ANY($2::text[])',
+            [prevOwnerId, indices]
+        );
+    }
 
     // Buscar comarcas afectadas
     const comarcaRes = await client.query(`
@@ -75,20 +77,32 @@ async function addConquestResistance(client, h3Indices, newOwnerId, prevOwnerId)
               AND h3_index != $3
         `, [indices, row.division_id, comarcaCapital ?? '']);
 
-        // Capital: +20; resto: +5 cada uno
-        const aftershock = Math.min(100,
-            (capitalConquered ? CONQUEST_AFTERSHOCK : 0) +
-            countRes.rows[0].cnt * 5
-        );
+        // Capital conquistada: +20 fijo (los demás feudos en cascada no suman)
+        // Sin capital: +5 por cada feudo conquistado
+        const immediateResist = capitalConquered
+            ? CONQUEST_RESIST_CAPITAL
+            : countRes.rows[0].cnt * CONQUEST_RESIST_FIEF;
 
-        await client.query(`
-            INSERT INTO comarca_resistance (division_id, player_id, resistance, aftershock, updated_at)
-            VALUES ($1, $2, 0, $3, NOW())
-            ON CONFLICT (division_id, player_id)
-            DO UPDATE SET
-                aftershock = LEAST(100, comarca_resistance.aftershock + EXCLUDED.aftershock),
-                updated_at = NOW()
-        `, [row.division_id, newOwnerId, aftershock]);
+        if (capitalConquered) {
+            await client.query(`
+                INSERT INTO comarca_resistance (division_id, player_id, resistance, aftershock, updated_at)
+                VALUES ($1, $2, $3, $4, NOW())
+                ON CONFLICT (division_id, player_id)
+                DO UPDATE SET
+                    resistance = LEAST(100, comarca_resistance.resistance + EXCLUDED.resistance),
+                    aftershock = $4,
+                    updated_at = NOW()
+            `, [row.division_id, newOwnerId, immediateResist, AFTERSHOCK_START]);
+        } else {
+            await client.query(`
+                INSERT INTO comarca_resistance (division_id, player_id, resistance, aftershock, updated_at)
+                VALUES ($1, $2, $3, 0, NOW())
+                ON CONFLICT (division_id, player_id)
+                DO UPDATE SET
+                    resistance = LEAST(100, comarca_resistance.resistance + EXCLUDED.resistance),
+                    updated_at = NOW()
+            `, [row.division_id, newOwnerId, immediateResist]);
+        }
     }
 }
 
@@ -125,8 +139,11 @@ async function processComarcaResistance(client, turn) {
             let resistance = row.resistance;
             let aftershock = row.aftershock;
 
-            // 1. Aftershock: decaimiento lineal
-            aftershock = Math.max(0, aftershock - AFTERSHOCK_DECAY);
+            // 1. Aftershock: suma su valor actual a la resistencia y decrementa
+            if (aftershock > 0) {
+                resistance += aftershock;
+                aftershock = aftershock - 1;
+            }
 
             // 2. Desajuste cultural
             const cultureRes = await client.query(`
