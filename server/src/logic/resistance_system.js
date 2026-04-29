@@ -1,4 +1,5 @@
 const NotificationService = require('../services/NotificationService');
+const CombatService      = require('../services/CombatService');
 const { Logger } = require('../utils/logger');
 const h3 = require('h3-js');
 
@@ -295,10 +296,10 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
     const unitTypeId = REBEL_UNIT_BY_CULTURE[dominantCultureId] ?? 17;
 
     const armyRes = await client.query(`
-        INSERT INTO armies (player_id, h3_index, name, is_rebel)
-        VALUES (NULL, $1, 'Campesinos en Armas', TRUE)
+        INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
+        VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
         RETURNING army_id
-    `, [spawnHex]);
+    `, [spawnHex, divisionId, playerId]);
     const armyId = armyRes.rows[0].army_id;
 
     await client.query(`
@@ -325,4 +326,160 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
     Logger.engine(`[TURN ${turn}] Rebellion: ${liberatedFiefs.length}/${fiefsRes.rows.length} fiefs liberated in comarca ${divisionId}, rebel army ${armyId} at ${spawnHex}`);
 }
 
-module.exports = { addConquestResistance, processComarcaResistance };
+// ── IA de ejércitos rebeldes ──────────────────────────────────────────────────
+
+/**
+ * Ejecuta el comportamiento de todos los ejércitos rebeldes activos.
+ * Prioridades por ejército:
+ *   1. Conquistar feudos adyacentes del agresor (liberarlos)
+ *   2. Moverse a feudos libres de la comarca
+ *   3. Atacar ejércitos del agresor en la comarca (o avanzar hacia ellos)
+ *   4. Patrullar: moverse a un hex libre adyacente aleatorio
+ */
+async function processRebelArmies(client, turn) {
+    const rebels = await client.query(`
+        SELECT army_id, h3_index, rebel_division_id, rebel_target_player_id
+        FROM armies
+        WHERE is_rebel = TRUE
+          AND h3_index IS NOT NULL
+          AND rebel_division_id IS NOT NULL
+          AND rebel_target_player_id IS NOT NULL
+    `);
+
+    for (const rebel of rebels.rows) {
+        try {
+            await _processOneRebelArmy(client, rebel, turn);
+        } catch (e) {
+            Logger.error(e, { context: 'processRebelArmies', army_id: rebel.army_id, turn });
+        }
+    }
+}
+
+async function _processOneRebelArmy(client, rebel, turn) {
+    // Si el hex actual sigue siendo del agresor (quedó de un turno anterior), liberarlo
+    await client.query(
+        `UPDATE h3_map SET player_id = NULL, previous_player_id = $1
+         WHERE h3_index = $2 AND player_id = $1`,
+        [rebel.rebel_target_player_id, rebel.h3_index]
+    );
+
+    const neighbors = h3.gridDisk(rebel.h3_index, 1).filter(n => n !== rebel.h3_index);
+
+    // 1. Feudos adyacentes del agresor → liberar
+    const aggressorFiefs = await client.query(`
+        SELECT h3_index FROM h3_map
+        WHERE h3_index = ANY($1::text[]) AND player_id = $2
+        LIMIT 1
+    `, [neighbors, rebel.rebel_target_player_id]);
+
+    if (aggressorFiefs.rows.length > 0) {
+        const targetHex = aggressorFiefs.rows[0].h3_index;
+        await client.query(
+            'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
+            [targetHex, rebel.army_id]
+        );
+
+        // Combate si hay ejército defensor en ese hex
+        const defArmy = await client.query(`
+            SELECT army_id FROM armies
+            WHERE h3_index = $1 AND player_id = $2 AND is_rebel = FALSE AND is_naval = FALSE
+            LIMIT 1
+        `, [targetHex, rebel.rebel_target_player_id]);
+
+        if (defArmy.rows.length > 0) {
+            await CombatService.resolveCombat(
+                client, rebel.army_id, defArmy.rows[0].army_id, targetHex, turn, rebel.army_id
+            );
+            // Comprobar si el ejército rebelde sobrevivió
+            const alive = await client.query(
+                'SELECT army_id FROM armies WHERE army_id = $1', [rebel.army_id]
+            );
+            if (alive.rows.length === 0) return;
+        }
+
+        await client.query(
+            `UPDATE h3_map SET player_id = NULL, previous_player_id = $1
+             WHERE h3_index = $2 AND player_id = $1`,
+            [rebel.rebel_target_player_id, targetHex]
+        );
+        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} liberated ${targetHex}`);
+        return;
+    }
+
+    // 2. Feudos libres de la comarca adyacentes → ocupar
+    const freeComarca = await client.query(`
+        SELECT m.h3_index FROM h3_map m
+        JOIN territory_details td ON td.h3_index = m.h3_index
+        WHERE m.h3_index = ANY($1::text[])
+          AND m.player_id IS NULL
+          AND td.division_id = $2
+        LIMIT 1
+    `, [neighbors, rebel.rebel_division_id]);
+
+    if (freeComarca.rows.length > 0) {
+        await client.query(
+            'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
+            [freeComarca.rows[0].h3_index, rebel.army_id]
+        );
+        return;
+    }
+
+    // 3. Ejércitos del agresor en la comarca → atacar si adyacente, avanzar si no
+    const aggressorArmies = await client.query(`
+        SELECT a.army_id, a.h3_index FROM armies a
+        JOIN territory_details td ON td.h3_index = a.h3_index
+        WHERE td.division_id = $1
+          AND a.player_id = $2
+          AND a.is_rebel = FALSE AND a.is_naval = FALSE
+    `, [rebel.rebel_division_id, rebel.rebel_target_player_id]);
+
+    if (aggressorArmies.rows.length > 0) {
+        const target = aggressorArmies.rows.reduce((best, a) => {
+            try {
+                return h3.gridDistance(rebel.h3_index, a.h3_index) <
+                       h3.gridDistance(rebel.h3_index, best.h3_index) ? a : best;
+            } catch { return best; }
+        });
+
+        if (neighbors.includes(target.h3_index)) {
+            await client.query(
+                'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
+                [target.h3_index, rebel.army_id]
+            );
+            await CombatService.resolveCombat(
+                client, rebel.army_id, target.army_id, target.h3_index, turn, rebel.army_id
+            );
+        } else {
+            const nextHex = neighbors.reduce((best, n) => {
+                try {
+                    const d = h3.gridDistance(n, target.h3_index);
+                    const dBest = best ? h3.gridDistance(best, target.h3_index) : Infinity;
+                    return d < dBest ? n : best;
+                } catch { return best; }
+            }, null);
+            if (nextHex) {
+                await client.query(
+                    'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
+                    [nextHex, rebel.army_id]
+                );
+            }
+        }
+        return;
+    }
+
+    // 4. Patrullar: hex libre adyacente aleatorio
+    const freeNeighbors = await client.query(`
+        SELECT h3_index FROM h3_map
+        WHERE h3_index = ANY($1::text[]) AND player_id IS NULL
+    `, [neighbors]);
+
+    if (freeNeighbors.rows.length > 0) {
+        const pick = freeNeighbors.rows[Math.floor(Math.random() * freeNeighbors.rows.length)];
+        await client.query(
+            'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
+            [pick.h3_index, rebel.army_id]
+        );
+    }
+}
+
+module.exports = { addConquestResistance, processComarcaResistance, processRebelArmies };

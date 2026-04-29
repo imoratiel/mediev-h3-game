@@ -59,7 +59,7 @@ class ArmyModel {
                       AND cap.is_captive = TRUE
                 ), '[]'::json) AS captives
             FROM armies a
-            JOIN players p  ON a.player_id = p.player_id
+            LEFT JOIN players p  ON a.player_id = p.player_id
             LEFT JOIN characters c  ON c.army_id = a.army_id AND c.is_captive = FALSE
             LEFT JOIN players p2    ON p2.player_id = c.player_id
             LEFT JOIN noble_ranks nr ON nr.id = p2.noble_rank_id
@@ -350,7 +350,8 @@ class ArmyModel {
                 (
                     SELECT COUNT(*)::int
                     FROM armies ea
-                    WHERE ea.h3_index = a.h3_index AND ea.player_id != a.player_id
+                    WHERE ea.h3_index = a.h3_index
+                      AND (ea.player_id != a.player_id OR ea.player_id IS NULL)
                 ) AS enemy_count,
                 COALESCE(td.grace_turns, 0)::int AS fief_grace_turns,
                 (m.player_id = a.player_id) AS is_own_fief,
@@ -371,7 +372,7 @@ class ArmyModel {
             LEFT JOIN troops t ON t.army_id = a.army_id
             LEFT JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
             LEFT JOIN players pl ON a.player_id = pl.player_id
-            WHERE a.player_id = $1
+            WHERE (a.player_id = $1 OR a.is_rebel = TRUE)
               AND (a.is_naval = FALSE OR a.is_naval IS NULL)
               AND a.transported_by IS NULL
             GROUP BY a.army_id, a.name, a.h3_index, a.destination, m.coord_x, m.coord_y, td.custom_name, s.name, td.grace_turns, m.player_id, a.is_garrison, pl.capital_h3

@@ -8,7 +8,7 @@ const { processTithe } = require('./tithe_system');
 const { processBuildingDecay } = require('./building_decay');
 const MarketModel = require('../models/MarketModel');
 const { processGraceTurns } = require('./conquest_system');
-const { processComarcaResistance } = require('./resistance_system');
+const { processComarcaResistance, processRebelArmies } = require('./resistance_system');
 const { processWorkerMovements } = require('./workerMovement');
 const GAME_CONFIG = require('../config/constants');
 const { getPopulationCap } = require('../config/gameFunctions');
@@ -1941,6 +1941,9 @@ async function processGameTurn(pool, config) {
 
         // Comarca resistance & rebellion (cada turno)
         await processComarcaResistance(client, newTurn);
+
+        // Comportamiento de ejércitos rebeldes (cada turno, tras resolver resistencia)
+        await processRebelArmies(client, newTurn);
 
         // Soldadas y consumo de comida (día 2 de cada mes de juego)
         if (dayOfMonth === 2) {

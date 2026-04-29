@@ -592,7 +592,7 @@ class KingdomService {
 
             // 3. Verificar que no hay ejércitos enemigos (deben ser derrotados primero)
             const enemyArmiesResult = await client.query(
-                'SELECT COUNT(*)::int AS count FROM armies WHERE h3_index = $1 AND player_id != $2',
+                'SELECT COUNT(*)::int AS count FROM armies WHERE h3_index = $1 AND (player_id != $2 OR player_id IS NULL)',
                 [h3_index, player_id]
             );
             if (enemyArmiesResult.rows[0].count > 0) {
@@ -833,7 +833,7 @@ class KingdomService {
 
             // 3. Verificar que no hay ejércitos enemigos (deben ser derrotados primero)
             const enemyCheck = await client.query(
-                'SELECT COUNT(*)::int AS count FROM armies WHERE h3_index = $1 AND player_id != $2',
+                'SELECT COUNT(*)::int AS count FROM armies WHERE h3_index = $1 AND (player_id != $2 OR player_id IS NULL)',
                 [h3_index, player_id]
             );
             if (enemyCheck.rows[0].count > 0) {

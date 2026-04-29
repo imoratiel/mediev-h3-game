@@ -395,7 +395,7 @@ export function generateArmyPopup(armyData, config) {
     // HEADER
     popupContent += `<div class="army-header ${armyClass}">`;
     popupContent += `<h3 class="army-title">${isOwnArmy ? '🛡️ ' : '⚔️ '}${army.name || 'Ejército sin nombre'}</h3>`;
-    popupContent += `<p class="army-owner" style="border-bottom:2px solid ${army.player_color}">👤 ${army.player_name}</p>`;
+    popupContent += `<p class="army-owner" style="border-bottom:2px solid ${army.player_color ?? '#ef4444'}">👤 ${army.player_name ?? 'Rebeldes'}</p>`;
     popupContent += `</div>`;
 
     // LOCATION
