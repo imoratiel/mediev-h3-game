@@ -431,7 +431,7 @@
             <!-- Pastillas de mercados/capital -->
             <div class="mkt-section-label" style="margin-top:14px">Mis mercados</div>
             <div v-if="marketLocations.length === 0" class="mkt-empty">
-              Construye un Mercado o usa tu Capital para comerciar.
+              Construye un Mercado para comerciar.
             </div>
             <div v-else class="mkt-location-grid">
               <button

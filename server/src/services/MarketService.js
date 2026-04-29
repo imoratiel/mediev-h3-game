@@ -28,7 +28,7 @@ function calcPrices(resource) {
 class MarketService {
 
     // ── GET /api/market/my-locations ─────────────────────────────────────────
-    // Devuelve la capital del jugador + todos sus feudos con Mercado activo (conservation > 20).
+    // Devuelve todos los feudos del jugador con Mercado activo.
     // Incluye trabajadores presentes en cada ubicación.
 
     async GetMyLocations(req, res) {
@@ -50,14 +50,9 @@ class MarketService {
                 LEFT JOIN buildings b ON b.id = fb.building_id
                 LEFT JOIN building_types bt ON bt.building_type_id = b.type_id
                 WHERE m.player_id = $1
-                  AND (
-                    m.h3_index = p.capital_h3
-                    OR (
-                      bt.name = 'economic'
-                      AND fb.is_under_construction = FALSE
-                    )
-                  )
-                ORDER BY (m.h3_index = p.capital_h3) DESC, location_name
+                  AND bt.name = 'economic'
+                  AND fb.is_under_construction = FALSE
+                ORDER BY location_name
             `, [playerId]);
 
             // Para cada ubicación, incluir sus trabajadores presentes
