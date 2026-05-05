@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.16.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.15.0...v0.16.0) (2026-05-05)
+
+
+### Nuevas funcionalidades
+
+* añadida capacidad de explorar ejercitos enemigos en la misma casilla ([89dbd94](https://github.com/imoratiel/hipania210ac-game/commit/89dbd94fcb459ef4af02ad7bc2334f727f557cf6))
+* consumo de comida y oro de las provisiones, si el ejercito no tiene reservas hay deserciones ([d54f082](https://github.com/imoratiel/hipania210ac-game/commit/d54f082b7cc732f884dc8b9069256c2e17f10de9))
+* ejecutar personajes capturados ([b1b92f4](https://github.com/imoratiel/hipania210ac-game/commit/b1b92f42dbc2e69e166fa0e690e709341443c268))
+* limitar los mercados y templos a uno por comarca ([ccf838a](https://github.com/imoratiel/hipania210ac-game/commit/ccf838abd62e6192a118f6c778041a7d2f3c8e1d))
+* los templos aplican bono de cultura a toda la comarca ([9d0a5b1](https://github.com/imoratiel/hipania210ac-game/commit/9d0a5b1cfec70b61b99726a88ed62b16c69ecd0c))
+* resistencia a la equipación + rebeliones ([e990b40](https://github.com/imoratiel/hipania210ac-game/commit/e990b4018a7fa794dd5db28773d0cf64d815296e))
+* solo pueden comprarse recursos en los mercados ([6aa5e4f](https://github.com/imoratiel/hipania210ac-game/commit/6aa5e4fcf46b373cec1797b3ce169f68e9be0bc1))
+* una comarca de otra cultura no puede pacificarse ([a983821](https://github.com/imoratiel/hipania210ac-game/commit/a9838214706a5ff27a98090b93cd38c44bf67748))
+
+
+### Correcciones
+
+* arreglos en el nivel de resistencia ([3c049cc](https://github.com/imoratiel/hipania210ac-game/commit/3c049cc2f2a89547f2f59108f061175e0511d3b7))
+* cambios de textos de notificaciones ([0f545c6](https://github.com/imoratiel/hipania210ac-game/commit/0f545c6113fd163b42296506fc149ab045f9ad89))
+* correciones sobre el desabastecimiento de las tropas ([0323578](https://github.com/imoratiel/hipania210ac-game/commit/032357890f66f71c0a33833e0896c785ef86da37))
+* error al resetear la partida ([af4f8b9](https://github.com/imoratiel/hipania210ac-game/commit/af4f8b902bc6acc5d97a0975f55202c10ba6431f))
+* errores al conquistar, se podía conquistar un territorio aun teniendo un ejercito enemigo ([2cbb4c0](https://github.com/imoratiel/hipania210ac-game/commit/2cbb4c0343abce247ad102170a802c995fe82ac5))
+* errores en el riesgo de rebelion ([a2db631](https://github.com/imoratiel/hipania210ac-game/commit/a2db631f53e0a48da979646de73ad7b051a5f698))
+* no se puede comprar en la capital, solo en mercados ([07f7f3f](https://github.com/imoratiel/hipania210ac-game/commit/07f7f3f1c3d2aed3d23348197c14fdbaee2af75f))
+* no se recupera el estado de rebelión ([7e1489d](https://github.com/imoratiel/hipania210ac-game/commit/7e1489d1bc7c7031afe47d1f23a55816ded0ecbb))
+
 ## [0.15.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.14.0...v0.15.0) (2026-04-21)
 
 
