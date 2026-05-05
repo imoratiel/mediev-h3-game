@@ -51,6 +51,7 @@ class ArmyModel {
                     SELECT json_agg(json_build_object(
                         'id',          cap.id,
                         'name',        cap.name,
+                        'age',         cap.age,
                         'player_name', op.display_name
                     ))
                     FROM characters cap
@@ -551,6 +552,7 @@ class ArmyModel {
                     SELECT json_agg(json_build_object(
                         'id',          cap.id,
                         'name',        cap.name,
+                        'age',         cap.age,
                         'player_name', op.display_name
                     ))
                     FROM characters cap

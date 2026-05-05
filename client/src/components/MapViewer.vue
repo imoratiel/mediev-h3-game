@@ -5707,6 +5707,23 @@ const attachArmyListeners = (army, h3_index) => {
     map.closePopup();
     window.__openCharacterProfile(charArmyBtn.dataset.charId);
   });
+
+  for (const cap of (army.captives ?? [])) {
+    if (cap.age < 16) continue;
+    const execBtn = document.getElementById(`captive-execute-${cap.id}`);
+    if (!execBtn) continue;
+    execBtn.addEventListener('click', async () => {
+      if (!confirm(`¿Ejecutar a ${cap.name}?`)) return;
+      try {
+        await mapApi.executeCharacter(cap.id);
+        showToast(`☠️ ${cap.name} ha sido ejecutado`, 'success');
+        map.closePopup();
+        fetchArmyData();
+      } catch (e) {
+        showToast(e?.response?.data?.message ?? 'Error al ejecutar', 'error');
+      }
+    });
+  }
 };
 
 /** Retorna si hay un ejército propio con Exploradores en el hex y su army_id, y el primer ejército propio para atacar. */

@@ -268,11 +268,12 @@ class CharacterService {
                 char.h3_index       = null;
             }
 
-            // 2. Children — solo visibles para el propio jugador
+            // 2. Children — solo visibles para el propio jugador (incluye muertos)
             const childrenResult = isOwn ? await pool.query(`
-                SELECT id, name, age, health, is_heir, is_main_character
+                SELECT id, name, age, health, is_heir, is_main_character,
+                       (health > 0) AS is_alive
                 FROM characters
-                WHERE parent_character_id = $1 AND health > 0
+                WHERE parent_character_id = $1
                 ORDER BY age DESC
             `, [id]) : { rows: [] };
 
@@ -1011,7 +1012,7 @@ class CharacterService {
             await client.query('BEGIN');
 
             const charResult = await client.query(
-                `SELECT c.id, c.name, c.player_id, c.is_captive, c.captured_by_army_id,
+                `SELECT c.id, c.name, c.player_id, c.is_captive, c.age, c.captured_by_army_id,
                         a.player_id AS captor_player_id
                  FROM characters c
                  LEFT JOIN armies a ON a.army_id = c.captured_by_army_id
@@ -1026,6 +1027,10 @@ class CharacterService {
             if (char.captor_player_id !== playerId) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ success: false, message: 'No eres el captor de este personaje.' });
+            }
+            if (char.age < 16) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'No se puede ejecutar a un menor de edad.' });
             }
 
             const turnResult = await client.query(

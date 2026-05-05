@@ -479,7 +479,10 @@ class CharacterModel {
      */
     async killCharacter(client, characterId) {
         await (client || pool).query(
-            'UPDATE characters SET health = 0 WHERE id = $1',
+            `UPDATE characters
+             SET health = 0, is_captive = FALSE, is_imprisoned = FALSE,
+                 captured_by_army_id = NULL, army_id = NULL
+             WHERE id = $1`,
             [characterId]
         );
     }
@@ -533,7 +536,7 @@ class CharacterModel {
              FROM characters c
              JOIN players p ON p.player_id = c.player_id
              LEFT JOIN armies a ON a.army_id = c.captured_by_army_id
-             WHERE c.is_captive = TRUE AND c.is_imprisoned = FALSE`
+             WHERE c.is_captive = TRUE AND c.is_imprisoned = FALSE AND c.age >= 16`
         );
         return r.rows;
     }

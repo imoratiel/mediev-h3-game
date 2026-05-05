@@ -494,7 +494,10 @@ export function generateArmyPopup(armyData, config) {
           popupContent += `<div class="army-troop-item">`;
           popupContent += `<span class="troop-icon">⛓️</span>`;
           popupContent += `<span class="troop-name" style="flex:1;">${cap.name}</span>`;
-          popupContent += `<span class="troop-quantity" style="color:#9ca3af;font-size:0.7rem;">${cap.player_name}</span>`;
+          popupContent += `<span class="troop-quantity" style="color:#9ca3af;font-size:0.7rem;margin-right:4px;">${cap.player_name}</span>`;
+          if (isOwnArmy && cap.age >= 16) {
+            popupContent += `<button id="captive-execute-${cap.id}" style="background:#7f1d1d;border:none;color:#fca5a5;border-radius:3px;padding:1px 5px;font-size:0.7rem;cursor:pointer;" title="Ejecutar">☠️</button>`;
+          }
           popupContent += `</div>`;
         }
         popupContent += '</div></div>';
