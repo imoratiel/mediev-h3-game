@@ -236,6 +236,165 @@ class ScoutingService {
             client.release();
         }
     }
+    async scoutColocated(req, res) {
+        const client = await pool.connect();
+        try {
+            const player_id = req.user.player_id;
+            const { army_id, target_army_id } = req.body;
+
+            if (!army_id || !target_army_id) {
+                return res.status(400).json({ success: false, error: 'Faltan parámetros: army_id, target_army_id' });
+            }
+
+            await client.query('BEGIN');
+
+            // ── 1. Turno actual ───────────────────────────────────────────
+            const worldResult = await client.query('SELECT current_turn FROM world_state LIMIT 1');
+            const turn = worldResult.rows[0]?.current_turn ?? 0;
+
+            // ── 2. Verificar propiedad y límite de un reconocimiento/turno ─
+            const ownResult = await client.query(
+                `SELECT army_id, h3_index, last_colocated_scout_turn
+                 FROM armies WHERE army_id = $1 AND player_id = $2`,
+                [army_id, player_id]
+            );
+            if (ownResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Ejército no encontrado o no te pertenece' });
+            }
+            const ownArmy = ownResult.rows[0];
+
+            if (ownArmy.last_colocated_scout_turn === turn) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'Este ejército ya ha realizado un reconocimiento este turno' });
+            }
+
+            // ── 3. Verificar que el objetivo es enemigo ───────────────────
+            const targetResult = await client.query(
+                `SELECT a.army_id, a.name, a.h3_index, a.player_id, p.display_name AS player_name
+                 FROM armies a
+                 LEFT JOIN players p ON p.player_id = a.player_id
+                 WHERE a.army_id = $1 AND (a.player_id != $2 OR a.player_id IS NULL)`,
+                [target_army_id, player_id]
+            );
+            if (targetResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Ejército objetivo no encontrado' });
+            }
+            const targetArmy = targetResult.rows[0];
+
+            if (targetArmy.h3_index !== ownArmy.h3_index) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'Los ejércitos deben estar en el mismo hexágono' });
+            }
+
+            // ── 4. Conteo de efectivos ────────────────────────────────────
+            const [ownTroopsRes, enemyTroopsRes] = await Promise.all([
+                client.query(`SELECT COALESCE(SUM(quantity), 0)::int AS total FROM troops WHERE army_id = $1`, [army_id]),
+                client.query(`SELECT COALESCE(SUM(quantity), 0)::int AS total FROM troops WHERE army_id = $1`, [target_army_id])
+            ]);
+            const ownTroops   = ownTroopsRes.rows[0].total;
+            const enemyTroops = enemyTroopsRes.rows[0].total;
+
+            // ── 5. Marcar turno (consumir acción antes del roll) ──────────
+            await client.query(
+                `UPDATE armies SET last_colocated_scout_turn = $1 WHERE army_id = $2`,
+                [turn, army_id]
+            );
+
+            // ── 6. Calcular probabilidad ──────────────────────────────────
+            const probability = enemyTroops > 0 ? Math.min(1.0, ownTroops / enemyTroops) : 1.0;
+
+            if (probability < 0.10) {
+                await client.query('COMMIT');
+                return res.json({
+                    success: true,
+                    scouted: false,
+                    reason: 'too_few_troops',
+                    message: 'Tus tropas son demasiado escasas para aproximarse al enemigo sin ser detectados.'
+                });
+            }
+
+            if (Math.random() >= probability) {
+                await client.query('COMMIT');
+                return res.json({
+                    success: true,
+                    scouted: false,
+                    reason: 'failure',
+                    message: 'Tus exploradores no han conseguido aproximarse al ejército enemigo.'
+                });
+            }
+
+            // ── 7. Nivel de tamaño y mensaje ──────────────────────────────
+            const TIER_MESSAGES = {
+                small: [
+                    'Un destacamento reducido, apenas unos pocos cientos de hombres. No representan una amenaza seria.',
+                    'Fuerzas escasas, quizás una vanguardia o una guarnición de apoyo. Podrían superarse en campo abierto.'
+                ],
+                medium: [
+                    'Una fuerza respetable. Miles de soldados organizados, capaces de librar una batalla considerable.',
+                    'Un contingente de combate sólido. No deben subestimarse, aunque tampoco son invencibles.'
+                ],
+                large: [
+                    'Un ejército imponente bajo sus estandartes. Decenas de miles de hombres listos para la batalla.',
+                    'Una hueste formidable. Enfrentarles directamente sería una temeridad sin refuerzos sustanciales.'
+                ],
+                enormous: [
+                    '¡Una marea humana incontenible! Sus filas se extienden hasta el horizonte. Atacar sería una locura.',
+                    'Un ejército colosal, el tipo de fuerza que reescribe el destino de los reinos. Solo los más necios se atreverían a plantarles cara.'
+                ]
+            };
+
+            let tier;
+            if      (enemyTroops < 1000)    tier = 'small';
+            else if (enemyTroops < 5000)    tier = 'medium';
+            else if (enemyTroops <= 50000)  tier = 'large';
+            else                            tier = 'enormous';
+
+            const messages = TIER_MESSAGES[tier];
+            const flavor   = messages[Math.floor(Math.random() * messages.length)];
+
+            const tierLabel = { small: 'Pequeño', medium: 'Mediano', large: 'Gran ejército', enormous: 'Enorme' }[tier];
+            await NotificationService.createSystemNotification(
+                player_id,
+                'Militar',
+                `🕵️ RECONOCIMIENTO (Turno ${turn})\n` +
+                `"${targetArmy.name}" · ${targetArmy.player_name ?? 'Rebeldes'}\n` +
+                `Tamaño estimado: ${tierLabel}\n` +
+                `"${flavor}"`,
+                turn
+            );
+
+            await client.query('COMMIT');
+
+            Logger.action(
+                `Reconocimiento colocado: jugador ${player_id} → ejército ${target_army_id} → ${tier}`,
+                player_id,
+                { army_id, target_army_id, ownTroops, enemyTroops, tier }
+            );
+
+            return res.json({
+                success: true,
+                scouted: true,
+                tier,
+                enemy_count: enemyTroops,
+                flavor,
+                target_army_name: targetArmy.name,
+                target_player_name: targetArmy.player_name ?? 'Rebeldes'
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            Logger.error(error, {
+                context: 'ScoutingService.scoutColocated',
+                player_id: req.user?.player_id,
+                body: req.body
+            });
+            return res.status(500).json({ success: false, error: 'Error interno al procesar el reconocimiento' });
+        } finally {
+            client.release();
+        }
+    }
 }
 
 module.exports = new ScoutingService();

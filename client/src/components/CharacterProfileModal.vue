@@ -80,11 +80,11 @@
               <h3 class="section-title">👶 Hijos ({{ profile.children.length }})</h3>
               <div v-if="profile.children.length === 0" class="section-empty">Sin descendencia</div>
               <div v-else class="children-list">
-                <div v-for="child in profile.children" :key="child.id" class="person-row" @click="$emit('open-profile', child.id)">
-                  <span class="person-icon">{{ child.age < 16 ? '🧒' : child.is_heir ? '🤴' : '⭐' }}</span>
+                <div v-for="child in profile.children" :key="child.id" class="person-row" :style="child.is_alive === false ? 'opacity:0.5' : ''" @click="child.is_alive !== false && $emit('open-profile', child.id)">
+                  <span class="person-icon">{{ child.is_alive === false ? '💀' : child.age < 16 ? '🧒' : child.is_heir ? '🤴' : '⭐' }}</span>
                   <span class="person-name">{{ child.name }}</span>
                   <span class="person-age">{{ child.age }} años</span>
-                  <span v-if="child.is_heir" class="person-badge heir-badge">Heredero</span>
+                  <span v-if="child.is_heir && child.is_alive !== false" class="person-badge heir-badge">Heredero</span>
                 </div>
               </div>
             </div>
@@ -100,7 +100,7 @@
                     <span class="person-name">{{ anc.name }}</span>
                     <span class="ancestor-rel">{{ ancestorLabel(i, profile.ancestors.length) }}</span>
                   </div>
-                  <span v-if="!anc.is_alive" class="ancestor-dead" title="Fallecido">†</span>
+                  <span v-if="!anc.is_alive" class="ancestor-dead" title="Fallecido">💀</span>
                 </div>
               </div>
             </div>

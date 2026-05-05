@@ -135,6 +135,20 @@ export function generateCellPopupContent(cell, config) {
       popupContent += `</div>`;
     }
 
+    // REBELLION (only when comarca has resistance > 0)
+    if (cell.rebellion && cell.rebellion.total > 0) {
+      const pct   = cell.rebellion.total;
+      const color = pct >= 80 ? '#ef4444' : pct >= 60 ? '#f97316' : pct >= 30 ? '#eab308' : '#22c55e';
+      popupContent += `
+        <div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:6px;margin-bottom:4px;">
+          <span style="color:#9ca3af;white-space:nowrap;">Riesgo de Rebelión</span>
+          <div style="flex:1;background:#374151;border-radius:3px;height:6px;overflow:hidden;">
+            <div style="width:${pct}%;background:${color};height:100%;border-radius:3px;"></div>
+          </div>
+          <span style="color:${color};font-weight:bold;">${pct}</span>
+        </div>`;
+    }
+
     // Resources (DISABLED: wood/stone/iron hidden; exploration hidden)
     popupContent += '<p class="popup-resources-label">Recursos Almacenados:</p>';
     popupContent += '<div class="popup-resource-grid">';
@@ -279,8 +293,8 @@ export function generateCellPopupContent(cell, config) {
       </p>`;
   }
 
-  // Market button — own Capital or fief with active economic building
-  if (isCapitalHex || hasMarket) {
+  // Market button — solo en feudos con mercado activo (no en capital)
+  if (hasMarket) {
     popupContent += `<button id="open-market-btn-${h3_index}" class="btn-popup btn-market" title="Abrir panel de comercio">🏪 Mercado</button>`;
   }
 
@@ -338,12 +352,11 @@ export function generateArmyPopup(armyData, config) {
     coord_y,
     hexOwnerId = null,
     currentIndex = 0,          // índice del ejército actualmente visible
-    hasExplorersAtHex = false, // el jugador tiene Exploradores en el mismo hex
-    scoutingArmyId = null,     // army_id del ejército propio con exploradores
     attackingArmyId = null,    // army_id del ejército propio en el mismo hex (para atacar)
     characterAtHex = null,     // personaje propio sin ejército en este hex (para asignar)
     totalItems = null,         // total combinado de ejércitos + personajes en el hex
-    globalIndex = null         // índice global en la lista combinada
+    globalIndex = null,        // índice global en la lista combinada
+    currentTurn = 0            // turno actual del mundo
   } = config;
 
   _ensureFadeAnimation();
@@ -381,7 +394,7 @@ export function generateArmyPopup(armyData, config) {
     // HEADER
     popupContent += `<div class="army-header ${armyClass}">`;
     popupContent += `<h3 class="army-title">${isOwnArmy ? '🛡️ ' : '⚔️ '}${army.name || 'Ejército sin nombre'}</h3>`;
-    popupContent += `<p class="army-owner" style="border-bottom:2px solid ${army.player_color}">👤 ${army.player_name}</p>`;
+    popupContent += `<p class="army-owner" style="border-bottom:2px solid ${army.player_color ?? '#ef4444'}">👤 ${army.player_name ?? 'Rebeldes'}</p>`;
     popupContent += `</div>`;
 
     // LOCATION
@@ -480,7 +493,10 @@ export function generateArmyPopup(armyData, config) {
           popupContent += `<div class="army-troop-item">`;
           popupContent += `<span class="troop-icon">⛓️</span>`;
           popupContent += `<span class="troop-name" style="flex:1;">${cap.name}</span>`;
-          popupContent += `<span class="troop-quantity" style="color:#9ca3af;font-size:0.7rem;">${cap.player_name}</span>`;
+          popupContent += `<span class="troop-quantity" style="color:#9ca3af;font-size:0.7rem;margin-right:4px;">${cap.player_name}</span>`;
+          if (isOwnArmy && cap.age >= 16) {
+            popupContent += `<button id="captive-execute-${cap.id}" style="background:#7f1d1d;border:none;color:#fca5a5;border-radius:3px;padding:1px 5px;font-size:0.7rem;cursor:pointer;" title="Ejecutar">☠️</button>`;
+          }
           popupContent += `</div>`;
         }
         popupContent += '</div></div>';
@@ -554,17 +570,20 @@ export function generateArmyPopup(armyData, config) {
         : 'army-action-icon army-action-disabled';
       popupContent += `<button id="army-attack-${army.army_id}" class="${attackClass}" ${!attackEnabled ? 'disabled' : ''} data-attacking-army="${attackingArmyId ?? ''}" title="${attackTitle}">⚔️</button>`;
 
-      // Botón ESPIONAJE
-      const scoutEnabled = hasExplorersAtHex && scoutingArmyId !== null;
-      const scoutTitle = scoutEnabled
-        ? 'Enviar exploradores (100💰 provisiones · 1000💰 si no hay provisiones)'
-        : 'Necesitas un Explorador en este hexágono';
-      const scoutClass = scoutEnabled
+      // Botón RECONOCIMIENTO CO-UBICADO
+      const alreadyScouted = army.last_colocated_scout_turn != null && army.last_colocated_scout_turn === currentTurn;
+      const colocatedEnabled = attackingArmyId !== null && !alreadyScouted;
+      const colocatedTitle = !attackingArmyId
+        ? 'Necesitas un ejército propio en el mismo hexágono'
+        : alreadyScouted
+          ? 'Ya has realizado un reconocimiento este turno'
+          : 'Reconocer ejército enemigo';
+      const colocatedClass = colocatedEnabled
         ? 'army-action-icon army-action-scout'
         : 'army-action-icon army-action-disabled';
-      popupContent += `<button id="army-scout-${army.army_id}" class="${scoutClass}" ${!scoutEnabled ? 'disabled' : ''} data-scouting-army="${scoutingArmyId ?? ''}" title="${scoutTitle}">🔭</button>`;
+      popupContent += `<button id="army-colocated-scout-${army.army_id}" class="${colocatedClass}" ${!colocatedEnabled ? 'disabled' : ''} data-attacking-army="${attackingArmyId ?? ''}" title="${colocatedTitle}">🔍</button>`;
 
-      popupContent += `<span style="font-size:0.72rem;color:#6b7280;margin-left:4px;">${attackEnabled ? attackTitle : scoutEnabled ? scoutTitle : 'Sin acciones disponibles'}</span>`;
+      popupContent += `<span style="font-size:0.72rem;color:#6b7280;margin-left:4px;">${attackEnabled ? attackTitle : colocatedEnabled ? colocatedTitle : 'Sin acciones disponibles'}</span>`;
       popupContent += `</div>`;
     }
 

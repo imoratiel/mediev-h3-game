@@ -549,6 +549,14 @@ export async function scoutArmy(armyId, targetArmyId) {
   return response.data;
 }
 
+export async function scoutColocated(armyId, targetArmyId) {
+  const response = await axios.post(`${API_URL}/api/military/scout-colocated`, {
+    army_id: armyId,
+    target_army_id: targetArmyId
+  });
+  return response.data;
+}
+
 /**
  * Get active routes for all own armies (for route visualization)
  * Returns: { success, routes: [{army_id, name, h3_index, destination, path}] }

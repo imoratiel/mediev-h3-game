@@ -266,7 +266,34 @@ async function executeConstruction(client, playerId, { h3_index, building_id }, 
         throw new GameActionError('Este edificio no pertenece a tu cultura');
     }
 
-    // ── 3c. Maritime building constraints ─────────────────────────────────────
+    // ── 3c. Comarca constraints: economic y religious requieren comarca y son únicos por comarca ──
+    if (building.type_name === 'economic' || building.type_name === 'religious') {
+        const divRes = await client.query(
+            'SELECT division_id FROM territory_details WHERE h3_index = $1',
+            [h3_index]
+        );
+        const divisionId = divRes.rows[0]?.division_id ?? null;
+        if (!divisionId) {
+            const label = building.type_name === 'economic' ? 'mercado' : 'templo';
+            throw new GameActionError(`Solo puedes construir un ${label} en un feudo que pertenezca a una comarca`);
+        }
+        const duplicateRes = await client.query(`
+            SELECT fb.h3_index FROM fief_buildings fb
+            JOIN buildings b   ON b.id = fb.building_id
+            JOIN building_types bt ON bt.building_type_id = b.type_id
+            JOIN territory_details td ON td.h3_index = fb.h3_index
+            WHERE bt.name = $1
+              AND td.division_id = $2
+              AND fb.h3_index != $3
+            LIMIT 1
+        `, [building.type_name, divisionId, h3_index]);
+        if (duplicateRes.rows.length > 0) {
+            const label = building.type_name === 'economic' ? 'mercado' : 'templo';
+            throw new GameActionError(`Esta comarca ya tiene un ${label} en ${duplicateRes.rows[0].h3_index}`);
+        }
+    }
+
+    // ── 3d. Maritime building constraints ─────────────────────────────────────
     if (building.type_name === 'maritime') {
         // Must be adjacent to at least one sea hex (terrain_type_id = 1 = Mar)
         const neighbors = h3.gridDisk(h3_index, 1).filter(n => n !== h3_index);

@@ -28,7 +28,7 @@ function calcPrices(resource) {
 class MarketService {
 
     // ── GET /api/market/my-locations ─────────────────────────────────────────
-    // Devuelve la capital del jugador + todos sus feudos con Mercado activo (conservation > 20).
+    // Devuelve todos los feudos del jugador con Mercado activo.
     // Incluye trabajadores presentes en cada ubicación.
 
     async GetMyLocations(req, res) {
@@ -50,14 +50,9 @@ class MarketService {
                 LEFT JOIN buildings b ON b.id = fb.building_id
                 LEFT JOIN building_types bt ON bt.building_type_id = b.type_id
                 WHERE m.player_id = $1
-                  AND (
-                    m.h3_index = p.capital_h3
-                    OR (
-                      bt.name = 'economic'
-                      AND fb.is_under_construction = FALSE
-                    )
-                  )
-                ORDER BY (m.h3_index = p.capital_h3) DESC, location_name
+                  AND bt.name = 'economic'
+                  AND fb.is_under_construction = FALSE
+                ORDER BY location_name
             `, [playerId]);
 
             // Para cada ubicación, incluir sus trabajadores presentes
@@ -254,14 +249,27 @@ class MarketService {
         try {
             await client.query('BEGIN');
 
-            // Verificar propiedad del feudo destino
-            const fiefResult = await client.query(
-                'SELECT player_id FROM h3_map WHERE h3_index = $1',
-                [h3_index]
-            );
+            // Verificar propiedad del feudo destino y que tenga mercado activo
+            const fiefResult = await client.query(`
+                SELECT m.player_id,
+                       EXISTS (
+                           SELECT 1 FROM fief_buildings fb
+                           JOIN buildings b   ON b.id = fb.building_id
+                           JOIN building_types bt ON bt.building_type_id = b.type_id
+                           WHERE fb.h3_index = m.h3_index
+                             AND bt.name = 'economic'
+                             AND fb.is_under_construction = FALSE
+                             AND fb.conservation > 20
+                       ) AS has_market
+                FROM h3_map m WHERE m.h3_index = $1
+            `, [h3_index]);
             if (!fiefResult.rows[0] || fiefResult.rows[0].player_id !== playerId) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ success: false, message: 'No posees ese feudo' });
+            }
+            if (!fiefResult.rows[0].has_market) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'Los recursos solo pueden comprarse en un feudo con mercado activo' });
             }
 
             // Obtener reserva con lock

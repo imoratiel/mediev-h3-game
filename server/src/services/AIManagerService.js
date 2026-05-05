@@ -26,6 +26,7 @@ const aiProxy            = require('./AIProxyService');
 const { executeRecruitment, executeConstruction, GameActionError } = require('./gameActions');
 const { getSpawnCoordinates, getNearbySpawnHex } = require('./BotService');
 const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = require('../logic/conquest_system');
+const { addConquestResistance } = require('../logic/resistance_system');
 const { bfsExpandTerritory } = require('../logic/playerInit');
 const DivisionModel          = require('../models/DivisionModel');
 const { generateDivisionName } = require('../logic/CulturalNameGenerator');
@@ -1613,6 +1614,7 @@ class AIManagerService {
         // 10. Victory / draw → transfer ownership
         const prevOwner = hex.player_id;
         await client.query('UPDATE h3_map SET player_id = $1 WHERE h3_index = $2', [playerId, targetH3]);
+        await addConquestResistance(client, targetH3, playerId, prevOwner);
 
         // Ensure territory_details row exists, apply grace period
         const tdCheck = await client.query('SELECT 1 FROM territory_details WHERE h3_index = $1', [targetH3]);

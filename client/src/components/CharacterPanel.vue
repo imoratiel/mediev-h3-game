@@ -240,6 +240,7 @@
             title="Encarcelar (requiere cuartel en este territorio)"
           >🔒 Encarcelar</button>
           <button
+            v-if="c.age >= 16"
             class="char-btn char-btn-small char-btn-danger"
             @click="executeCaptive(c)"
             title="Ejecutar al personaje"

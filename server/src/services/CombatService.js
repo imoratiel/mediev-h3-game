@@ -78,9 +78,9 @@ class CombatService {
                 });
             }
 
-            // 3. Buscar el primer ejército enemigo en el mismo hexágono
+            // 3. Buscar el primer ejército enemigo en el mismo hexágono (incluye rebeldes con player_id NULL)
             const defenderResult = await client.query(
-                'SELECT army_id, name, player_id FROM armies WHERE h3_index = $1 AND player_id != $2 LIMIT 1',
+                'SELECT army_id, name, player_id FROM armies WHERE h3_index = $1 AND (player_id != $2 OR player_id IS NULL) LIMIT 1',
                 [attacker.h3_index, player_id]
             );
             if (defenderResult.rows.length === 0) {
@@ -176,9 +176,9 @@ class CombatService {
                 });
             }
 
-            // 3. Verificar que el objetivo es enemigo
+            // 3. Verificar que el objetivo es enemigo (incluye rebeldes con player_id NULL)
             const defenderResult = await client.query(
-                'SELECT army_id, name, h3_index FROM armies WHERE army_id = $1 AND player_id != $2',
+                'SELECT army_id, name, h3_index FROM armies WHERE army_id = $1 AND (player_id != $2 OR player_id IS NULL)',
                 [targetArmyId, player_id]
             );
             if (defenderResult.rows.length === 0) {
@@ -1297,8 +1297,8 @@ class CombatService {
                 charLines(armyB.playerId);
         }
 
-        await NotificationService.createSystemNotification(armyA.playerId, 'Militar', contentA, turn);
-        await NotificationService.createSystemNotification(armyB.playerId, 'Militar', contentB, turn);
+        if (armyA.playerId) await NotificationService.createSystemNotification(armyA.playerId, 'Militar', contentA, turn);
+        if (armyB.playerId) await NotificationService.createSystemNotification(armyB.playerId, 'Militar', contentB, turn);
 
         // Notificar a ejércitos de coalición
         const isAWinner = !isDraw && winner?.id === armyA.id;

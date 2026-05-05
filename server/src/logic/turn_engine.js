@@ -8,6 +8,7 @@ const { processTithe } = require('./tithe_system');
 const { processBuildingDecay } = require('./building_decay');
 const MarketModel = require('../models/MarketModel');
 const { processGraceTurns } = require('./conquest_system');
+const { processComarcaResistance, processRebelArmies } = require('./resistance_system');
 const { processWorkerMovements } = require('./workerMovement');
 const GAME_CONFIG = require('../config/constants');
 const { getPopulationCap } = require('../config/gameFunctions');
@@ -160,30 +161,14 @@ async function processHarvest(client, turn, config) {
                     totalGoldProduced += goldProduction;
                 }
 
-                // Calculate troop consumption
-                const troopsResult = await client.query(`
-                    SELECT
-                        SUM(t.quantity) as total_troops,
-                        SUM(t.quantity * ut.food_consumption * 0.001) as total_food_consumption,
-                        SUM(t.quantity * ut.gold_upkeep) as total_gold_consumption
-                    FROM troops t
-                    JOIN armies a ON t.army_id = a.army_id
-                    JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
-                    WHERE a.player_id = $1
-                `, [player.player_id]);
-
-                const totalTroops = parseInt(troopsResult.rows[0]?.total_troops || 0);
-                const totalFoodConsumption = parseFloat(troopsResult.rows[0]?.total_food_consumption || 0);
-                const totalGoldConsumption = Math.floor(parseFloat(troopsResult.rows[0]?.total_gold_consumption || 0));
-
-                // Net production
-                const netFood = totalFoodProduced - totalFoodConsumption;
-                const netGold = totalGoldProduced - totalGoldConsumption;
+                // Net production — soldadas se pagan aparte el día 2 de cada mes
+                const netFood = totalFoodProduced;
+                const netGold = totalGoldProduced;
 
                 // Update player gold (food stays in territory_details.food_stored)
                 await client.query(`
                     UPDATE players
-                    SET gold = GREATEST(0, gold + $1)
+                    SET gold = gold + $1
                     WHERE player_id = $2
                 `, [netGold, player.player_id]);
 
@@ -226,36 +211,16 @@ async function processHarvest(client, turn, config) {
                 const messageBody = `
 📜 **Informe de cosecha del reino**
 
-🌾 **Rendimiento de los feudos:**
+🌾 **Rendimiento de los territorios:**
 • Comida: +${totalFoodProduced}
 • Oro: +${totalGoldProduced}
 
-⚔️ **Manutención de las huestes:**
-• Comida: -${totalFoodConsumption}
-• Oro: -${totalGoldConsumption}
-
-⚖️ **Balance neto:**
-• Comida: ${netFood >= 0 ? '+' : ''}${netFood}
-• Oro: ${netGold >= 0 ? '+' : ''}${netGold}
-
-${territories.rows.length > 0 ? `Feudos productivos este ciclo: ${territories.rows.length}` : '⚠️ Ningún feudo ha rendido frutos este ciclo'}${miracleSection}${marketSection}
+${territories.rows.length > 0 ? `Territorios productivos este ciclo: ${territories.rows.length}` : '⚠️ Ningún territorio ha rendido frutos este ciclo'}${miracleSection}${marketSection}
                 `.trim();
 
                 await NotificationService.createSystemNotification(player.player_id, 'Económico', messageBody, turn);
 
-                // Soldadas notification
-                if (totalGoldConsumption > 0) {
-                    const soldadasBody = `⚔️ **Pago de soldadas**\n\nLos recaudadores han distribuido el jornal entre vuestras huestes.\n• Tropas en nómina: ${totalTroops}\n• Plata entregada: -${totalGoldConsumption} 💰`;
-                    await NotificationService.createSystemNotification(player.player_id, 'Militar', soldadasBody, turn);
-                    auditEvent('SALARY_PAYMENT', {
-                        player_id:    player.player_id,
-                        turn,
-                        total_troops: totalTroops,
-                        gold_paid:    totalGoldConsumption,
-                    }, TOPICS.SALARY);
-                }
-
-                Logger.engine(`[TURN ${turn}] Harvest processed for player ${player.player_id} (${player.username}): Food ${netFood}, Gold ${netGold}, Wood ${totalWoodProduced}`);
+                Logger.engine(`[TURN ${turn}] Harvest processed for player ${player.player_id} (${player.username}): Food +${netFood}, Gold +${netGold}`);
                 auditEvent('HARVEST_COMPLETE', {
                     player_id:          player.player_id,
                     turn,
@@ -265,8 +230,7 @@ ${territories.rows.length > 0 ? `Feudos productivos este ciclo: ${territories.ro
                     stone_produced:     totalStoneProduced,
                     iron_produced:      totalIronProduced,
                     gold_produced:      totalGoldProduced,
-                    food_consumed:      totalFoodConsumption,
-                    gold_consumed:      totalGoldConsumption,
+
                     net_food:           netFood,
                     net_gold:           netGold,
                     miracle_harvests:   miracleHarvests.length,
@@ -294,6 +258,103 @@ ${territories.rows.length > 0 ? `Feudos productivos este ciclo: ${territories.ro
 }
 
 /**
+ * Pago mensual de soldadas (día 2 de cada mes).
+ * - Ejércitos en territorio propio → del tesoro del jugador.
+ * - Ejércitos fuera → de sus gold_provisions.
+ */
+async function processSoldadas(client, turn) {
+    try {
+        Logger.engine(`[TURN ${turn}] Processing soldadas...`);
+
+        const playersRes = await client.query(`
+            SELECT DISTINCT p.player_id FROM players p
+            JOIN h3_map m ON p.player_id = m.player_id
+            WHERE m.player_id IS NOT NULL
+        `);
+
+        for (const player of playersRes.rows) {
+            try {
+                // Tropas en territorio propio → pagan del tesoro
+                const inTerritoryRes = await client.query(`
+                    SELECT
+                        COALESCE(SUM(t.quantity), 0)::int                   AS troops,
+                        COALESCE(SUM(t.quantity * ut.gold_upkeep), 0)::int  AS wages
+                    FROM troops t
+                    JOIN armies a     ON a.army_id        = t.army_id
+                    JOIN unit_types ut ON ut.unit_type_id = t.unit_type_id
+                    JOIN h3_map m      ON m.h3_index       = a.h3_index
+                    WHERE a.player_id = $1 AND m.player_id = a.player_id
+                `, [player.player_id]);
+
+                // Tropas fuera → pagan de gold_provisions del ejército
+                const awayRes = await client.query(`
+                    SELECT
+                        a.army_id,
+                        COALESCE(SUM(t.quantity), 0)::int                   AS troops,
+                        COALESCE(SUM(t.quantity * ut.gold_upkeep), 0)::int  AS wages
+                    FROM troops t
+                    JOIN armies a     ON a.army_id        = t.army_id
+                    JOIN unit_types ut ON ut.unit_type_id = t.unit_type_id
+                    JOIN h3_map m      ON m.h3_index       = a.h3_index
+                    WHERE a.player_id = $1 AND m.player_id != a.player_id
+                    GROUP BY a.army_id
+                `, [player.player_id]);
+
+                const inWages  = parseInt(inTerritoryRes.rows[0]?.wages  || 0);
+                const inTroops = parseInt(inTerritoryRes.rows[0]?.troops || 0);
+                let awayWages  = 0;
+                let awayTroops = 0;
+
+                for (const army of awayRes.rows) {
+                    const wages = parseInt(army.wages) || 0;
+                    if (wages > 0) {
+                        await client.query(
+                            'UPDATE armies SET gold_provisions = GREATEST(0, gold_provisions - $1) WHERE army_id = $2',
+                            [wages, army.army_id]
+                        );
+                    }
+                    awayWages  += wages;
+                    awayTroops += parseInt(army.troops) || 0;
+                }
+
+                const totalWages = inWages + awayWages;
+                if (totalWages === 0) continue;
+
+                // Descontar del tesoro del jugador (solo soldadas en territorio)
+                if (inWages > 0) {
+                    await client.query(
+                        'UPDATE players SET gold = GREATEST(0, gold - $1) WHERE player_id = $2',
+                        [inWages, player.player_id]
+                    );
+                }
+
+                // Notificación
+                const awayLine = awayWages > 0
+                    ? `\n• Ejércitos en campaña: ${awayTroops.toLocaleString('es-ES')} tropas (-${awayWages.toLocaleString('es-ES')} 💰 de provisiones)`
+                    : '';
+                const body = `⚔️ **Pago de soldadas**\n\nLos recaudadores han distribuido el jornal entre vuestras huestes.\n• Tropas en territorio: ${inTroops.toLocaleString('es-ES')} (-${inWages.toLocaleString('es-ES')} 💰 del tesoro)${awayLine}`;
+                await NotificationService.createSystemNotification(player.player_id, 'Militar', body, turn);
+
+                auditEvent('SALARY_PAYMENT', {
+                    player_id: player.player_id, turn,
+                    in_territory_troops: inTroops, in_territory_wages: inWages,
+                    away_troops: awayTroops, away_wages: awayWages,
+                }, TOPICS.SALARY);
+
+                Logger.engine(`[TURN ${turn}] Soldadas jugador ${player.player_id}: -${inWages} tesoro, -${awayWages} provisiones`);
+            } catch (playerErr) {
+                Logger.error(playerErr, { context: 'turn_engine.processSoldadas', turn, playerId: player.player_id });
+            }
+        }
+
+        Logger.engine(`[TURN ${turn}] Soldadas completadas`);
+    } catch (error) {
+        Logger.error(error, { context: 'turn_engine.processSoldadas', turn });
+        throw error;
+    }
+}
+
+/**
  * Process military food consumption (troops consume from army provisions, then from fief)
  * @param {Object} client - PostgreSQL client (within transaction)
  * @param {number} turn - Current turn number
@@ -301,79 +362,227 @@ ${territories.rows.length > 0 ? `Feudos productivos este ciclo: ${territories.ro
  */
 async function processMilitaryConsumption(client, turn, config) {
     try {
-        Logger.engine(`[TURN ${turn}] Processing military food consumption...`);
+        Logger.engine(`[TURN ${turn}] Processing military food consumption (monthly)...`);
 
-        // ── PASO 1: Descontar de provisions del ejército ──────────────────────
-        // Una sola query bulk: calcula consumo de cada ejército y descuenta de provisions.
-        // Devuelve los ejércitos con déficit (consumo > provisions disponibles).
-        const armyUpdateResult = await client.query(`
-            WITH consumption AS (
-                SELECT
-                    a.army_id,
-                    a.player_id,
-                    a.h3_index,
-                    a.food_provisions,
-                    COALESCE(SUM(t.quantity * ut.food_consumption * 0.001), 0) AS total_consumption
-                FROM armies a
-                LEFT JOIN troops t       ON t.army_id        = a.army_id
-                LEFT JOIN unit_types ut  ON ut.unit_type_id  = t.unit_type_id
-                WHERE a.h3_index IS NOT NULL
-                GROUP BY a.army_id, a.player_id, a.h3_index, a.food_provisions
-                HAVING COALESCE(SUM(t.quantity * ut.food_consumption * 0.001), 0) > 0
-            ),
-            updated AS (
-                UPDATE armies a
-                SET food_provisions = GREATEST(0, a.food_provisions - c.total_consumption)
-                FROM consumption c
-                WHERE a.army_id = c.army_id
-                RETURNING c.army_id, c.player_id, c.h3_index, c.total_consumption, c.food_provisions
-            )
+        const STARVATION_ATTRITION = config.military?.starvation_attrition ?? 0.02;
+        const DESERTION_ATTRITION  = config.military?.desertion_attrition  ?? 0.01;
+        // Consumo mensual = consumo por turno × 30 turnos/mes
+        const MONTHLY_MULTIPLIER = 0.03;
+
+        // Calcular consumo mensual de cada ejército y si está en territorio propio
+        const armyResult = await client.query(`
             SELECT
-                army_id,
-                player_id,
-                h3_index,
-                total_consumption,
-                food_provisions,
-                GREATEST(0, total_consumption - food_provisions) AS fief_deficit
-            FROM updated
-        `);
+                a.army_id,
+                a.player_id,
+                a.h3_index,
+                a.food_provisions,
+                a.gold_provisions,
+                a.food_threshold_notified,
+                a.gold_threshold_notified,
+                a.name AS army_name,
+                COALESCE(SUM(t.quantity * ut.food_consumption * $1), 0)  AS consumption,
+                COALESCE(SUM(t.quantity * ut.gold_upkeep), 0)::int       AS monthly_wages,
+                COALESCE(SUM(t.quantity), 0)::int AS total_troops,
+                (m.player_id = a.player_id) AS in_own_territory
+            FROM armies a
+            LEFT JOIN troops t        ON t.army_id       = a.army_id
+            LEFT JOIN unit_types ut   ON ut.unit_type_id = t.unit_type_id
+            JOIN h3_map m             ON m.h3_index      = a.h3_index
+            WHERE a.h3_index IS NOT NULL AND a.is_rebel = FALSE
+            GROUP BY a.army_id, a.player_id, a.h3_index, a.food_provisions, a.gold_provisions,
+                     a.food_threshold_notified, a.gold_threshold_notified, a.name, m.player_id
+            HAVING COALESCE(SUM(t.quantity * ut.food_consumption * $1), 0) > 0
+        `, [MONTHLY_MULTIPLIER]);
 
-        const totalArmies = armyUpdateResult.rows.length;
-        const withDeficit  = armyUpdateResult.rows.filter(r => parseFloat(r.fief_deficit) > 0);
+        const inTerritory = armyResult.rows.filter(r => r.in_own_territory);
+        const awayArmies  = armyResult.rows.filter(r => !r.in_own_territory);
+        const starving    = [];
 
-        // ── PASO 2: Descontar déficit del feudo (solo si el feudo pertenece al jugador) ──
-        // Una sola query: unnest hex+player+deficit, JOIN con h3_map para validar ownership.
-        if (withDeficit.length > 0) {
-            const hexes     = withDeficit.map(r => r.h3_index);
-            const playerIds = withDeficit.map(r => r.player_id);
-            const deficits  = withDeficit.map(r => parseFloat(r.fief_deficit));
+        // ── CASO 1: En territorio propio → consumen de cualquier feudo de la comarca ──
+        for (const army of inTerritory) {
+            const consumption = parseFloat(army.consumption);
 
-            await client.query(`
-                UPDATE territory_details td
-                SET food_stored = GREATEST(0, td.food_stored - agg.total_deficit)
-                FROM (
-                    SELECT v.h3_index, SUM(v.deficit) AS total_deficit
-                    FROM (
-                        SELECT unnest($1::text[])    AS h3_index,
-                               unnest($2::int[])     AS player_id,
-                               unnest($3::float[])   AS deficit
-                    ) v
-                    -- Solo descuenta si el feudo pertenece al jugador del ejército
-                    JOIN h3_map m ON m.h3_index = v.h3_index AND m.player_id = v.player_id
-                    GROUP BY v.h3_index
-                ) agg
-                WHERE td.h3_index = agg.h3_index
-            `, [hexes, playerIds, deficits]);
+            // Obtener todos los feudos de la comarca con comida, ordenados de mayor a menor
+            const fiefsRes = await client.query(`
+                SELECT td.h3_index, td.food_stored::float AS food_stored
+                FROM territory_details td
+                JOIN h3_map m              ON m.h3_index   = td.h3_index
+                LEFT JOIN territory_details atd ON atd.h3_index = $1
+                WHERE m.player_id = $2
+                  AND td.food_stored > 0
+                  AND (
+                    (atd.division_id IS NOT NULL AND td.division_id = atd.division_id)
+                    OR (atd.division_id IS NULL  AND td.h3_index    = $1)
+                  )
+                ORDER BY td.food_stored DESC
+            `, [army.h3_index, army.player_id]);
+
+            const totalFood = fiefsRes.rows.reduce((s, r) => s + r.food_stored, 0);
+            if (totalFood < consumption) starving.push(army);
+
+            // Descontar greedy de mayor a menor reserva
+            let remaining = consumption;
+            for (const fief of fiefsRes.rows) {
+                if (remaining <= 0) break;
+                const take = Math.min(fief.food_stored, remaining);
+                await client.query(
+                    'UPDATE territory_details SET food_stored = GREATEST(0, food_stored - $1) WHERE h3_index = $2',
+                    [take, fief.h3_index]
+                );
+                remaining -= take;
+            }
         }
 
-        Logger.engine(`[TURN ${turn}] Military consumption completed: ${totalArmies} armies, ${withDeficit.length} with fief deficit`);
+        // ── CASO 2: Fuera de territorio → consumen de sus provisiones ─────────
+        if (awayArmies.length > 0) {
+            const armyIds      = awayArmies.map(r => parseInt(r.army_id));
+            const consumptions = awayArmies.map(r => parseFloat(r.consumption));
+            const oldProv      = awayArmies.map(r => parseFloat(r.food_provisions));
+
+            await client.query(`
+                UPDATE armies a
+                SET food_provisions = GREATEST(0, a.food_provisions - v.consumption)
+                FROM (
+                    SELECT unnest($1::int[]) AS army_id, unnest($2::float[]) AS consumption
+                ) v
+                WHERE a.army_id = v.army_id
+            `, [armyIds, consumptions]);
+
+            for (let i = 0; i < awayArmies.length; i++) {
+                if (oldProv[i] < consumptions[i]) starving.push(awayArmies[i]);
+            }
+        }
+
+        // ── CASO 3: Sin paga (ejércitos fuera con gold_provisions = 0) ─────────
+        const unpaid = awayArmies.filter(r => parseFloat(r.gold_provisions) <= 0);
+
+        // ── CASO 4: Aplicar atricción combinada ───────────────────────────────
+        const armiesNeedingAttrition = new Map();
+        for (const army of starving) {
+            armiesNeedingAttrition.set(army.army_id, { army, rate: STARVATION_ATTRITION });
+        }
+        for (const army of unpaid) {
+            const existing = armiesNeedingAttrition.get(army.army_id);
+            if (existing) {
+                existing.rate += DESERTION_ATTRITION;
+            } else {
+                armiesNeedingAttrition.set(army.army_id, { army, rate: DESERTION_ATTRITION });
+            }
+        }
+
+        const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+        const SMALL_ARMY = 200;
+
+        for (const { army } of armiesNeedingAttrition.values()) {
+            const isStarving = starving.some(s => s.army_id === army.army_id);
+            const isUnpaid   = unpaid.some(u => u.army_id === army.army_id);
+            const reason = isStarving && isUnpaid ? 'hambre y falta de paga'
+                         : isStarving             ? 'hambre'
+                         :                          'falta de paga';
+
+            const totalTroops = parseInt(army.total_troops);
+            let lost;
+
+            if (totalTroops < SMALL_ARMY) {
+                // Bajas fijas para ejércitos pequeños
+                const starvationLoss  = isStarving ? randInt(20, 30) : 0;
+                const desertionLoss   = isUnpaid   ? randInt(10, 20) : 0;
+                lost = starvationLoss + desertionLoss;
+            } else {
+                // Porcentaje para ejércitos grandes
+                const rate = (isStarving ? STARVATION_ATTRITION : 0) + (isUnpaid ? DESERTION_ATTRITION : 0);
+                lost = Math.ceil(totalTroops * rate);
+            }
+
+            await client.query(`
+                UPDATE troops SET quantity = GREATEST(0, quantity - CEIL(quantity::float / $1 * $2))
+                WHERE army_id = $3
+            `, [totalTroops, lost, army.army_id]);
+            await client.query('DELETE FROM troops WHERE army_id = $1 AND quantity <= 0', [army.army_id]);
+
+            const totRes = await client.query(
+                'SELECT COALESCE(SUM(quantity), 0)::int AS total FROM troops WHERE army_id = $1',
+                [army.army_id]
+            );
+            const dissolved = totRes.rows[0].total === 0;
+            if (dissolved) {
+                await client.query('DELETE FROM army_routes WHERE army_id = $1', [army.army_id]);
+                await client.query('UPDATE characters SET army_id = NULL WHERE army_id = $1', [army.army_id]);
+                await client.query('DELETE FROM armies WHERE army_id = $1', [army.army_id]);
+                Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} disuelto por ${reason}`);
+                await NotificationService.createSystemNotification(
+                    army.player_id, 'Militar',
+                    `⚠️ **Ejército disuelto — ${army.army_name}**\n\nEl ejército ha desaparecido por ${reason}. No quedaba ningún soldado.\n📍 Última posición: ${fmtHex(army.h3_index)}`,
+                    turn
+                );
+            } else {
+                Logger.engine(`[TURN ${turn}] Ejército ${army.army_id} pierde ${lost} tropas por ${reason}`);
+                await NotificationService.createSystemNotification(
+                    army.player_id, 'Militar',
+                    `⚠️ **Desgaste — ${army.army_name}**\n\nEl ejército sufre bajas por ${reason}: **−${lost.toLocaleString('es-ES')} soldados**.\n📍 Posición: ${fmtHex(army.h3_index)}`,
+                    turn
+                );
+            }
+        }
+
+        // ── CASO 5: Umbrales de provisiones (una sola notif por umbral) ──────
+        const THRESHOLDS = [90, 60, 30];
+        for (const army of awayArmies) {
+            const dailyFood = parseFloat(army.consumption) / 30;
+            const dailyGold = parseInt(army.monthly_wages) / 30;
+
+            // Calcular días restantes tras el descuento de este mes
+            const foodNew = Math.max(0, parseFloat(army.food_provisions) - parseFloat(army.consumption));
+            const goldNew = parseFloat(army.gold_provisions); // ya descontado por processSoldadas
+
+            const foodDays = dailyFood > 0 ? foodNew / dailyFood : Infinity;
+            const goldDays = dailyGold > 0 ? goldNew / dailyGold : Infinity;
+
+            let newFoodThreshold = army.food_threshold_notified;
+            let newGoldThreshold = army.gold_threshold_notified;
+
+            // Resetear si las provisiones han vuelto a estar por encima de 30 días
+            if (foodDays > 90 && army.food_threshold_notified !== null) newFoodThreshold = null;
+            if (goldDays > 90 && army.gold_threshold_notified !== null) newGoldThreshold = null;
+
+            for (const thr of THRESHOLDS) {
+                if (foodDays < thr && (newFoodThreshold === null || newFoodThreshold > thr)) {
+                    newFoodThreshold = thr;
+                    const foodMsg = foodDays <= 0
+                        ? `🌾 **Sin comida — ${army.army_name}**\n\nLas reservas de comida se han agotado. El ejército comenzará a sufrir bajas por hambre.\n📍 Posición: ${fmtHex(army.h3_index)}`
+                        : `🌾 **Reservas bajas — ${army.army_name}**\n\nQuedan menos de **${thr} días** de comida (${Math.floor(foodDays)} días restantes).\n📍 Posición: ${fmtHex(army.h3_index)}`;
+                    await NotificationService.createSystemNotification(army.player_id, 'Militar', foodMsg, turn);
+                }
+                if (goldDays < thr && (newGoldThreshold === null || newGoldThreshold > thr)) {
+                    newGoldThreshold = thr;
+                    const goldMsg = goldDays <= 0
+                        ? `💰 **Sin fondos — ${army.army_name}**\n\nLas reservas de oro se han agotado. Los soldados comenzarán a desertar por falta de paga.\n📍 Posición: ${fmtHex(army.h3_index)}`
+                        : `💰 **Reservas bajas — ${army.army_name}**\n\nQuedan menos de **${thr} días** de oro para soldadas (${Math.floor(goldDays)} días restantes).\n📍 Posición: ${fmtHex(army.h3_index)}`;
+                    await NotificationService.createSystemNotification(army.player_id, 'Militar', goldMsg, turn);
+                }
+            }
+
+            if (newFoodThreshold !== army.food_threshold_notified || newGoldThreshold !== army.gold_threshold_notified) {
+                await client.query(
+                    'UPDATE armies SET food_threshold_notified = $1, gold_threshold_notified = $2 WHERE army_id = $3',
+                    [newFoodThreshold, newGoldThreshold, army.army_id]
+                );
+            }
+        }
+
+        // Resetear umbrales para ejércitos que volvieron a territorio propio
+        if (inTerritory.length > 0) {
+            await client.query(`
+                UPDATE armies SET food_threshold_notified = NULL, gold_threshold_notified = NULL
+                WHERE army_id = ANY($1::int[])
+                  AND (food_threshold_notified IS NOT NULL OR gold_threshold_notified IS NOT NULL)
+            `, [inTerritory.map(r => parseInt(r.army_id))]);
+        }
+
+        Logger.engine(`[TURN ${turn}] Consumo mensual: ${inTerritory.length} en comarca, ${awayArmies.length} fuera, ${starving.length} hambre, ${unpaid.length} sin paga`);
 
     } catch (error) {
-        Logger.error(error, {
-            context: 'turn_engine.processMilitaryConsumption',
-            phase: 'global',
-            turn: turn
-        });
+        Logger.error(error, { context: 'turn_engine.processMilitaryConsumption', turn });
         throw error;
     }
 }
@@ -765,15 +974,15 @@ async function processCultureRadiation(client, turn) {
             3: 'culture_iberos',
             4: 'culture_celtas',
         };
-        const ALL_COLS   = Object.values(CULTURE_COL);
-        const RING_BONUS = GAME_CONFIG.MILITARY.CULTURE_TEMPLE_RINGS;
-        const MAX_RING   = RING_BONUS.length - 1;  // 4
+        const ALL_COLS = Object.values(CULTURE_COL);
+        const BONUS    = GAME_CONFIG.MILITARY.CULTURE_TEMPLE_RINGS[0]; // bonus fijo por comarca
 
         const templesRes = await client.query(`
-            SELECT fb.h3_index, b.culture_id
+            SELECT fb.h3_index, b.culture_id, td.division_id
             FROM fief_buildings fb
-            JOIN buildings b ON b.id = fb.building_id
-            JOIN building_types bt ON bt.building_type_id = b.type_id
+            JOIN buildings b         ON b.id                  = fb.building_id
+            JOIN building_types bt   ON bt.building_type_id   = b.type_id
+            LEFT JOIN territory_details td ON td.h3_index     = fb.h3_index
             WHERE bt.name = 'religious'
               AND fb.is_under_construction = FALSE
               AND fb.conservation > 20
@@ -786,38 +995,26 @@ async function processCultureRadiation(client, turn) {
             const col = CULTURE_COL[temple.culture_id];
             if (!col) continue;
 
-            // Construir mapa hex → bonus acumulado (un hex puede estar en varios radios si hay varios templos)
-            const hexBonus = new Map();
-            const allDisk  = h3.gridDisk(temple.h3_index, MAX_RING);
-            for (const hex of allDisk) {
-                const dist = h3.gridDistance(temple.h3_index, hex);
-                const bonus = RING_BONUS[dist] ?? 0;
-                if (bonus > 0) hexBonus.set(hex, (hexBonus.get(hex) || 0) + bonus);
-            }
-
-            // Agrupar por valor de bonus para minimizar queries
-            const byBonus = new Map();
-            for (const [hex, bonus] of hexBonus) {
-                if (!byBonus.has(bonus)) byBonus.set(bonus, []);
-                byBonus.get(bonus).push(hex);
-            }
-
             const otherCols = ALL_COLS.filter(c => c !== col);
             const decaySet  = otherCols.map(c => `${c} = GREATEST(0, fief_culture.${c} - 1)`).join(', ');
 
-            for (const [bonus, hexes] of byBonus) {
-                await client.query(`
-                    INSERT INTO fief_culture (h3_index, ${col}, updated_at)
-                    SELECT h.h3_index, $1, NOW()
-                    FROM h3_map h
-                    WHERE h.h3_index = ANY($2)
-                      AND h.player_id IS NOT NULL
-                    ON CONFLICT (h3_index) DO UPDATE
-                    SET ${col}     = LEAST($3, fief_culture.${col} + $1),
-                        ${decaySet},
-                        updated_at = NOW()
-                `, [bonus, hexes, GAME_CONFIG.MILITARY.CULTURE_MAX]);
-            }
+            // Hexes objetivo: toda la comarca si hay division_id, o solo el propio hex
+            const hexFilter = temple.division_id
+                ? `td2.division_id = ${parseInt(temple.division_id)}`
+                : `h.h3_index = '${temple.h3_index}'`;
+
+            await client.query(`
+                INSERT INTO fief_culture (h3_index, ${col}, updated_at)
+                SELECT h.h3_index, $1, NOW()
+                FROM h3_map h
+                ${temple.division_id ? 'JOIN territory_details td2 ON td2.h3_index = h.h3_index' : ''}
+                WHERE h.player_id IS NOT NULL
+                  AND ${hexFilter}
+                ON CONFLICT (h3_index) DO UPDATE
+                SET ${col}     = LEAST($2, fief_culture.${col} + $1),
+                    ${decaySet},
+                    updated_at = NOW()
+            `, [BONUS, GAME_CONFIG.MILITARY.CULTURE_MAX]);
         }
 
         Logger.engine(`[TURN ${turn}] Cultura irradiada (mensual) desde ${templesRes.rows.length} templos.`);
@@ -869,7 +1066,7 @@ async function processConstructionTicks(client, turn) {
                         await NotificationService.createSystemNotification(
                             player_id,
                             'Económico',
-                            `🏛️ **Obra concluida**\n\nLos maestros de obras anuncian que **"${building_name}"** está en pie en el feudo ${fmtHex(building.h3_index)} y listo para servir al reino.`,
+                            `🏛️ **Obra concluida**\n\nLos maestros de obras anuncian que **"${building_name}"** está en pie en el territorio ${fmtHex(building.h3_index)} y listo para servir al reino.`,
                             turn
                         );
                     }
@@ -1657,10 +1854,7 @@ async function processGameTurn(pool, config) {
         await processExplorations(client, newTurn, config);
 
         // Army automatic movements (every turn, before consumption)
-        // IMPORTANT: Must run BEFORE processMilitaryConsumption to avoid a deadlock.
-        // processMilitaryConsumption holds row-level locks on armies (food_provisions UPDATE via T1).
-        // executeArmyTurn opens its own transaction (T2) and tries to UPDATE armies.h3_index.
-        // T2 would block waiting for T1's lock, while T1 awaits T2 in JS → application-level deadlock.
+        // Army movements must run before any army UPDATE that takes row locks.
         const movedArmyIds = await processArmyMovements(client, newTurn, config);
 
         // Worker straight-line movements (every turn)
@@ -1682,8 +1876,6 @@ async function processGameTurn(pool, config) {
         // Captive escape attempts (2%/turno) y decremento de capture_cooldown
         await processCaptiveEscapes(client, newTurn);
 
-        // Military food consumption (every turn, after movements so no lock conflict)
-        await processMilitaryConsumption(client, newTurn, config);
 
         // Monthly production (day 1 of each month)
         // newDate = { day, month, year, era } — usar .day directamente (new Date(objeto) produce Invalid Date)
@@ -1746,6 +1938,23 @@ async function processGameTurn(pool, config) {
 
         // Building decay (day 5 of each game month)
         await processBuildingDecay(client, newTurn, gameDate);
+
+        // Comarca resistance & rebellion (cada turno)
+        await client.query('SAVEPOINT resistance');
+        try {
+            await processComarcaResistance(client, newTurn);
+            await processRebelArmies(client, newTurn);
+            await client.query('RELEASE SAVEPOINT resistance');
+        } catch (err) {
+            await client.query('ROLLBACK TO SAVEPOINT resistance');
+            Logger.error(err, { context: 'turn_engine.resistance', turn: newTurn });
+        }
+
+        // Soldadas y consumo de comida (día 2 de cada mes de juego)
+        if (dayOfMonth === 2) {
+            await processSoldadas(client, newTurn);
+            await processMilitaryConsumption(client, newTurn, config);
+        }
 
         // Character lifecycle: una vez por mes (idempotencia interna via game_config)
         await client.query('SAVEPOINT character_lifecycle');
