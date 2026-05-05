@@ -1940,10 +1940,15 @@ async function processGameTurn(pool, config) {
         await processBuildingDecay(client, newTurn, gameDate);
 
         // Comarca resistance & rebellion (cada turno)
-        await processComarcaResistance(client, newTurn);
-
-        // Comportamiento de ejércitos rebeldes (cada turno, tras resolver resistencia)
-        await processRebelArmies(client, newTurn);
+        await client.query('SAVEPOINT resistance');
+        try {
+            await processComarcaResistance(client, newTurn);
+            await processRebelArmies(client, newTurn);
+            await client.query('RELEASE SAVEPOINT resistance');
+        } catch (err) {
+            await client.query('ROLLBACK TO SAVEPOINT resistance');
+            Logger.error(err, { context: 'turn_engine.resistance', turn: newTurn });
+        }
 
         // Soldadas y consumo de comida (día 2 de cada mes de juego)
         if (dayOfMonth === 2) {

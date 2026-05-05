@@ -5750,9 +5750,9 @@ const attachEnemyListeners = (army) => {
     attackBtn.addEventListener('click', () => handleArmyAttackFromPopup(army));
   }
 
-  const scoutBtn = document.getElementById(`army-scout-${army.army_id}`);
-  if (scoutBtn && !scoutBtn.disabled) {
-    scoutBtn.addEventListener('click', () => handleArmyScout(army));
+  const colocatedScoutBtn = document.getElementById(`army-colocated-scout-${army.army_id}`);
+  if (colocatedScoutBtn && !colocatedScoutBtn.disabled) {
+    colocatedScoutBtn.addEventListener('click', () => handleColocatedScout(army));
   }
 };
 
@@ -5795,7 +5795,8 @@ window.armyPopupNavigate = (delta) => {
     hasExplorersAtHex,
     scoutingArmyId,
     attackingArmyId,
-    characterAtHex
+    characterAtHex,
+    currentTurn: currentTurn.value
   });
   _pp_ref.setContent(newContent);
   setTimeout(() => {
@@ -6104,7 +6105,8 @@ const showArmyDetailsPopup = async (h3_index, latLng) => {
         hasExplorersAtHex,
         scoutingArmyId,
         attackingArmyId,
-        characterAtHex
+        characterAtHex,
+        currentTurn: currentTurn.value
       });
     }
 
@@ -6575,6 +6577,46 @@ const handleArmyScout = async (enemyArmy) => {
     map.closePopup();
   } catch (err) {
     const msg = err?.response?.data?.error || err?.response?.data?.message || '❌ Error en la misión de espionaje';
+    showToast(msg, 'error');
+    if (btn) btn.disabled = false;
+  }
+};
+
+/**
+ * Reconocimiento co-ubicado: estima el tamaño del ejército enemigo sin exploradores.
+ * Llamado por el listener del botón army-colocated-scout-{id} en attachEnemyListeners.
+ */
+const handleColocatedScout = async (enemyArmy) => {
+  const btn = document.getElementById(`army-colocated-scout-${enemyArmy.army_id}`);
+  const rawId = btn ? parseInt(btn.dataset.attackingArmy, 10) : NaN;
+  const ownArmyId = Number.isFinite(rawId) ? rawId : null;
+  if (!ownArmyId) {
+    showToast('No se encontró un ejército propio válido en el hexágono', 'error');
+    return;
+  }
+  try {
+    if (btn) btn.disabled = true;
+    const result = await mapApi.scoutColocated(ownArmyId, enemyArmy.army_id);
+
+    if (!result.scouted) {
+      const toastType = result.reason === 'too_few_troops' ? 'warning' : 'warning';
+      showToast(`🕵️ ${result.message}`, toastType);
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    const tierLabel = {
+      small:    'Pequeño (< 1.000)',
+      medium:   'Mediano (1.000 – 5.000)',
+      large:    'Gran ejército (5.000 – 50.000)',
+      enormous: 'Enorme (> 50.000)'
+    }[result.tier] ?? result.tier;
+
+    showToast(`🕵️ "${result.target_army_name}" · ${tierLabel} — ${result.flavor}`, 'info');
+    pollNotifications();
+    map.closePopup();
+  } catch (err) {
+    const msg = err?.response?.data?.error || err?.response?.data?.message || '❌ Error en el reconocimiento';
     showToast(msg, 'error');
     if (btn) btn.disabled = false;
   }

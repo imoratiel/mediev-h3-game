@@ -31,7 +31,7 @@ class ArmyModel {
             SELECT
                 a.army_id, a.name, a.player_id,
                 a.gold_provisions, a.food_provisions, a.wood_provisions,
-                a.is_garrison,
+                a.is_garrison, a.last_colocated_scout_turn,
                 p.display_name AS player_name,
                 p.color AS player_color,
                 a.destination,
