@@ -61,7 +61,7 @@ class LoginService {
                 httpOnly: true,        // Prevents client-side JS from accessing
                 secure: false,         // Set to true in production with HTTPS
                 sameSite: 'lax',       // CSRF protection
-                maxAge: 24 * 60 * 60 * 1000  // 24 hours
+                maxAge: 7 * 24 * 60 * 60 * 1000  // 7 days
             });
 
             // Log successful login

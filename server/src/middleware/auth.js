@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'medieval-h3-game-jwt-secret-CHANGE-IN-PRODUCTION';
-const JWT_EXPIRES_IN = '24h';
+const JWT_EXPIRES_IN = '7d';
 
 /**
  * Middleware: Authenticate JWT from HttpOnly cookie

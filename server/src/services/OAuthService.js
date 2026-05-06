@@ -110,7 +110,7 @@ async function handleGoogleCallback(req, res) {
             httpOnly: true,
             secure: process.env.COOKIE_SECURE === 'true',
             sameSite: 'lax',
-            maxAge: 24 * 60 * 60 * 1000
+            maxAge: 7 * 24 * 60 * 60 * 1000  // 7 days
         });
 
         res.redirect('/');
