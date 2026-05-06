@@ -4032,7 +4032,7 @@ const handleFiefsSortChange = ({ field, dir }) => {
 const loadMyDivisions = async () => {
   try {
     const data = await mapApi.getPlayerDivisions();
-    myDivisions.value = data.divisions ?? [];
+    myDivisions.value = (data.divisions ?? []).sort((a, b) => a.name.localeCompare(b.name, 'es'));
   } catch (_) {
     myDivisions.value = [];
   }
