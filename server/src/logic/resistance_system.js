@@ -528,6 +528,9 @@ async function processHappinessRebellion(client, currentTurn) {
         GROUP BY m.h3_index, m.player_id, td.division_id, pd.name, pd.capital_h3
     `, [HAPPINESS_REBEL_THRESHOLD, currentTurn, HAPPINESS_MIN_AGE_TURNS]);
 
+    // rebelsByPlayer: Map<player_id, Array<{h3_index, division_name}>>
+    const rebelsByPlayer = new Map();
+
     for (const fief of fiefs) {
         if (Math.random() >= HAPPINESS_REBEL_CHANCE) continue;
 
@@ -555,18 +558,38 @@ async function processHappinessRebellion(client, currentTurn) {
             VALUES ($1, $2, $3, 5, 70)
         `, [armyId, unitTypeId, HAPPINESS_REBEL_TROOPS]);
 
-        // Notificar al señor
-        await NotificationService.createSystemNotification(
-            fief.player_id,
-            'General',
-            `⚡ REBELIÓN POR MISERIA (Turno ${currentTurn})\n` +
-            `Un feudo de ${fief.division_name} se ha alzado en armas.\n` +
-            `La desdicha del pueblo ha llegado a su límite.`,
-            currentTurn
-        );
+        if (!rebelsByPlayer.has(fief.player_id)) rebelsByPlayer.set(fief.player_id, []);
+        rebelsByPlayer.get(fief.player_id).push({ h3_index: fief.h3_index, division_name: fief.division_name });
 
         Logger.engine(
             `[HAPPINESS REBELLION] Feudo ${fief.h3_index} (comarca ${fief.division_id}) → rebelde contra jugador ${fief.player_id}`
+        );
+    }
+
+    // Una notificación por jugador con el resumen completo
+    for (const [playerId, rebels] of rebelsByPlayer) {
+        const count = rebels.length;
+        // Agrupar por comarca para el resumen
+        const byDivision = new Map();
+        for (const r of rebels) {
+            byDivision.set(r.division_name, (byDivision.get(r.division_name) || 0) + 1);
+        }
+        const divisionLines = [...byDivision.entries()]
+            .map(([name, n]) => `  • ${name}: ${n} feudo${n > 1 ? 's' : ''}`)
+            .join('\n');
+
+        const intro = count === 1
+            ? `Un feudo se ha alzado en armas contra tu señoría.`
+            : `**${count} feudos** se han alzado en armas contra tu señoría.`;
+
+        await NotificationService.createSystemNotification(
+            playerId,
+            'General',
+            `⚡ REBELIÓN POR MISERIA (Turno ${currentTurn})\n` +
+            `${intro}\n` +
+            `La desdicha del pueblo ha llegado a su límite.\n\n` +
+            `${divisionLines}`,
+            currentTurn
         );
     }
 }
