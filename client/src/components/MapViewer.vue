@@ -988,14 +988,6 @@
                 >
                   🏰 Territorios
                 </button>
-                <button
-                  class="kingdom-action-btn-sidebar"
-                  :class="{ active: activeKingdomTab === 'divisions' }"
-                  @click="activeKingdomTab = 'divisions'"
-                  title="Gestionar divisiones politicas y rangos nobiliarios"
-                >
-                  📜 Edictos
-                </button>
               </div>
             </div>
 
@@ -1059,11 +1051,6 @@
               @change-limit="handleFiefsLimitChange"
               @sort-change="handleFiefsSortChange"
             />
-          </div>
-
-          <!-- Edictos Tab -->
-          <div v-if="activeKingdomTab === 'divisions'" class="divisions-panel">
-            <DivisionsTab />
           </div>
 
           <!-- Military Recruitment Tab -->
@@ -1531,7 +1518,6 @@ import ArmyTransferPanel from './ArmyTransferPanel.vue';
 import ArmySupplyPanel   from './ArmySupplyPanel.vue';
 import WelcomePanel from './WelcomePanel.vue';
 import FueroPanel from './FueroPanel.vue';
-import DivisionsTab from './DivisionsTab.vue';
 import CharacterPanel from './CharacterPanel.vue';
 import DiplomacyPanel from './DiplomacyPanel.vue';
 import NavalPanel from './NavalPanel.vue';
