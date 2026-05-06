@@ -495,16 +495,37 @@ async function processHappinessRebellion(client, currentTurn) {
             m.h3_index,
             m.player_id,
             td.division_id,
-            td.dominant_culture_id,
             pd.name    AS division_name,
-            pd.capital_h3
+            pd.capital_h3,
+            CASE
+                WHEN GREATEST(
+                    COALESCE(SUM(fc.culture_romanos),      0),
+                    COALESCE(SUM(fc.culture_cartagineses), 0),
+                    COALESCE(SUM(fc.culture_iberos),       0),
+                    COALESCE(SUM(fc.culture_celtas),       0)
+                ) = 0 THEN 3
+                WHEN COALESCE(SUM(fc.culture_romanos), 0) >= ALL(ARRAY[
+                    COALESCE(SUM(fc.culture_cartagineses), 0),
+                    COALESCE(SUM(fc.culture_iberos),       0),
+                    COALESCE(SUM(fc.culture_celtas),       0)
+                ]) THEN 1
+                WHEN COALESCE(SUM(fc.culture_cartagineses), 0) >= ALL(ARRAY[
+                    COALESCE(SUM(fc.culture_iberos),  0),
+                    COALESCE(SUM(fc.culture_celtas),  0)
+                ]) THEN 2
+                WHEN COALESCE(SUM(fc.culture_iberos), 0) >= COALESCE(SUM(fc.culture_celtas), 0)
+                    THEN 3
+                ELSE 4
+            END AS dominant_culture_id
         FROM territory_details td
-        JOIN h3_map m            ON m.h3_index  = td.h3_index
-        JOIN political_divisions pd ON pd.id    = td.division_id
+        JOIN h3_map m               ON m.h3_index  = td.h3_index
+        JOIN political_divisions pd ON pd.id        = td.division_id
+        LEFT JOIN fief_culture fc   ON fc.h3_index  = td.h3_index
         WHERE td.happiness < $1
           AND m.player_id IS NOT NULL
           AND td.division_id IS NOT NULL
           AND ($2 - pd.founded_turn) >= $3
+        GROUP BY m.h3_index, m.player_id, td.division_id, pd.name, pd.capital_h3
     `, [HAPPINESS_REBEL_THRESHOLD, currentTurn, HAPPINESS_MIN_AGE_TURNS]);
 
     for (const fief of fiefs) {

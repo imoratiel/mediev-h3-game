@@ -1889,9 +1889,12 @@ async function processGameTurn(pool, config) {
             await processCivilFoodConsumption(client, newTurn);
             // Happiness calculated after all consumption (civil + military already ran this turn)
             await processHappiness(client, newTurn);
+            await client.query('SAVEPOINT sp_happiness_rebellion');
             try {
                 await processHappinessRebellion(client, newTurn);
+                await client.query('RELEASE SAVEPOINT sp_happiness_rebellion');
             } catch (err) {
+                await client.query('ROLLBACK TO SAVEPOINT sp_happiness_rebellion');
                 Logger.error(err, { context: 'turn_engine.happinessRebellion', turn: newTurn });
             }
             await processMonthlyProduction(client, newTurn, config);
