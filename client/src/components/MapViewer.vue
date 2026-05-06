@@ -1370,6 +1370,7 @@
       <p class="bridge-confirm-title">¿Iniciar construcción?</p>
       <p class="bridge-confirm-name">🌉 Puente</p>
       <div class="bridge-confirm-stats">
+        <span>💰 50.000 oro</span>
         <span>⚒️ Consume trabajadores en la casilla</span>
         <span>⏱️ 30 días</span>
       </div>
@@ -7019,6 +7020,7 @@ const executeBridgeConstruction = async (h3_index) => {
     const result = await mapApi.startBridgeConstruction(h3_index);
     if (result.success) {
       showToast(`🌉 ${result.message}`, 'success');
+      if (result.gold_cost) playerGold.value = Math.max(0, playerGold.value - result.gold_cost);
       await fetchHexagonData();
       fetchMyWorkers();
     } else {

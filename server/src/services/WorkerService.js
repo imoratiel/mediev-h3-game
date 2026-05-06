@@ -225,6 +225,7 @@ class WorkerService {
      */
     async StartConstruction(req, res) {
         const BRIDGE_TURNS = 30;
+        const BRIDGE_GOLD_COST = 50000;
         const BUILDABLE_TERRAINS = ['Río', 'Agua'];
 
         const client = await pool.connect();
@@ -279,14 +280,34 @@ class WorkerService {
                 });
             }
 
-            // 4. Start construction & consume workers (atomic)
+            // 4. Verify player gold
+            const goldResult = await client.query(
+                'SELECT gold FROM players WHERE player_id = $1 FOR UPDATE',
+                [player_id]
+            );
+            const currentGold = parseInt(goldResult.rows[0]?.gold) || 0;
+            if (currentGold < BRIDGE_GOLD_COST) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    success: false,
+                    message: `Oro insuficiente. Necesitas ${BRIDGE_GOLD_COST.toLocaleString('es-ES')} de oro para construir un puente (tienes ${currentGold.toLocaleString('es-ES')})`
+                });
+            }
+
+            // 5. Deduct gold
+            await client.query(
+                'UPDATE players SET gold = gold - $1 WHERE player_id = $2',
+                [BRIDGE_GOLD_COST, player_id]
+            );
+
+            // 6. Start construction & consume workers (atomic)
             const workersConsumed = await WorkerModel.StartBridgeConstruction(client, player_id, h3_index, BRIDGE_TURNS);
 
             await client.query('COMMIT');
 
             Logger.action(
-                `[ACTION][Jugador ${player_id}]: Inicio construcción de puente en ${h3_index} (${workersConsumed} trabajador(es) consumido(s), ${BRIDGE_TURNS} turnos)`,
-                { player_id, h3_index, workers_consumed: workersConsumed, total_turns: BRIDGE_TURNS }
+                `[ACTION][Jugador ${player_id}]: Inicio construcción de puente en ${h3_index} (${workersConsumed} trabajador(es) consumido(s), ${BRIDGE_TURNS} turnos, -${BRIDGE_GOLD_COST}💰)`,
+                { player_id, h3_index, workers_consumed: workersConsumed, total_turns: BRIDGE_TURNS, gold_cost: BRIDGE_GOLD_COST }
             );
 
             res.json({
@@ -294,6 +315,7 @@ class WorkerService {
                 message: `Construcción iniciada. El puente estará listo en ${BRIDGE_TURNS} turnos.`,
                 workers_consumed: workersConsumed,
                 total_turns: BRIDGE_TURNS,
+                gold_cost: BRIDGE_GOLD_COST,
             });
         } catch (error) {
             await client.query('ROLLBACK');
