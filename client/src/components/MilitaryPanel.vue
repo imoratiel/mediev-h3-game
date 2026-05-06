@@ -98,7 +98,7 @@
               <input
                 type="number"
                 min="0"
-                max="1000"
+                :max="recruitablePool ?? 9999999"
                 :value="unitQuantities[unit.unit_type_id] || 0"
                 @change="setUnitQuantity(unit, $event.target.value)"
                 class="qty-input"
@@ -231,7 +231,7 @@ const decrementUnit = (unit) => {
 };
 
 const setUnitQuantity = (unit, value) => {
-  const qty = Math.max(0, Math.min(1000, parseInt(value) || 0));
+  const qty = Math.max(0, parseInt(value) || 0);
   unitQuantities[unit.unit_type_id] = qty;
 };
 
