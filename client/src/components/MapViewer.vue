@@ -1184,15 +1184,33 @@
               class="build-card-btn"
               :disabled="playerGold < building.gold_cost || isConstructing || !buildModalHasWorker"
               :title="playerGold < building.gold_cost ? `Oro insuficiente (necesitas ${building.gold_cost} 💰)` : !buildModalHasWorker ? 'Necesitas un constructor en este territorio' : `Construir ${building.name}`"
-              @click="doConstruct(buildModalH3, building.id)"
+              @click="pendingBuildConfirm = building"
             >
-              {{ isConstructing ? '...' : 'Construir' }}
+              Construir
             </button>
           </div>
         </div>
 
         <div v-if="buildModalBuildings.length === 0" class="build-empty">
           No hay edificios disponibles.
+        </div>
+
+        <!-- Confirmación de construcción -->
+        <div v-if="pendingBuildConfirm" class="build-confirm-overlay">
+          <div class="build-confirm-box">
+            <p class="build-confirm-title">¿Iniciar construcción?</p>
+            <p class="build-confirm-name">{{ getBuildingIcon(pendingBuildConfirm.name, pendingBuildConfirm.type_name) }} {{ pendingBuildConfirm.name }}</p>
+            <div class="build-confirm-stats">
+              <span>💰 {{ pendingBuildConfirm.gold_cost.toLocaleString('es-ES') }} oro</span>
+              <span>⏱️ {{ pendingBuildConfirm.construction_time_turns }} días</span>
+            </div>
+            <div class="build-confirm-actions">
+              <button class="build-confirm-cancel" @click="pendingBuildConfirm = null">Cancelar</button>
+              <button class="build-confirm-ok" :disabled="isConstructing" @click="doConstruct(buildModalH3, pendingBuildConfirm.id); pendingBuildConfirm = null">
+                {{ isConstructing ? '...' : 'Confirmar' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1863,6 +1881,7 @@ const showBuildModal = ref(false);
 const buildModalH3 = ref(null);
 const buildModalBuildings = ref([]);
 const isConstructing = ref(false);
+const pendingBuildConfirm = ref(null);
 const buildModalOpenedFromWorker = ref(false); // true when modal opened directly from worker card
 const buildModalHasWorker = computed(() => buildModalOpenedFromWorker.value || myWorkers.value.some(w => w.h3_index === buildModalH3.value));
 
@@ -6255,6 +6274,7 @@ const closeBuildModal = () => {
   buildModalH3.value = null;
   buildModalBuildings.value = [];
   buildModalOpenedFromWorker.value = false;
+  pendingBuildConfirm.value = null;
 };
 
 /**
@@ -12130,6 +12150,7 @@ onBeforeUnmount(() => {
   max-height: 80vh;
   overflow-y: auto;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+  position: relative;
   font-family: 'Cinzel', serif;
 }
 
@@ -12273,6 +12294,73 @@ onBeforeUnmount(() => {
   color: #6a5a40;
   cursor: not-allowed;
 }
+
+.build-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 8, 5, 0.82);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.build-confirm-box {
+  background: #1e1a12;
+  border: 1px solid #6a5a40;
+  border-radius: 10px;
+  padding: 24px 28px;
+  text-align: center;
+  min-width: 240px;
+}
+.build-confirm-title {
+  font-size: 0.8rem;
+  color: #a89060;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+}
+.build-confirm-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #e8d5a3;
+  margin: 0 0 12px;
+}
+.build-confirm-stats {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  font-size: 0.88rem;
+  color: #c5a059;
+  margin-bottom: 18px;
+}
+.build-confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.build-confirm-cancel {
+  padding: 7px 18px;
+  border: 1px solid #6a5a40;
+  border-radius: 6px;
+  background: transparent;
+  color: #a89060;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.build-confirm-cancel:hover { background: rgba(106,90,64,0.2); }
+.build-confirm-ok {
+  padding: 7px 18px;
+  border: none;
+  border-radius: 6px;
+  background: #c5a059;
+  color: #1a1208;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.build-confirm-ok:hover:not(:disabled) { background: #e8c070; }
+.build-confirm-ok:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .build-empty {
   text-align: center;
