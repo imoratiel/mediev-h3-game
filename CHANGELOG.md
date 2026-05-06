@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.17.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.16.0...v0.17.0) (2026-05-06)
+
+
+### Nuevas funcionalidades
+
+* confirmacion al construir edificios ([125b132](https://github.com/imoratiel/hipania210ac-game/commit/125b132e6d7301e10375ed14b37f8fd96c968ecf))
+* el mercado mejora la recaudación de impuestos ([3801d69](https://github.com/imoratiel/hipania210ac-game/commit/3801d69a96af0961727088d7a36b098d8e6ed4ea))
+* rebeliones por hambre ([72b5b70](https://github.com/imoratiel/hipania210ac-game/commit/72b5b7039200cd5b06866b7a514cad0e735ecfbc))
+* sesiones de 7 dias ([d62f72a](https://github.com/imoratiel/hipania210ac-game/commit/d62f72a5743a381a5011d9eb20521eb8ded54322))
+
+
+### Correcciones
+
+* ajustes en la felicidad ([c61a147](https://github.com/imoratiel/hipania210ac-game/commit/c61a147255ba328f30b588863e10a19915ed0a98))
+* confirmacion para construir un puente ([8cf88af](https://github.com/imoratiel/hipania210ac-game/commit/8cf88af4e602c4fcd2624d845a2f2b30dba7008f))
+* error al pasar turno ([19e6056](https://github.com/imoratiel/hipania210ac-game/commit/19e6056f961feef46eab5b7051892a6540c08468))
+* lista de comarcas ordenadas por nombre ([21168d5](https://github.com/imoratiel/hipania210ac-game/commit/21168d5fd0faa535efeb09a9e39e388782d33136))
+* los mercados de otra cultura no mejoran la recaudación de impuestos ([bdd5b56](https://github.com/imoratiel/hipania210ac-game/commit/bdd5b565a01438da352574aad2e697b089cf3030))
+* notificaciones de rebeliones ([c9a7701](https://github.com/imoratiel/hipania210ac-game/commit/c9a7701894294f49b3865d983905e5d9a46720bc))
+* quitado limite de 1000 unidades por tipo de tropa ([33b554a](https://github.com/imoratiel/hipania210ac-game/commit/33b554a0a144d256ab6c5a258c226684e11bd387))
+
 ## [0.16.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.15.0...v0.16.0) (2026-05-05)
 
 
