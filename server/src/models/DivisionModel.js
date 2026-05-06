@@ -207,10 +207,10 @@ class DivisionModel {
      */
     async CreateDivision(client, { player_id, name, noble_rank_id, capital_h3 }) {
         const result = await client.query(`
-            INSERT INTO political_divisions (player_id, name, noble_rank_id, capital_h3)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO political_divisions (player_id, name, noble_rank_id, capital_h3, founded_turn)
+            VALUES ($1, $2, $3, $4, (SELECT current_turn FROM world_state LIMIT 1))
             ON CONFLICT (player_id, name) DO NOTHING
-            RETURNING id, name, capital_h3, created_at
+            RETURNING id, name, capital_h3, created_at, founded_turn
         `, [player_id, name, noble_rank_id, capital_h3]);
         return result.rows[0] ?? null;
     }

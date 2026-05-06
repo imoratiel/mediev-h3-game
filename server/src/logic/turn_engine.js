@@ -8,7 +8,7 @@ const { processTithe } = require('./tithe_system');
 const { processBuildingDecay } = require('./building_decay');
 const MarketModel = require('../models/MarketModel');
 const { processGraceTurns } = require('./conquest_system');
-const { processComarcaResistance, processRebelArmies } = require('./resistance_system');
+const { processComarcaResistance, processRebelArmies, processHappinessRebellion } = require('./resistance_system');
 const { processWorkerMovements } = require('./workerMovement');
 const GAME_CONFIG = require('../config/constants');
 const { getPopulationCap } = require('../config/gameFunctions');
@@ -1889,6 +1889,11 @@ async function processGameTurn(pool, config) {
             await processCivilFoodConsumption(client, newTurn);
             // Happiness calculated after all consumption (civil + military already ran this turn)
             await processHappiness(client, newTurn);
+            try {
+                await processHappinessRebellion(client, newTurn);
+            } catch (err) {
+                Logger.error(err, { context: 'turn_engine.happinessRebellion', turn: newTurn });
+            }
             await processMonthlyProduction(client, newTurn, config);
             await purgeOldNotifications(client, newTurn);
             // Renovación/expiración de accesos de mercado

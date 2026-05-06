@@ -482,4 +482,72 @@ async function _processOneRebelArmy(client, rebel, turn) {
     }
 }
 
-module.exports = { addConquestResistance, processComarcaResistance, processRebelArmies };
+// ── Rebelión por felicidad ────────────────────────────────────────────────────
+
+const HAPPINESS_REBEL_THRESHOLD = 10;   // Felicidad por debajo de la cual puede rebelarse
+const HAPPINESS_REBEL_CHANCE    = 0.05; // 5 % de probabilidad por feudo por mes
+const HAPPINESS_REBEL_TROOPS    = 300;  // Efectivos del ejército rebelde
+const HAPPINESS_MIN_AGE_TURNS   = 90;   // La comarca debe tener al menos 90 turnos de antigüedad
+
+async function processHappinessRebellion(client, currentTurn) {
+    const { rows: fiefs } = await client.query(`
+        SELECT
+            m.h3_index,
+            m.player_id,
+            td.division_id,
+            td.dominant_culture_id,
+            pd.name    AS division_name,
+            pd.capital_h3
+        FROM territory_details td
+        JOIN h3_map m            ON m.h3_index  = td.h3_index
+        JOIN political_divisions pd ON pd.id    = td.division_id
+        WHERE td.happiness < $1
+          AND m.player_id IS NOT NULL
+          AND td.division_id IS NOT NULL
+          AND ($2 - pd.founded_turn) >= $3
+    `, [HAPPINESS_REBEL_THRESHOLD, currentTurn, HAPPINESS_MIN_AGE_TURNS]);
+
+    for (const fief of fiefs) {
+        if (Math.random() >= HAPPINESS_REBEL_CHANCE) continue;
+
+        // Liberar el feudo
+        await client.query(
+            `UPDATE h3_map SET player_id = NULL, previous_player_id = $1 WHERE h3_index = $2`,
+            [fief.player_id, fief.h3_index]
+        );
+        await client.query(
+            `UPDATE territory_details SET division_id = NULL WHERE h3_index = $1`,
+            [fief.h3_index]
+        );
+
+        // Crear ejército rebelde en el feudo sublevado
+        const unitTypeId = REBEL_UNIT_BY_CULTURE[fief.dominant_culture_id] ?? 17;
+        const { rows: armyRows } = await client.query(`
+            INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
+            VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+            RETURNING army_id
+        `, [fief.h3_index, fief.division_id, fief.player_id]);
+        const armyId = armyRows[0].army_id;
+
+        await client.query(`
+            INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale)
+            VALUES ($1, $2, $3, 5, 70)
+        `, [armyId, unitTypeId, HAPPINESS_REBEL_TROOPS]);
+
+        // Notificar al señor
+        await NotificationService.createSystemNotification(
+            fief.player_id,
+            'General',
+            `⚡ REBELIÓN POR MISERIA (Turno ${currentTurn})\n` +
+            `Un feudo de ${fief.division_name} se ha alzado en armas.\n` +
+            `La desdicha del pueblo ha llegado a su límite.`,
+            currentTurn
+        );
+
+        Logger.engine(
+            `[HAPPINESS REBELLION] Feudo ${fief.h3_index} (comarca ${fief.division_id}) → rebelde contra jugador ${fief.player_id}`
+        );
+    }
+}
+
+module.exports = { addConquestResistance, processComarcaResistance, processRebelArmies, processHappinessRebellion };
