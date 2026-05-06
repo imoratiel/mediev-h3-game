@@ -1364,6 +1364,22 @@
   <!-- Changelog Panel (fuera del sidebar para evitar clipping por transform) -->
   <ChangelogPanel v-if="showChangelog" @close="showChangelog = false" />
 
+  <!-- ── Confirmación de construcción de puente ────────────────────────── -->
+  <div v-if="pendingBridgeConfirm" class="bridge-confirm-backdrop" @click.self="pendingBridgeConfirm = null">
+    <div class="bridge-confirm-box">
+      <p class="bridge-confirm-title">¿Iniciar construcción?</p>
+      <p class="bridge-confirm-name">🌉 Puente</p>
+      <div class="bridge-confirm-stats">
+        <span>⚒️ Consume trabajadores en la casilla</span>
+        <span>⏱️ 30 días</span>
+      </div>
+      <div class="bridge-confirm-actions">
+        <button class="build-confirm-cancel" @click="pendingBridgeConfirm = null">Cancelar</button>
+        <button class="build-confirm-ok" @click="executeBridgeConstruction(pendingBridgeConfirm); pendingBridgeConfirm = null">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Panel flotante de compra/venta ─────────────────────────────────── -->
   <transition name="tp-slide">
     <div v-if="showTradePanel" class="trade-panel-overlay" @click.self="showTradePanel = false">
@@ -1422,6 +1438,19 @@
 
         <!-- Nota oferta/demanda -->
         <p class="tp-market-note">Los precios fluctúan según la reserva global: suben cuando la comida escasea y bajan cuando abunda. Para comprar es necesario que otros jugadores hayan vendido previamente.</p>
+
+        <!-- Bonificaciones del mercado -->
+        <div class="tp-market-bonuses">
+          <div class="tp-bonus-title">⚖️ Bonificaciones del Mercado</div>
+          <div class="tp-bonus-row">
+            <span class="tp-bonus-icon">💰</span>
+            <span><strong>+15% recaudación fiscal</strong> — la comarca con mercado genera un 15% extra en la recaudación mensual (no sale de las reservas del feudo).</span>
+          </div>
+          <div class="tp-bonus-row">
+            <span class="tp-bonus-icon">🌾</span>
+            <span><strong>+3% producción en cosecha</strong> (+15% en comarcas hambrunas) — el mercado incentiva la producción local en cada cosecha.</span>
+          </div>
+        </div>
 
         <!-- Workers at this location -->
         <div class="tp-workers-section">
@@ -1881,7 +1910,8 @@ const showBuildModal = ref(false);
 const buildModalH3 = ref(null);
 const buildModalBuildings = ref([]);
 const isConstructing = ref(false);
-const pendingBuildConfirm = ref(null);
+const pendingBuildConfirm  = ref(null);
+const pendingBridgeConfirm = ref(null);
 const buildModalOpenedFromWorker = ref(false); // true when modal opened directly from worker card
 const buildModalHasWorker = computed(() => buildModalOpenedFromWorker.value || myWorkers.value.some(w => w.h3_index === buildModalH3.value));
 
@@ -6963,25 +6993,8 @@ const startWorkerMoveFromPanel = (workerId, fromH3) => {
   window.startWorkerMovement(fromH3, workerId);
 };
 
-/**
- * Start bridge construction from the market panel.
- * @param {string} h3_index
- */
-const buildBridgeFromPanel = async (h3_index) => {
-  try {
-    const result = await mapApi.startBridgeConstruction(h3_index);
-    if (result.success) {
-      showToast(`🌉 ${result.message}`, 'success');
-      await fetchHexagonData();
-      await fetchMyWorkers(); // workers consumed — refresh panel list
-    } else {
-      showToast(`⚠️ ${result.message}`, 'warning');
-    }
-  } catch (err) {
-    const msg = err?.response?.data?.message || 'Error al iniciar la construcción';
-    showToast(`❌ ${msg}`, 'error');
-  }
-};
+const buildBridgeFromPanel = (h3_index) => { pendingBridgeConfirm.value = h3_index; };
+
 
 /**
  * Load worker type definitions once on mount.
@@ -6999,17 +7012,15 @@ const loadWorkerTypes = async () => {
 /**
  * Hire a worker from the cell popup.
  */
-/**
- * Start a bridge construction from the worker map popup.
- * Workers at h3_index are consumed. Only valid on Río / Agua terrain.
- */
-const buildBridgeFromPopup = async (h3_index) => {
+const buildBridgeFromPopup = (h3_index) => { pendingBridgeConfirm.value = h3_index; };
+
+const executeBridgeConstruction = async (h3_index) => {
   try {
     const result = await mapApi.startBridgeConstruction(h3_index);
     if (result.success) {
       showToast(`🌉 ${result.message}`, 'success');
       await fetchHexagonData();
-      fetchMyWorkers(); // remove consumed workers from market panel
+      fetchMyWorkers();
     } else {
       showToast(`⚠️ ${result.message}`, 'warning');
     }
@@ -9271,6 +9282,31 @@ onBeforeUnmount(() => {
   background: rgba(197,160,89,0.05);
   border-radius: 0 4px 4px 0;
 }
+.tp-market-bonuses {
+  margin: 8px 16px 4px;
+  padding: 8px 10px;
+  background: rgba(80,180,100,0.07);
+  border-left: 2px solid rgba(80,180,100,0.4);
+  border-radius: 0 4px 4px 0;
+}
+.tp-bonus-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #3a7a50;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tp-bonus-row {
+  display: flex;
+  gap: 6px;
+  font-size: 10px;
+  color: #4a6050;
+  line-height: 1.4;
+  margin-bottom: 3px;
+}
+.tp-bonus-row:last-child { margin-bottom: 0; }
+.tp-bonus-icon { flex-shrink: 0; }
 
 /* Hire section */
 .tp-hire-section {
@@ -12361,6 +12397,51 @@ onBeforeUnmount(() => {
 }
 .build-confirm-ok:hover:not(:disabled) { background: #e8c070; }
 .build-confirm-ok:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.bridge-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 8, 5, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.bridge-confirm-box {
+  background: #1e1a12;
+  border: 1px solid #6a5a40;
+  border-radius: 10px;
+  padding: 24px 28px;
+  text-align: center;
+  min-width: 260px;
+}
+.bridge-confirm-title {
+  font-size: 0.8rem;
+  color: #a89060;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+}
+.bridge-confirm-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #e8d5a3;
+  margin: 0 0 12px;
+}
+.bridge-confirm-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.88rem;
+  color: #c5a059;
+  margin-bottom: 18px;
+}
+.bridge-confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
 
 .build-empty {
   text-align: center;

@@ -65,7 +65,7 @@ async function processTaxCollection(client, turn, gameDate) {
                 // Fetch all territories for this player with gold stock and division tax rate.
                 // Fiefs in a pagus use pd.tax_rate; fiefs without a pagus are tax-exempt (rate 0).
                 const territoriesResult = await client.query(`
-                    SELECT td.h3_index, td.gold_stored,
+                    SELECT td.h3_index, td.gold_stored, td.division_id,
                            COALESCE(pd.tax_rate, 0) AS effective_tax_rate
                     FROM territory_details td
                     JOIN h3_map m ON td.h3_index = m.h3_index
@@ -76,6 +76,7 @@ async function processTaxCollection(client, turn, gameDate) {
                 if (territoriesResult.rows.length === 0) continue;
 
                 let playerGoldCollected = 0;
+                const divisionTax = new Map(); // divisionId → taxAmount collected
 
                 for (const territory of territoriesResult.rows) {
                     const goldStock      = parseFloat(territory.gold_stored) || 0;
@@ -94,25 +95,60 @@ async function processTaxCollection(client, turn, gameDate) {
                     );
 
                     playerGoldCollected += taxAmount;
+
+                    if (territory.division_id) {
+                        divisionTax.set(territory.division_id, (divisionTax.get(territory.division_id) || 0) + taxAmount);
+                    }
                 }
 
                 if (playerGoldCollected <= 0) continue;
 
-                // Add collected gold to player's global treasury
+                // 15% market bonus for comarcas that have an active Market building
+                let marketBonus = 0;
+                if (divisionTax.size > 0) {
+                    const marketDivisionsResult = await client.query(`
+                        SELECT DISTINCT td2.division_id
+                        FROM h3_map m2
+                        JOIN territory_details td2 ON td2.h3_index = m2.h3_index
+                        JOIN fief_buildings fb ON fb.h3_index = m2.h3_index
+                        JOIN buildings b ON b.id = fb.building_id
+                        JOIN building_types bt ON bt.building_type_id = b.type_id
+                        WHERE m2.player_id = $1
+                          AND bt.name = 'economic'
+                          AND fb.is_under_construction = FALSE
+                          AND fb.conservation > 20
+                          AND td2.division_id IS NOT NULL
+                    `, [player.player_id]);
+
+                    const marketDivisions = new Set(marketDivisionsResult.rows.map(r => r.division_id));
+                    for (const [divId, taxAmt] of divisionTax) {
+                        if (marketDivisions.has(divId)) {
+                            marketBonus += Math.floor(taxAmt * 0.15);
+                        }
+                    }
+                }
+
+                const totalPlayerIncome = playerGoldCollected + marketBonus;
+
+                // Add collected gold + market bonus to player's global treasury
                 await client.query(
                     'UPDATE players SET gold = gold + $1 WHERE player_id = $2',
-                    [playerGoldCollected, player.player_id]
+                    [totalPlayerIncome, player.player_id]
                 );
 
                 // Notification for this player
                 const taxableFiefs = territoriesResult.rows.filter(r => parseFloat(r.effective_tax_rate) > 0).length;
-                const messageBody = [
+                const notifLines = [
                     `💰 **Recaudación Fiscal — Turno ${turn}**`,
                     ``,
                     `Centurias tributarias (en una comarca): ${taxableFiefs} de ${territoriesResult.rows.length}`,
                     ``,
                     `Oro recaudado e ingresado al tesoro real: **+${playerGoldCollected} 💰**`,
-                ].join('\n');
+                ];
+                if (marketBonus > 0) {
+                    notifLines.push(`⚖️ Bonus de mercados: **+${marketBonus} 💰** (la recaudación ha aumentado gracias a los mercados de tus territorios)`);
+                }
+                const messageBody = notifLines.join('\n');
 
                 await NotificationService.createSystemNotification(
                     player.player_id,
@@ -121,15 +157,16 @@ async function processTaxCollection(client, turn, gameDate) {
                     turn
                 );
 
-                Logger.engine(`[TURN ${turn}] Tax collected from player ${player.player_id} (${player.username}): ${playerGoldCollected} gold (${taxRate}% of fief stocks)`);
+                Logger.engine(`[TURN ${turn}] Tax collected from player ${player.player_id} (${player.username}): ${playerGoldCollected} gold + ${marketBonus} market bonus (${taxRate}% of fief stocks)`);
                 auditEvent('TAX_COLLECTION', {
-                    player_id: player.player_id,
-                    amount:    playerGoldCollected,
-                    tax_rate:  taxRate,
+                    player_id:    player.player_id,
+                    amount:       totalPlayerIncome,
+                    market_bonus: marketBonus,
+                    tax_rate:     taxRate,
                     turn,
                 }, TOPICS.TAX);
-                incomeByPlayer.set(player.player_id, playerGoldCollected);
-                totalGoldCollected += playerGoldCollected;
+                incomeByPlayer.set(player.player_id, totalPlayerIncome);
+                totalGoldCollected += totalPlayerIncome;
                 totalPlayers++;
 
             } catch (playerError) {

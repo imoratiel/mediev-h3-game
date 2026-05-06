@@ -128,14 +128,27 @@ class MarketService {
         try {
             await client.query('BEGIN');
 
-            // 1. Verificar que el feudo es del jugador
-            const fiefResult = await client.query(
-                'SELECT player_id FROM h3_map WHERE h3_index = $1',
-                [h3_index]
-            );
+            // 1. Verificar que el feudo es del jugador y que tiene mercado activo
+            const fiefResult = await client.query(`
+                SELECT m.player_id,
+                       EXISTS (
+                           SELECT 1 FROM fief_buildings fb
+                           JOIN buildings b   ON b.id = fb.building_id
+                           JOIN building_types bt ON bt.building_type_id = b.type_id
+                           WHERE fb.h3_index = m.h3_index
+                             AND bt.name = 'economic'
+                             AND fb.is_under_construction = FALSE
+                             AND fb.conservation > 20
+                       ) AS has_market
+                FROM h3_map m WHERE m.h3_index = $1
+            `, [h3_index]);
             if (!fiefResult.rows[0] || fiefResult.rows[0].player_id !== playerId) {
                 await client.query('ROLLBACK');
                 return res.status(403).json({ success: false, message: 'No posees ese feudo' });
+            }
+            if (!fiefResult.rows[0].has_market) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ success: false, message: 'Solo puedes vender en un feudo con mercado activo' });
             }
 
             // 2. Obtener reserva con lock
