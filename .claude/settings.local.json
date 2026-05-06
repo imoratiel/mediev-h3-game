@@ -109,7 +109,10 @@
       "PowerShell(docker compose build client 2>&1)",
       "PowerShell(docker compose build client 2>&1 | Where-Object { $_ -match \"error|Error|declared|duplicate|\\\\^\\\\^\\\\^|\\\\d+\\\\|\" } | Select-Object -First 20)",
       "PowerShell(docker compose build client 2>&1 | Where-Object { $_ -match \"error|Error|declared|\\\\d+\\\\|  \" } | Select-Object -First 15)",
-      "PowerShell(docker compose build client 2>&1 | Where-Object { $_ -match \"error|Error|declared\" } | Select-Object -First 10)"
+      "PowerShell(docker compose build client 2>&1 | Where-Object { $_ -match \"error|Error|declared\" } | Select-Object -First 10)",
+      "Bash(Get-Content \"d:\\\\claude\\\\mediev-h3-game\\\\server\\\\logs\\\\exceptions.log\" -Tail 150)",
+      "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\mediev-h3-game\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

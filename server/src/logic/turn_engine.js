@@ -8,7 +8,7 @@ const { processTithe } = require('./tithe_system');
 const { processBuildingDecay } = require('./building_decay');
 const MarketModel = require('../models/MarketModel');
 const { processGraceTurns } = require('./conquest_system');
-const { processComarcaResistance, processRebelArmies } = require('./resistance_system');
+const { processComarcaResistance, processRebelArmies, processHappinessRebellion } = require('./resistance_system');
 const { processWorkerMovements } = require('./workerMovement');
 const GAME_CONFIG = require('../config/constants');
 const { getPopulationCap } = require('../config/gameFunctions');
@@ -54,10 +54,35 @@ async function processHarvest(client, turn, config) {
             FROM territory_details td
             JOIN fief_buildings fb ON fb.h3_index = td.h3_index
             JOIN buildings b ON b.id = fb.building_id
-            WHERE b.name = 'Mercado'
+            JOIN building_types bt ON bt.building_type_id = b.type_id
+            WHERE bt.name = 'economic'
               AND fb.is_under_construction = FALSE
               AND fb.conservation > 0
               AND td.division_id IS NOT NULL
+              AND b.culture_id = (
+                  SELECT CASE
+                      WHEN GREATEST(
+                          COALESCE(SUM(fc.culture_romanos),0),
+                          COALESCE(SUM(fc.culture_cartagineses),0),
+                          COALESCE(SUM(fc.culture_iberos),0),
+                          COALESCE(SUM(fc.culture_celtas),0)
+                      ) = 0 THEN 3
+                      WHEN COALESCE(SUM(fc.culture_romanos),0) >= ALL(ARRAY[
+                          COALESCE(SUM(fc.culture_cartagineses),0),
+                          COALESCE(SUM(fc.culture_iberos),0),
+                          COALESCE(SUM(fc.culture_celtas),0)
+                      ]) THEN 1
+                      WHEN COALESCE(SUM(fc.culture_cartagineses),0) >= ALL(ARRAY[
+                          COALESCE(SUM(fc.culture_iberos),0),
+                          COALESCE(SUM(fc.culture_celtas),0)
+                      ]) THEN 2
+                      WHEN COALESCE(SUM(fc.culture_iberos),0) >= COALESCE(SUM(fc.culture_celtas),0) THEN 3
+                      ELSE 4
+                  END
+                  FROM fief_culture fc
+                  JOIN territory_details td2 ON td2.h3_index = fc.h3_index
+                  WHERE td2.division_id = td.division_id
+              )
         `);
         const pagusWithMarket = new Set(marketPagusResult.rows.map(r => r.division_id));
 
@@ -1889,6 +1914,14 @@ async function processGameTurn(pool, config) {
             await processCivilFoodConsumption(client, newTurn);
             // Happiness calculated after all consumption (civil + military already ran this turn)
             await processHappiness(client, newTurn);
+            await client.query('SAVEPOINT sp_happiness_rebellion');
+            try {
+                await processHappinessRebellion(client, newTurn);
+                await client.query('RELEASE SAVEPOINT sp_happiness_rebellion');
+            } catch (err) {
+                await client.query('ROLLBACK TO SAVEPOINT sp_happiness_rebellion');
+                Logger.error(err, { context: 'turn_engine.happinessRebellion', turn: newTurn });
+            }
             await processMonthlyProduction(client, newTurn, config);
             await purgeOldNotifications(client, newTurn);
             // Renovación/expiración de accesos de mercado
