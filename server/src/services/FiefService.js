@@ -41,9 +41,9 @@ function calculateHappiness(fiefData, context) {
 
     // --- Tax ---
     const tax = parseFloat(tax_rate) || 10;
-    if      (tax <= 5)  delta += 2;
+    if      (tax <= 5)  delta += 4;
     else if (tax <= 10) delta += 0;
-    else                delta -= 2;   // 11-15
+    else                delta -= 4;   // 11-15
 
     // --- Food ---
     const food    = Math.max(0, parseFloat(food_stored) || 0);
@@ -54,7 +54,7 @@ function calculateHappiness(fiefData, context) {
     } else if (monthly > 0) {
         const autonomy = food / monthly;
         if      (autonomy > 24) delta += 2;
-        else if (autonomy < 6)  delta -= 5;
+        else if (autonomy < 6)  delta -= 3;
         // 6–24 months: neutral
     }
     // If monthly === 0 (unpopulated) → no food penalty
