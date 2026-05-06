@@ -1443,14 +1443,22 @@
         <!-- Bonificaciones del mercado -->
         <div class="tp-market-bonuses">
           <div class="tp-bonus-title">⚖️ Bonificaciones del Mercado</div>
-          <div class="tp-bonus-row">
-            <span class="tp-bonus-icon">💰</span>
-            <span><strong>+15% recaudación fiscal</strong> — la comarca con mercado genera un 15% extra en la recaudación mensual (no sale de las reservas del feudo).</span>
-          </div>
-          <div class="tp-bonus-row">
-            <span class="tp-bonus-icon">🌾</span>
-            <span><strong>+3% producción en cosecha</strong> (+15% en comarcas hambrunas) — el mercado incentiva la producción local en cada cosecha.</span>
-          </div>
+          <template v-if="tradePanel?.gives_tax_bonus">
+            <div class="tp-bonus-row">
+              <span class="tp-bonus-icon">💰</span>
+              <span><strong>+15% recaudación fiscal</strong> — la comarca genera un 15% extra en la recaudación mensual (no sale de las reservas del feudo).</span>
+            </div>
+            <div class="tp-bonus-row">
+              <span class="tp-bonus-icon">🌾</span>
+              <span><strong>+3% producción en cosecha</strong> (+15% en comarcas hambrunas) — incentiva la producción local en cada cosecha.</span>
+            </div>
+          </template>
+          <template v-else>
+            <div class="tp-bonus-row tp-bonus-row--foreign">
+              <span class="tp-bonus-icon">🏛️</span>
+              <span>Este mercado es de <strong>cultura extranjera</strong>: permite comprar y vender recursos y contratar trabajadores, pero <strong>no aplica el bono del 15%</strong> a la recaudación ni a las cosechas.</span>
+            </div>
+          </template>
         </div>
 
         <!-- Workers at this location -->
@@ -9309,6 +9317,7 @@ onBeforeUnmount(() => {
 }
 .tp-bonus-row:last-child { margin-bottom: 0; }
 .tp-bonus-icon { flex-shrink: 0; }
+.tp-bonus-row--foreign { color: #7a6858; font-style: italic; }
 
 /* Hire section */
 .tp-hire-section {

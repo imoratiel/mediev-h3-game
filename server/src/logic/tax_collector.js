@@ -118,6 +118,30 @@ async function processTaxCollection(client, turn, gameDate) {
                           AND fb.is_under_construction = FALSE
                           AND fb.conservation > 20
                           AND td2.division_id IS NOT NULL
+                          AND b.culture_id = (
+                              SELECT CASE
+                                  WHEN GREATEST(
+                                      COALESCE(SUM(fc.culture_romanos),0),
+                                      COALESCE(SUM(fc.culture_cartagineses),0),
+                                      COALESCE(SUM(fc.culture_iberos),0),
+                                      COALESCE(SUM(fc.culture_celtas),0)
+                                  ) = 0 THEN 3
+                                  WHEN COALESCE(SUM(fc.culture_romanos),0) >= ALL(ARRAY[
+                                      COALESCE(SUM(fc.culture_cartagineses),0),
+                                      COALESCE(SUM(fc.culture_iberos),0),
+                                      COALESCE(SUM(fc.culture_celtas),0)
+                                  ]) THEN 1
+                                  WHEN COALESCE(SUM(fc.culture_cartagineses),0) >= ALL(ARRAY[
+                                      COALESCE(SUM(fc.culture_iberos),0),
+                                      COALESCE(SUM(fc.culture_celtas),0)
+                                  ]) THEN 2
+                                  WHEN COALESCE(SUM(fc.culture_iberos),0) >= COALESCE(SUM(fc.culture_celtas),0) THEN 3
+                                  ELSE 4
+                              END
+                              FROM fief_culture fc
+                              JOIN territory_details td3 ON td3.h3_index = fc.h3_index
+                              WHERE td3.division_id = td2.division_id
+                          )
                     `, [player.player_id]);
 
                     const marketDivisions = new Set(marketDivisionsResult.rows.map(r => r.division_id));

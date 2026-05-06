@@ -41,7 +41,34 @@ class MarketService {
                     (m.h3_index = p.capital_h3)                  AS is_capital,
                     b.name                                        AS building_name,
                     fb.conservation,
-                    fb.is_under_construction
+                    fb.is_under_construction,
+                    (
+                        td.division_id IS NOT NULL
+                        AND (
+                            SELECT CASE
+                                WHEN GREATEST(
+                                    COALESCE(SUM(fc.culture_romanos),0),
+                                    COALESCE(SUM(fc.culture_cartagineses),0),
+                                    COALESCE(SUM(fc.culture_iberos),0),
+                                    COALESCE(SUM(fc.culture_celtas),0)
+                                ) = 0 THEN 3
+                                WHEN COALESCE(SUM(fc.culture_romanos),0) >= ALL(ARRAY[
+                                    COALESCE(SUM(fc.culture_cartagineses),0),
+                                    COALESCE(SUM(fc.culture_iberos),0),
+                                    COALESCE(SUM(fc.culture_celtas),0)
+                                ]) THEN 1
+                                WHEN COALESCE(SUM(fc.culture_cartagineses),0) >= ALL(ARRAY[
+                                    COALESCE(SUM(fc.culture_iberos),0),
+                                    COALESCE(SUM(fc.culture_celtas),0)
+                                ]) THEN 2
+                                WHEN COALESCE(SUM(fc.culture_iberos),0) >= COALESCE(SUM(fc.culture_celtas),0) THEN 3
+                                ELSE 4
+                            END = b.culture_id
+                            FROM fief_culture fc
+                            JOIN territory_details td2 ON td2.h3_index = fc.h3_index
+                            WHERE td2.division_id = td.division_id
+                        )
+                    ) AS gives_tax_bonus
                 FROM h3_map m
                 JOIN players p ON p.player_id = m.player_id
                 JOIN territory_details td ON td.h3_index = m.h3_index
