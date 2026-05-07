@@ -261,6 +261,13 @@ async function processComarcaResistance(client, turn) {
 async function triggerRebellion(client, divisionId, playerId, comarcaName, capitalH3, dominantCultureId, turn) {
     Logger.engine(`[TURN ${turn}] REBELLION in comarca ${divisionId} (${comarcaName}), owner: ${playerId}`);
 
+    // Capital principal del jugador y feudos contiguos: nunca se rebelan
+    const { rows: playerRows } = await client.query(
+        `SELECT capital_h3 FROM players WHERE player_id = $1`, [playerId]
+    );
+    const playerCapital = playerRows[0]?.capital_h3;
+    const protectedHexes = new Set(playerCapital ? h3.gridDisk(playerCapital, 1) : []);
+
     // Solo los feudos que pertenecen al jugador conquistador dentro de esta comarca
     const fiefsRes = await client.query(`
         SELECT td.h3_index
@@ -268,15 +275,17 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
         JOIN h3_map m ON m.h3_index = td.h3_index
         WHERE td.division_id = $1 AND m.player_id = $2
     `, [divisionId, playerId]);
-    if (fiefsRes.rows.length === 0) return;
+
+    const rebellableHexes = fiefsRes.rows.filter(r => !protectedHexes.has(r.h3_index));
+    if (rebellableHexes.length === 0) return;
 
     // 50 % de los feudos se liberan; al menos uno siempre escapa
-    const liberatedFiefs = fiefsRes.rows
+    const liberatedFiefs = rebellableHexes
         .filter(() => Math.random() < 0.5)
         .map(r => r.h3_index);
 
     if (liberatedFiefs.length === 0) {
-        liberatedFiefs.push(fiefsRes.rows[0].h3_index);
+        liberatedFiefs.push(rebellableHexes[0].h3_index);
     }
 
     // Liberar feudos: sin dueño, fuera de la comarca
@@ -314,7 +323,7 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
             `⚔️ **¡REBELIÓN EN ${comarcaName.toUpperCase()}!**`,
             ``,
             `La población de la comarca **${comarcaName}** se ha levantado en armas.`,
-            `**${liberatedFiefs.length} de ${fiefsRes.rows.length} territorios** se han declarado libres.`,
+            `**${liberatedFiefs.length} de ${rebellableHexes.length} territorios** se han declarado libres.`,
             ``,
             `Campesinos en armas han sido vistos en ${loc}.`,
             ``,
@@ -323,7 +332,7 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
         turn
     );
 
-    Logger.engine(`[TURN ${turn}] Rebellion: ${liberatedFiefs.length}/${fiefsRes.rows.length} fiefs liberated in comarca ${divisionId}, rebel army ${armyId} at ${spawnHex}`);
+    Logger.engine(`[TURN ${turn}] Rebellion: ${liberatedFiefs.length}/${rebellableHexes.length} fiefs liberated in comarca ${divisionId}, rebel army ${armyId} at ${spawnHex}`);
 }
 
 // ── IA de ejércitos rebeldes ──────────────────────────────────────────────────
@@ -497,6 +506,7 @@ async function processHappinessRebellion(client, currentTurn) {
             td.division_id,
             pd.name    AS division_name,
             pd.capital_h3,
+            p.capital_h3 AS player_capital,
             CASE
                 WHEN GREATEST(
                     COALESCE(SUM(fc.culture_romanos),      0),
@@ -520,12 +530,13 @@ async function processHappinessRebellion(client, currentTurn) {
         FROM territory_details td
         JOIN h3_map m               ON m.h3_index  = td.h3_index
         JOIN political_divisions pd ON pd.id        = td.division_id
+        JOIN players p              ON p.player_id  = m.player_id
         LEFT JOIN fief_culture fc   ON fc.h3_index  = td.h3_index
         WHERE td.happiness < $1
           AND m.player_id IS NOT NULL
           AND td.division_id IS NOT NULL
           AND ($2 - pd.founded_turn) >= $3
-        GROUP BY m.h3_index, m.player_id, td.division_id, pd.name, pd.capital_h3
+        GROUP BY m.h3_index, m.player_id, td.division_id, pd.name, pd.capital_h3, p.capital_h3
     `, [HAPPINESS_REBEL_THRESHOLD, currentTurn, HAPPINESS_MIN_AGE_TURNS]);
 
     // rebelsByPlayer: Map<player_id, Array<{h3_index, division_name}>>
@@ -533,6 +544,9 @@ async function processHappinessRebellion(client, currentTurn) {
 
     for (const fief of fiefs) {
         if (Math.random() >= HAPPINESS_REBEL_CHANCE) continue;
+
+        // La capital principal y sus feudos contiguos nunca se rebelan
+        if (fief.player_capital && h3.gridDisk(fief.player_capital, 1).includes(fief.h3_index)) continue;
 
         // Liberar el feudo
         await client.query(

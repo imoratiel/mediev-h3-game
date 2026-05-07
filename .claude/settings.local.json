@@ -112,7 +112,8 @@
       "PowerShell(docker compose build client 2>&1 | Where-Object { $_ -match \"error|Error|declared\" } | Select-Object -First 10)",
       "Bash(Get-Content \"d:\\\\claude\\\\mediev-h3-game\\\\server\\\\logs\\\\exceptions.log\" -Tail 150)",
       "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\mediev-h3-game\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "mcp__notion__API-delete-a-block"
     ]
   }
 }
