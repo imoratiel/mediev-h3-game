@@ -373,7 +373,7 @@ class ArmyModel {
             LEFT JOIN troops t ON t.army_id = a.army_id
             LEFT JOIN unit_types ut ON t.unit_type_id = ut.unit_type_id
             LEFT JOIN players pl ON a.player_id = pl.player_id
-            WHERE (a.player_id = $1 OR a.is_rebel = TRUE)
+            WHERE a.player_id = $1
               AND (a.is_naval = FALSE OR a.is_naval IS NULL)
               AND a.transported_by IS NULL
             GROUP BY a.army_id, a.name, a.h3_index, a.destination, m.coord_x, m.coord_y, td.custom_name, s.name, td.grace_turns, m.player_id, a.is_garrison, pl.capital_h3
