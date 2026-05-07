@@ -57,7 +57,8 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="t in troops" :key="t.unit_name" class="adm-tr">
+                  <template v-for="t in troops" :key="t.unit_name">
+                  <tr class="adm-tr">
                     <td class="adm-td-name">
                       <span class="adm-unit-icon" :title="t.unit_class">{{ unitClassIcon(t.unit_class) }}</span>
                       {{ t.unit_name }}
@@ -104,6 +105,28 @@
                       </div>
                     </td>
                   </tr>
+                  <!-- Subrow: Moral + Stamina bars (mobile only) -->
+                  <tr class="adm-tr-bars">
+                    <td colspan="8" class="adm-td-bars-row">
+                      <div class="adm-bars-inline">
+                        <div class="adm-bar-item">
+                          <span class="adm-bar-item-label">Moral</span>
+                          <div class="adm-bar-wrap">
+                            <div class="adm-bar-fill" :style="{ width: t.morale + '%', background: barColor(t.morale) }"></div>
+                            <span class="adm-bar-label">{{ t.morale }}%</span>
+                          </div>
+                        </div>
+                        <div class="adm-bar-item">
+                          <span class="adm-bar-item-label">Estamina</span>
+                          <div class="adm-bar-wrap">
+                            <div class="adm-bar-fill" :style="{ width: t.stamina + '%', background: barColor(t.stamina) }"></div>
+                            <span class="adm-bar-label">{{ t.stamina }}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  </template>
                 </tbody>
               </table>
               <p v-else class="adm-empty">Sin tropas reclutadas.</p>
@@ -169,11 +192,11 @@
                   <!-- DISABLED: <span>⛏️ Hierro: <b>{{ armyDetail.fief_iron }}</b></span> -->
                 </div>
 
-                <table class="adm-table" v-if="availableUnitTypes.length > 0">
+                <table class="adm-table adm-table-reinforce" v-if="availableUnitTypes.length > 0">
                   <thead>
                     <tr>
                       <th class="adm-th-name">Unidad</th>
-                      <th class="adm-th-num">Coste/u</th>
+                      <th class="adm-th-num adm-col-cost">Coste/u</th>
                       <th class="adm-th-num">Cantidad</th>
                     </tr>
                   </thead>
@@ -182,8 +205,12 @@
                       <td class="adm-td-name">
                         <span class="adm-unit-icon" :title="ut.unit_class">{{ unitClassIcon(ut.unit_class) }}</span>
                         {{ ut.name }}
+                        <span class="adm-unit-cost-mobile">
+                          <template v-for="req in (ut.requirements || [])" :key="req.resource_type">{{ req.resource_type === 'gold' ? '💰' : req.resource_type === 'wood_stored' ? '🌲' : req.resource_type === 'stone_stored' ? '⛰️' : '⛏️' }}{{ req.amount }} </template>
+                          <template v-if="!(ut.requirements && ut.requirements.length)">—</template>
+                        </span>
                       </td>
-                      <td class="adm-td-num adm-gold" style="font-size:0.75rem; white-space:nowrap;">
+                      <td class="adm-td-num adm-gold adm-col-cost" style="font-size:0.75rem; white-space:nowrap;">
                         <span v-for="req in (ut.requirements || [])" :key="req.resource_type">
                           {{ req.resource_type === 'gold' ? '💰' : req.resource_type === 'wood_stored' ? '🌲' : req.resource_type === 'stone_stored' ? '⛰️' : '⛏️' }}{{ req.amount }}
                         </span>
@@ -193,7 +220,7 @@
                         <input
                           v-model.number="reinforceQty[ut.unit_type_id]"
                           type="number" min="0" placeholder="0"
-                          class="adm-dismiss-input"
+                          class="adm-dismiss-input adm-reinforce-input"
                         />
                       </td>
                     </tr>
@@ -880,5 +907,127 @@ onUnmounted(() => document.removeEventListener('keydown', handleEsc));
   font-size: 0.72rem;
   color: #9ca3af;
   white-space: nowrap;
+}
+
+/* Subrow always hidden on desktop */
+.adm-tr-bars { display: none; }
+
+/* Cost-inline label: hidden on desktop, shown on mobile */
+.adm-unit-cost-mobile {
+  display: none;
+  font-size: 0.7rem;
+  color: #fbbf24;
+  margin-left: 4px;
+}
+
+/* Reinforce input base */
+.adm-reinforce-input {
+  width: 64px;
+}
+
+/* ── Mobile ─────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .adm-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .adm-box {
+    max-width: 100vw;
+    width: 100vw;
+    max-height: 92dvh;
+    border-radius: 14px 14px 0 0;
+    margin: 0;
+    overflow-y: auto;
+  }
+
+  .adm-table-wrap {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .adm-table-wrap {
+    padding: 0 10px 8px;
+    max-height: none;
+  }
+
+  .adm-table {
+    min-width: 0;
+    font-size: 0.78rem;
+  }
+
+  /* Troops table only: hide Exp (3), Moral (4), Estamina (5), Atq (6), Estado (7) */
+  .adm-table:not(.adm-table-reinforce) th:nth-child(3),
+  .adm-table:not(.adm-table-reinforce) td:nth-child(3),
+  .adm-table:not(.adm-table-reinforce) th:nth-child(4),
+  .adm-table:not(.adm-table-reinforce) td:nth-child(4),
+  .adm-table:not(.adm-table-reinforce) th:nth-child(5),
+  .adm-table:not(.adm-table-reinforce) td:nth-child(5),
+  .adm-table:not(.adm-table-reinforce) th:nth-child(6),
+  .adm-table:not(.adm-table-reinforce) td:nth-child(6),
+  .adm-table:not(.adm-table-reinforce) th:nth-child(7),
+  .adm-table:not(.adm-table-reinforce) td:nth-child(7) {
+    display: none;
+  }
+
+  /* Show subrow with bars */
+  .adm-tr-bars { display: table-row; }
+
+  .adm-td-bars-row {
+    padding: 0 4px 8px;
+    border-bottom: 1px solid #0d1117;
+  }
+
+  .adm-bars-inline {
+    display: flex;
+    gap: 10px;
+  }
+
+  .adm-bar-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .adm-bar-item-label {
+    font-size: 0.62rem;
+    color: #4b5563;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+  }
+
+  .adm-td-num { padding: 6px 4px; }
+  .adm-td-name { padding: 6px 4px; }
+
+  /* Reinforce table: hide cost column, show inline cost, widen input */
+  .adm-table-reinforce .adm-col-cost { display: none; }
+  .adm-unit-cost-mobile { display: inline; }
+  .adm-reinforce-input { width: 80px; }
+
+  /* Licenciar: stack input above button */
+  .adm-dismiss-ctrl {
+    flex-direction: column;
+    gap: 3px;
+  }
+  .adm-dismiss-input { width: 56px; }
+  .adm-td-dismiss { padding: 6px 4px; }
+
+  .adm-section-label { padding: 10px 12px 4px; }
+
+  .adm-provisions {
+    padding: 6px 12px 12px;
+    gap: 8px;
+  }
+  .adm-prov-item { min-width: 0; padding: 8px 12px; flex: 1; }
+
+  .adm-reinforce-wrap { padding: 0 12px 12px; }
+
+  .adm-reinforce-blocked { margin: 0 12px 10px; }
+
+  .adm-btn-close { margin: 0 12px 14px; }
+
+  .adm-commander-card { margin: 0 12px 12px; }
 }
 </style>

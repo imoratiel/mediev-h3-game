@@ -7,7 +7,7 @@
         <span></span><span></span><span></span>
       </button>
       <div class="mobile-topbar-center">
-        <span class="mobile-date">📅 {{ formattedDate }}</span>
+        <span class="mobile-date">📅 {{ formattedDateShort }}</span>
         <span class="mobile-gold">💰 {{ Number(playerGold).toLocaleString('es-ES') }}</span>
       </div>
       <div class="mobile-topbar-right">
@@ -1549,6 +1549,7 @@ const explorationConfig = ref({ turns_required: 5, gold_cost: 100 }); // Configu
 const currentTurn = ref(1);
 const gameDate = ref({ day: 1, month: 1, year: 210, era: 'BC' });
 const formattedDate = ref('1 de marzo de 1039');
+const formattedDateShort = computed(() => formattedDate.value.split(', anno')[0]);
 const isTurnProcessing = ref(false);
 
 // Day of year based on current turn (1-365)
