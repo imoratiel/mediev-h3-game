@@ -54,7 +54,7 @@
         </div>
       </div>
 
-      <!-- Armies Table -->
+      <!-- Armies Table (desktop) -->
       <div class="troops-table-container">
         <table class="troops-table">
           <thead>
@@ -107,54 +107,56 @@
               </td>
               <td class="actions-cell">
                 <div class="action-buttons">
-                  <button
-                    class="btn-icon btn-icon-inspect"
-                    @click="openInspect(army)"
-                    title="Detalles"
-                  >👁</button>
-                  <button
-                    class="btn-icon btn-icon-locate"
-                    @click="handleLocate(army)"
-                    title="Localizar"
-                  >🔍</button>
-                  <button
-                    v-if="army.destination"
-                    class="btn-icon btn-icon-stop"
-                    @click="handleStop(army)"
-                    :disabled="stoppingArmies.has(army.army_id)"
-                    title="Detener movimiento"
-                  >{{ stoppingArmies.has(army.army_id) ? '⏳' : '⏹' }}</button>
-                  <button
-                    v-if="army.enemy_count > 0"
-                    class="btn-icon btn-icon-attack"
-                    @click="handleAttack(army)"
-                    :disabled="attackingArmies.has(army.army_id)"
-                    :title="`Atacar (${army.enemy_count} ejército(s) enemigo(s))`"
-                  >{{ attackingArmies.has(army.army_id) ? '⏳' : '⚔️' }}</button>
-                  <button
-                    v-if="army.is_own_fief && (army.h3_index === army.capital_h3 || army.fief_has_military)"
-                    class="btn-icon btn-icon-reinforce"
-                    :disabled="army.fief_grace_turns > 0"
-                    :title="getReinforceTooltip(army)"
-                    @click="openReinforce(army)"
-                  >➕</button>
-                  <button
-                    v-if="coLocatedCount(army) > 0 && !army.destination"
-                    class="btn-icon btn-icon-transfer"
-                    :title="`Unir con ${coLocatedCount(army)} ejército(s) co-ubicado(s)`"
-                    @click="openTransfer(army)"
-                  >🔗</button>
-                  <button
-                    v-if="army.is_own_fief"
-                    class="btn-icon btn-icon-discharge"
-                    title="Licenciar tropas"
-                    @click="openDischarge(army)"
-                  >🏳️</button>
+                  <button class="btn-icon btn-icon-inspect" @click="openInspect(army)" title="Detalles">👁</button>
+                  <button class="btn-icon btn-icon-locate" @click="handleLocate(army)" title="Localizar">🔍</button>
+                  <button v-if="army.destination" class="btn-icon btn-icon-stop" @click="handleStop(army)" :disabled="stoppingArmies.has(army.army_id)" title="Detener movimiento">{{ stoppingArmies.has(army.army_id) ? '⏳' : '⏹' }}</button>
+                  <button v-if="army.enemy_count > 0" class="btn-icon btn-icon-attack" @click="handleAttack(army)" :disabled="attackingArmies.has(army.army_id)" :title="`Atacar (${army.enemy_count} ejército(s) enemigo(s))`">{{ attackingArmies.has(army.army_id) ? '⏳' : '⚔️' }}</button>
+                  <button v-if="army.is_own_fief && (army.h3_index === army.capital_h3 || army.fief_has_military)" class="btn-icon btn-icon-reinforce" :disabled="army.fief_grace_turns > 0" :title="getReinforceTooltip(army)" @click="openReinforce(army)">➕</button>
+                  <button v-if="coLocatedCount(army) > 0 && !army.destination" class="btn-icon btn-icon-transfer" :title="`Unir con ${coLocatedCount(army)} ejército(s) co-ubicado(s)`" @click="openTransfer(army)">🔗</button>
+                  <button v-if="army.is_own_fief" class="btn-icon btn-icon-discharge" title="Licenciar tropas" @click="openDischarge(army)">🏳️</button>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Army Cards (mobile) -->
+      <div class="army-cards-mobile">
+        <div v-for="army in armies" :key="'card-' + army.army_id" class="army-card">
+          <div class="ac-name">
+            <span v-if="army.is_garrison">🏰</span>
+            {{ army.name }}
+          </div>
+          <div class="ac-stats">
+            <div class="ac-stat">
+              <span class="ac-stat-label">⚔️ Tropas</span>
+              <span class="ac-stat-value">{{ army.total_troops }}</span>
+            </div>
+            <div class="ac-stat">
+              <span class="ac-stat-label">💪 Fuerza</span>
+              <span class="ac-stat-value">{{ army.total_combat_power }}</span>
+            </div>
+            <div class="ac-stat">
+              <span class="ac-stat-label">😊 Moral</span>
+              <span class="ac-stat-value" :style="{ color: getMoraleColor(army.average_moral) }">{{ army.average_moral }}%</span>
+            </div>
+            <div class="ac-stat">
+              <span class="ac-stat-label">⚡ Estamina</span>
+              <span class="ac-stat-value" :style="{ color: getStaminaColor(army.min_stamina || 0) }">{{ army.min_stamina || 0 }}%</span>
+            </div>
+          </div>
+          <div v-if="army.location_name" class="ac-location">📍 {{ army.location_name }}</div>
+          <div class="ac-actions">
+            <button class="btn-icon btn-icon-inspect" @click="openInspect(army)" title="Detalles">👁</button>
+            <button class="btn-icon btn-icon-locate" @click="handleLocate(army)" title="Localizar">🔍</button>
+            <button v-if="army.destination" class="btn-icon btn-icon-stop" @click="handleStop(army)" :disabled="stoppingArmies.has(army.army_id)" title="Detener">{{ stoppingArmies.has(army.army_id) ? '⏳' : '⏹' }}</button>
+            <button v-if="army.enemy_count > 0" class="btn-icon btn-icon-attack" @click="handleAttack(army)" :disabled="attackingArmies.has(army.army_id)" title="Atacar">{{ attackingArmies.has(army.army_id) ? '⏳' : '⚔️' }}</button>
+            <button v-if="army.is_own_fief && (army.h3_index === army.capital_h3 || army.fief_has_military)" class="btn-icon btn-icon-reinforce" :disabled="army.fief_grace_turns > 0" :title="getReinforceTooltip(army)" @click="openReinforce(army)">➕</button>
+            <button v-if="coLocatedCount(army) > 0 && !army.destination" class="btn-icon btn-icon-transfer" :title="`Unir`" @click="openTransfer(army)">🔗</button>
+            <button v-if="army.is_own_fief" class="btn-icon btn-icon-discharge" title="Licenciar" @click="openDischarge(army)">🏳️</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -816,5 +818,122 @@ const handleAttack = async (army) => {
 .btn-icon-discharge:hover {
   background: rgba(212, 168, 112, 0.2);
   border-color: #d4b870;
+}
+
+/* ── Mobile army cards ────────────────────────────────────────────── */
+.army-cards-mobile {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .troops-panel {
+    gap: 12px;
+  }
+
+  .troops-content {
+    gap: 12px;
+  }
+
+  .troops-table-container {
+    display: none;
+  }
+
+  .troops-summary {
+    grid-template-columns: repeat(2, 1fr) !important;
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .summary-card {
+    padding: 8px;
+    gap: 6px;
+    border-radius: 8px;
+  }
+
+  .card-icon {
+    font-size: 1.3rem;
+  }
+
+  .card-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.5px;
+  }
+
+  .card-value {
+    font-size: 1.2rem;
+  }
+
+  .army-cards-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 8px 16px;
+  }
+
+  .army-card {
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(197, 160, 89, 0.4);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ac-name {
+    font-family: 'Cinzel', serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #ffd700;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ac-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+
+  .ac-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+    padding: 5px 8px;
+  }
+
+  .ac-stat-label {
+    font-size: 0.62rem;
+    color: #a89875;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ac-stat-value {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #e8d5b5;
+  }
+
+  .ac-location {
+    font-size: 0.75rem;
+    color: #a89875;
+  }
+
+  .ac-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .ac-actions .btn-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+    border-radius: 7px;
+  }
 }
 </style>
