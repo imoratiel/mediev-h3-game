@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.18.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.17.0...v0.18.0) (2026-05-07)
+
+
+### Nuevas funcionalidades
+
+* ajuste de popups para vista de movil ([f517d2a](https://github.com/imoratiel/hipania210ac-game/commit/f517d2ab98d221f3720cbd268e355e3bcd14fb6a))
+* rediseño panel tropas para version movil ([ba26bed](https://github.com/imoratiel/hipania210ac-game/commit/ba26bed36bcf62f2aa54f36f38f23e5be0e4f21f))
+
+
+### Correcciones
+
+* eliminar boton edictos ([5f0c42d](https://github.com/imoratiel/hipania210ac-game/commit/5f0c42da7821ad1ddfbf07920d968a7af2b8e65c))
+* en vista mobile no se podían seleccionar ejercitos ([98e61fe](https://github.com/imoratiel/hipania210ac-game/commit/98e61fe85cbf962f78b8035530253fc6de2c8e15))
+* errores en el popup ten vista de ordenador ([16a99b2](https://github.com/imoratiel/hipania210ac-game/commit/16a99b21262a085848afd2e1134eecfd91527740))
+* formateo de fecha en formato movil ([1836863](https://github.com/imoratiel/hipania210ac-game/commit/1836863982387c958451bdfbb868abd70072a7e1))
+* los ejércitos rebeldes aparecían como tropas propias en el panel tropas ([933eced](https://github.com/imoratiel/hipania210ac-game/commit/933eced8541764da26a23aba1764cb23997168dc))
+
 ## [0.17.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.16.0...v0.17.0) (2026-05-06)
 
 
