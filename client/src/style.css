@@ -1076,6 +1076,9 @@ button {
   .leaflet-popup-close-button {
     display: none !important;
   }
+  .hs-nav-btn {
+    display: none !important;
+  }
   .leaflet-popup-content-wrapper {
     max-width: 90vw !important;
   }
