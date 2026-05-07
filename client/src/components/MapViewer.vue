@@ -5800,6 +5800,9 @@ const attachEnemyListeners = (army) => {
   }
 };
 
+// Global bridge: closes the current Leaflet popup from inline HTML buttons
+window.closeLeafletPopup = () => { if (map) map.closePopup(); };
+
 // Global bridge: called by ◀/▶ buttons inside the Leaflet popup HTML
 window.armyPopupNavigate = (delta) => {
   const newIndex = _pp_index + delta;

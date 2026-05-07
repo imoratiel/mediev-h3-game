@@ -96,98 +96,57 @@ export function generateCellPopupContent(cell, config) {
 
   // TERRITORY DETAILS (only if owned and has territory data)
   if (cell.territory && cell.player_id === playerId) {
-    popupContent += '<div class="popup-details-box">';
-    popupContent += '<p class="popup-details-title">📊 Detalles del Territorio</p>';
-
-    // FAMINE WARNING — shown when food reserves are exhausted
+    // FAMINE WARNING
     if (cell.territory.food <= 0) {
-      popupContent += '<div style="background:#5c1010;border:1px solid #c0392b;border-radius:4px;padding:6px 8px;margin-bottom:6px;color:#ff6b6b;font-size:11px;font-weight:bold;">' +
-        '🚨 HAMBRUNA — Sin reservas de comida. La población disminuye un 5% cada censo.' +
-        '</div>';
+      popupContent += '<div class="popup-famine-warn">🚨 HAMBRUNA — Sin reservas de comida</div>';
     }
 
-    // Population & Happiness
-    popupContent += `<p class="popup-detail-item">👥 Población: ${cell.territory.population} habitantes</p>`;
-    popupContent += `<p class="popup-detail-item">😊 Felicidad: ${cell.territory.happiness || 0}%</p>`;
-
-    // Cultura
-    const cultures = [
-      { name: 'Romanos',       val: cell.culture?.romanos      ?? 0, color: '#c0392b' },
-      { name: 'Cartagineses',  val: cell.culture?.cartagineses ?? 0, color: '#8e44ad' },
-      { name: 'Íberos',        val: cell.culture?.iberos       ?? 0, color: '#d35400' },
-      { name: 'Celtas',        val: cell.culture?.celtas       ?? 0, color: '#27ae60' },
+    // Dominant culture abbreviation
+    const _cultures = [
+      { abbr: 'Rom', val: cell.culture?.romanos      ?? 0 },
+      { abbr: 'Car', val: cell.culture?.cartagineses ?? 0 },
+      { abbr: 'Ibe', val: cell.culture?.iberos       ?? 0 },
+      { abbr: 'Cel', val: cell.culture?.celtas       ?? 0 },
     ];
-    popupContent += `<p class="popup-details-title" style="margin-top:6px;">🏛️ Cultura</p>`;
-    const activeCultures = cultures.filter(c => c.val > 0);
-    if (activeCultures.length === 0) {
-      popupContent += `<div style="font-size:11px;color:#6b7280;margin-bottom:4px;font-style:italic;">Sin cultura dominante</div>`;
-    } else {
-      popupContent += `<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:4px;">`;
-      for (const c of activeCultures) {
-        popupContent += `<div style="display:flex;align-items:center;gap:6px;font-size:11px;">
-          <span style="width:80px;color:#d1d5db;">${c.name}</span>
-          <div style="flex:1;background:#374151;border-radius:3px;height:8px;overflow:hidden;">
-            <div style="width:${c.val}%;background:${c.color};height:100%;border-radius:3px;transition:width 0.3s;"></div>
-          </div>
-          <span style="width:28px;text-align:right;color:#9ca3af;">${c.val}</span>
-        </div>`;
-      }
-      popupContent += `</div>`;
-    }
+    const _dom = _cultures.reduce((a, b) => b.val > a.val ? b : a, { abbr: 'No', val: 0 });
+    const cultAbbr = _dom.val > 0 ? _dom.abbr : 'No';
 
-    // REBELLION (only when comarca has resistance > 0)
+    const foodVal = Math.round(parseFloat(cell.territory.food) || 0);
+    const foodColor = foodVal <= 0 ? ' style="color:#ff6b6b;font-weight:bold;"' : '';
+    popupContent += `<p class="popup-compact-row">👥 ${cell.territory.population}</p>`;
+    popupContent += `<p class="popup-compact-row">😊 ${cell.territory.happiness || 0}%</p>`;
+    popupContent += `<p class="popup-compact-row">🏛️ ${cultAbbr}</p>`;
+    popupContent += `<p class="popup-compact-row"${foodColor}>🌾 ${foodVal}</p>`;
+
+    // REBELLION bar (only when comarca has resistance > 0)
     if (cell.rebellion && cell.rebellion.total > 0) {
       const pct   = cell.rebellion.total;
       const color = pct >= 80 ? '#ef4444' : pct >= 60 ? '#f97316' : pct >= 30 ? '#eab308' : '#22c55e';
       popupContent += `
-        <div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:6px;margin-bottom:4px;">
-          <span style="color:#9ca3af;white-space:nowrap;">Riesgo de Rebelión</span>
-          <div style="flex:1;background:#374151;border-radius:3px;height:6px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:5px;">
+          <span style="color:#9ca3af;white-space:nowrap;">Rebelión</span>
+          <div style="flex:1;background:#374151;border-radius:3px;height:5px;overflow:hidden;">
             <div style="width:${pct}%;background:${color};height:100%;border-radius:3px;"></div>
           </div>
           <span style="color:${color};font-weight:bold;">${pct}</span>
         </div>`;
     }
 
-    // Resources (DISABLED: wood/stone/iron hidden; exploration hidden)
-    popupContent += '<p class="popup-resources-label">Recursos Almacenados:</p>';
-    popupContent += '<div class="popup-resource-grid">';
-    popupContent += `<span class="resource-item" ${cell.territory.food <= 0 ? 'style="color:#ff6b6b;font-weight:bold;"' : ''}>🌾 Comida: ${cell.territory.food}</span>`;
-    // popupContent += `<span class="resource-item">🌲 Madera: ${cell.territory.wood}</span>`; // DISABLED
-    // DISABLED: stone/iron/exploration section hidden
-    popupContent += '</div></div>';
   } else if (cell.territory && cell.player_id) {
     popupContent += '<p class="espionage-required">🔒 Información detallada requiere espionaje</p>';
   }
 
-  // FIEF BUILDING STATUS (if own territory)
-  if (cell.player_id === playerId) {
-    if (cell.fief_building) {
-      if (cell.fief_building.is_under_construction) {
-        const turnsLeft = cell.fief_building.turns_left ?? '?';
-        popupContent += `<div class="popup-building-status popup-building-progress">🏗️ En construcción: <strong>${cell.fief_building.name}</strong> (${turnsLeft} turno${turnsLeft !== 1 ? 's' : ''})</div>`;
-      } else {
-        const cons = cell.fief_building.conservation ?? 100;
-        if (cons === 0) {
-          popupContent += `<div class="popup-building-status popup-building-ruins">
-            🏚️ <strong>${cell.fief_building.name}</strong> — <span style="color:#f44336;font-style:italic;">En Ruinas</span>
-          </div>`;
-        } else {
-          const consColor = cons >= 70 ? '#4caf50' : cons >= 40 ? '#ff9800' : '#f44336';
-          const inactiveWarning = cons < 20 ? `<div style="font-size:11px;color:#f44336;margin-top:3px;">🏚️ En Ruinas (conservación &lt; 20%)</div>` : '';
-          popupContent += `<div class="popup-building-status popup-building-done">
-            ${getBuildingIcon(cell.fief_building.name, cell.fief_building.type_name)} Edificio: <strong>${cell.fief_building.name}</strong>
-            <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
-              <span style="font-size:11px;color:#aaa;">Conservación</span>
-              <div style="flex:1;height:6px;background:#333;border-radius:3px;overflow:hidden;">
-                <div style="width:${cons}%;height:100%;background:${consColor};border-radius:3px;transition:width .3s;"></div>
-              </div>
-              <span style="font-size:11px;color:${consColor};min-width:30px;">${cons}%</span>
-            </div>
-            ${inactiveWarning}
-          </div>`;
-        }
-      }
+  // FIEF BUILDING STATUS (if own territory) — compact: icon + %
+  if (cell.player_id === playerId && cell.fief_building) {
+    if (cell.fief_building.is_under_construction) {
+      const turnsLeft = cell.fief_building.turns_left ?? '?';
+      popupContent += `<p class="popup-compact-row">🏗️ ${turnsLeft}⏳</p>`;
+    } else {
+      const cons = cell.fief_building.conservation ?? 100;
+      const bIcon = cons === 0 ? '🏚️' : getBuildingIcon(cell.fief_building.name, cell.fief_building.type_name);
+      const consColor = cons >= 70 ? '#4caf50' : cons >= 40 ? '#ff9800' : '#f44336';
+      const label = cons === 0 ? 'Ruinas' : `${cons}%`;
+      popupContent += `<p class="popup-compact-row">${bIcon} <span style="color:${consColor}">${label}</span></p>`;
     }
   }
 
@@ -288,9 +247,11 @@ export function generateCellPopupContent(cell, config) {
   } else if (isOwnFief && !canHireWorkers && workerTypes.length > 0 && !cell.fief_building) {
     // Own fief, no building yet — hint that a Mercado would enable workers
     popupContent += `
-      <p style="font-size:0.75rem;color:#6b7280;margin:8px 0 0 0;">
-        ⚒️ Construye un edificio económico (Foro, Factoría...) para poder contratar trabajadores aquí.
-      </p>`;
+      <div class="popup-worker-section">
+        <p style="font-size:0.75rem;color:#6b7280;margin:8px 0 0 0;">
+          ⚒️ Construye un edificio económico (Foro, Factoría...) para poder contratar trabajadores aquí.
+        </p>
+      </div>`;
   }
 
   // Market button — solo en feudos con mercado activo (no en capital)
@@ -321,6 +282,8 @@ export function generateCellPopupContent(cell, config) {
       popupContent += `<button id="demolish-building-btn-${h3_index}" class="btn-popup btn-destroy-bridge" title="Demoler el edificio (requiere 1000+ tropas en el feudo)">🔨 Demoler edificio</button>`;
     }
   }
+
+  popupContent += `<button class="btn-popup btn-close-popup" onclick="window.closeLeafletPopup()">✖ Cerrar</button>`;
 
   popupContent += '</div>';
   popupContent += '</div>';
@@ -592,6 +555,8 @@ export function generateArmyPopup(armyData, config) {
   } else {
     popupContent += '<p class="army-empty">⚠️ No se encontraron ejércitos en esta ubicación</p>';
   }
+
+  popupContent += `<button class="btn-popup btn-close-popup" onclick="window.closeLeafletPopup()" style="margin:6px 10px 4px;">✖ Cerrar</button>`;
 
   popupContent += '</div>';
 
