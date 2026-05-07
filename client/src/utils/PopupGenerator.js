@@ -113,10 +113,10 @@ export function generateCellPopupContent(cell, config) {
 
     const foodVal = Math.round(parseFloat(cell.territory.food) || 0);
     const foodColor = foodVal <= 0 ? ' style="color:#ff6b6b;font-weight:bold;"' : '';
-    popupContent += `<p class="popup-compact-row">👥 ${cell.territory.population}</p>`;
-    popupContent += `<p class="popup-compact-row">😊 ${cell.territory.happiness || 0}%</p>`;
-    popupContent += `<p class="popup-compact-row">🏛️ ${cultAbbr}</p>`;
-    popupContent += `<p class="popup-compact-row"${foodColor}>🌾 ${foodVal}</p>`;
+    popupContent += `<p class="popup-compact-row">👥 <span class="popup-stat-label">Población:</span> ${cell.territory.population}</p>`;
+    popupContent += `<p class="popup-compact-row">😊 <span class="popup-stat-label">Felicidad:</span> ${cell.territory.happiness || 0}%</p>`;
+    popupContent += `<p class="popup-compact-row">🏛️ <span class="popup-stat-label">Cultura:</span> ${cultAbbr}</p>`;
+    popupContent += `<p class="popup-compact-row"${foodColor}>🌾 <span class="popup-stat-label">Comida:</span> ${foodVal}</p>`;
 
     // REBELLION bar (only when comarca has resistance > 0)
     if (cell.rebellion && cell.rebellion.total > 0) {

@@ -328,6 +328,11 @@ button {
   font-weight: bold !important;
 }
 
+.popup-stat-label {
+  color: #1a1612;
+  font-weight: 600;
+}
+
 /* Caja de detalles (Sección intermedia) */
 .popup-details-box {
   margin: 10px 15px !important;
@@ -1078,6 +1083,9 @@ button {
   }
   .hs-nav-btn {
     display: none !important;
+  }
+  .popup-stat-label {
+    display: none;
   }
   .leaflet-popup-content-wrapper {
     max-width: 90vw !important;
