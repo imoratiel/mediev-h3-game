@@ -328,6 +328,11 @@ button {
   font-weight: bold !important;
 }
 
+.popup-stat-label {
+  color: #1a1612;
+  font-weight: 600;
+}
+
 /* Caja de detalles (Sección intermedia) */
 .popup-details-box {
   margin: 10px 15px !important;
@@ -1052,4 +1057,63 @@ button {
   border-color: #ff6666;
   transform: translateY(-1px);
   box-shadow: 0 3px 8px rgba(200, 0, 0, 0.5);
+}
+
+/* ─── Cerrar popup button ─────────────────────────────────────────────── */
+.btn-close-popup {
+  width: 100%;
+  margin-top: 8px;
+  background: #5c3317;
+  border-color: #8b4513;
+  color: #f5deb3;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.btn-close-popup:hover {
+  background: #7a4520;
+  border-color: #c47a3a;
+  color: #fff;
+}
+
+/* ─── Mobile popup overrides ─────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .leaflet-popup-close-button {
+    display: none !important;
+  }
+  .hs-nav-btn {
+    display: none !important;
+  }
+  .popup-stat-label {
+    display: none;
+  }
+  .leaflet-popup-content-wrapper {
+    max-width: 90vw !important;
+  }
+  .leaflet-popup-content {
+    min-width: 0 !important;
+    width: auto !important;
+    padding: 0 !important;
+    font-size: 0.82rem;
+  }
+  .cell-inspector,
+  .army-inspector {
+    padding: 8px 10px;
+  }
+  .popup-title {
+    font-size: 0.95rem !important;
+    padding: 6px 10px !important;
+  }
+  .popup-worker-section {
+    display: none !important;
+  }
+  .popup-stat-row,
+  .popup-compact-row {
+    font-size: 0.8rem;
+    margin: 2px 0;
+  }
+  .btn-popup {
+    font-size: 0.78rem;
+    padding: 5px 8px;
+  }
 }

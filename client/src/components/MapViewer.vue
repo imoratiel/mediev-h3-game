@@ -7,7 +7,7 @@
         <span></span><span></span><span></span>
       </button>
       <div class="mobile-topbar-center">
-        <span class="mobile-date">📅 {{ formattedDate }}</span>
+        <span class="mobile-date">📅 {{ formattedDateShort }}</span>
         <span class="mobile-gold">💰 {{ Number(playerGold).toLocaleString('es-ES') }}</span>
       </div>
       <div class="mobile-topbar-right">
@@ -988,14 +988,6 @@
                 >
                   🏰 Territorios
                 </button>
-                <button
-                  class="kingdom-action-btn-sidebar"
-                  :class="{ active: activeKingdomTab === 'divisions' }"
-                  @click="activeKingdomTab = 'divisions'"
-                  title="Gestionar divisiones politicas y rangos nobiliarios"
-                >
-                  📜 Edictos
-                </button>
               </div>
             </div>
 
@@ -1059,11 +1051,6 @@
               @change-limit="handleFiefsLimitChange"
               @sort-change="handleFiefsSortChange"
             />
-          </div>
-
-          <!-- Edictos Tab -->
-          <div v-if="activeKingdomTab === 'divisions'" class="divisions-panel">
-            <DivisionsTab />
           </div>
 
           <!-- Military Recruitment Tab -->
@@ -1531,7 +1518,6 @@ import ArmyTransferPanel from './ArmyTransferPanel.vue';
 import ArmySupplyPanel   from './ArmySupplyPanel.vue';
 import WelcomePanel from './WelcomePanel.vue';
 import FueroPanel from './FueroPanel.vue';
-import DivisionsTab from './DivisionsTab.vue';
 import CharacterPanel from './CharacterPanel.vue';
 import DiplomacyPanel from './DiplomacyPanel.vue';
 import NavalPanel from './NavalPanel.vue';
@@ -1563,6 +1549,7 @@ const explorationConfig = ref({ turns_required: 5, gold_cost: 100 }); // Configu
 const currentTurn = ref(1);
 const gameDate = ref({ day: 1, month: 1, year: 210, era: 'BC' });
 const formattedDate = ref('1 de marzo de 1039');
+const formattedDateShort = computed(() => formattedDate.value.split(', anno')[0]);
 const isTurnProcessing = ref(false);
 
 // Day of year based on current turn (1-365)
@@ -5813,6 +5800,9 @@ const attachEnemyListeners = (army) => {
     colocatedScoutBtn.addEventListener('click', () => handleColocatedScout(army));
   }
 };
+
+// Global bridge: closes the current Leaflet popup from inline HTML buttons
+window.closeLeafletPopup = () => { if (map) map.closePopup(); };
 
 // Global bridge: called by ◀/▶ buttons inside the Leaflet popup HTML
 window.armyPopupNavigate = (delta) => {
