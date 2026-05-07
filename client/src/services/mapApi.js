@@ -1005,8 +1005,8 @@ export async function getEmbarkableArmies(fleetId) {
   return response.data;
 }
 
-export async function createFleet(h3_index, name = '') {
-  const response = await axios.post(`${API_URL}/api/naval/create-fleet`, { h3_index, name });
+export async function createFleet(h3_index, name = '', ships = []) {
+  const response = await axios.post(`${API_URL}/api/naval/create-fleet`, { h3_index, name, ships });
   return response.data;
 }
 

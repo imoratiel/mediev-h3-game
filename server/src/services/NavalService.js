@@ -77,6 +77,23 @@ async function _checkPortAtHex(client, h3_index, player_id) {
     return r.rows.length > 0;
 }
 
+// Devuelve el hex donde debe aparecer la flota al zarpar desde un puerto.
+// Si el puerto está en costa/mar → usa el propio hex.
+// Si está en tierra interior → busca el hex naval-pasable adyacente más cercano.
+async function _findNavalSpawnHex(client, portH3) {
+    const candidates = [portH3, ...h3.gridDisk(portH3, 1).filter(n => n !== portH3)];
+    const result = await client.query(
+        `SELECT hm.h3_index, tt.terrain_type_id
+         FROM h3_map hm
+         JOIN terrain_types tt ON hm.terrain_type_id = tt.terrain_type_id
+         WHERE hm.h3_index = ANY($1) AND tt.is_naval_passable = TRUE
+         ORDER BY (hm.h3_index = $2) DESC, tt.terrain_type_id ASC
+         LIMIT 1`,
+        [candidates, portH3]
+    );
+    return result.rows[0]?.h3_index ?? null;
+}
+
 // ── Service ───────────────────────────────────────────────────────────────────
 
 class NavalService {
@@ -241,9 +258,16 @@ class NavalService {
                 await client.query('UPDATE players SET gold = gold - $1 WHERE player_id = $2', [totalCost, player_id]);
             }
 
+            // Determinar hex de spawn: el puerto o el hex naval adyacente más cercano
+            const spawnHex = await _findNavalSpawnHex(client, h3_index);
+            if (!spawnHex) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, message: 'El puerto no tiene acceso al mar. La flota no puede zarpar.' });
+            }
+
             // Create fleet
             const fleetName = (name || '').trim() || await generateFleetName(client, player_id, culture_id);
-            const fleet = await NavalModel.CreateFleet(client, player_id, h3_index, fleetName);
+            const fleet = await NavalModel.CreateFleet(client, player_id, spawnHex, fleetName);
 
             // Add initial ships
             for (const s of resolvedShips) {

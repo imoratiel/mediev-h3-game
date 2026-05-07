@@ -1134,6 +1134,15 @@
       </div>
     </div>
 
+    <!-- Create Fleet Modal -->
+    <CreateFleetModal
+      v-if="showCreateFleetModal"
+      :h3Index="createFleetHex"
+      :playerGold="playerGold"
+      @confirm="onFleetCreated"
+      @cancel="showCreateFleetModal = false"
+    />
+
     <!-- Building Construction Modal -->
     <div v-if="showBuildModal" class="build-modal-overlay" @click.self="closeBuildModal">
       <div class="build-modal">
@@ -1521,6 +1530,7 @@ import FueroPanel from './FueroPanel.vue';
 import CharacterPanel from './CharacterPanel.vue';
 import DiplomacyPanel from './DiplomacyPanel.vue';
 import NavalPanel from './NavalPanel.vue';
+import CreateFleetModal from './CreateFleetModal.vue';
 import ChangelogPanel from './ChangelogPanel.vue';
 
 const mapContainer = ref(null);
@@ -2055,6 +2065,8 @@ const panelTitle = computed(() => {
 // Overlay system state (full-screen overlays like Messages)
 const activeOverlay = ref(null); // 'messages', 'fiefs', etc.
 const newFleetId    = ref(null); // fleet_id to auto-expand when naval panel opens
+const showCreateFleetModal = ref(false);
+const createFleetHex       = ref(null);
 const showStagingNotice = ref(false);
 
 // Infinite scroll for fiefs (Kingdom panel)
@@ -7080,19 +7092,21 @@ const buyWorkerFromPopup = async (h3_index, worker_type_id) => {
 };
 
 /**
- * Creates a new fleet at a port hex and opens the Naval panel.
+ * Opens the fleet creation modal for the given port hex.
  */
-const createFleetAtHex = async (h3_index) => {
-  try {
-    const result = await mapApi.createFleet(h3_index);
-    if (result.success) {
-      showToast(`⛵ Flota "${result.name}" creada en el puerto.`, 'success');
-      newFleetId.value = result.fleet_id;
-      openOverlay('naval');
-    }
-  } catch (err) {
-    const msg = err?.response?.data?.message || 'Error al crear la flota.';
-    showToast(`❌ ${msg}`, 'error');
+const createFleetAtHex = (h3_index) => {
+  createFleetHex.value = h3_index;
+  showCreateFleetModal.value = true;
+};
+
+const onFleetCreated = (result) => {
+  showCreateFleetModal.value = false;
+  if (result?.success) {
+    showToast(`⛵ Flota "${result.name}" creada en el puerto.`, 'success');
+    newFleetId.value = result.fleet_id;
+    openOverlay('naval');
+  } else {
+    showToast(`❌ ${result?.message || 'Error al crear la flota.'}`, 'error');
   }
 };
 
