@@ -1519,15 +1519,18 @@ class AIManagerService {
                    COALESCE(td.custom_name, m.h3_index) AS fief_name,
                    COALESCE(td.population, 200)          AS population,
                    COALESCE(td.defense_level, 0)         AS defense_level,
-                   p.capital_h3
+                   p.capital_h3,
+                   COALESCE(tt.movement_cost, 1)         AS movement_cost
             FROM h3_map m
-            LEFT JOIN territory_details td ON td.h3_index = m.h3_index
-            LEFT JOIN players p            ON p.player_id = m.player_id
+            LEFT JOIN territory_details td ON td.h3_index  = m.h3_index
+            LEFT JOIN players p            ON p.player_id  = m.player_id
+            LEFT JOIN terrain_types tt     ON tt.terrain_type_id = m.terrain_type_id
             WHERE m.h3_index = $1
         `, [targetH3]);
         if (hexResult.rows.length === 0) return { conquered: false, reason: 'hex_not_found' };
         const hex = hexResult.rows[0];
         if (Number(hex.player_id) === Number(playerId)) return { conquered: false, reason: 'own_hex' };
+        if (parseFloat(hex.movement_cost) < 0) return { conquered: false, reason: 'impassable_terrain' };
 
         // 2. No enemy armies allowed at target
         const enemyCheck = await client.query(
@@ -1944,11 +1947,22 @@ class AIManagerService {
 
         // 3. No es adyacente: encontrar el mejor hex candidato que minimice distancia a la capital
         //    Entre todos los candidatos (incluidos enemigos), tomar el más cercano al objetivo.
-        const candidatesWithDist = state.candidateSet.map(hex => {
-            let dist = Infinity;
-            try { dist = h3.gridDistance(hex, targetH3); } catch { /* ignora */ }
-            return { hex, dist };
-        }).filter(c => c.dist < Infinity);
+        //    Excluimos hexes de agua (movement_cost < 0) para no mover tropas terrestres al mar.
+        const landCandidates = await pool.query(`
+            SELECT m.h3_index
+            FROM h3_map m
+            JOIN terrain_types tt ON tt.terrain_type_id = m.terrain_type_id
+            WHERE m.h3_index = ANY($1) AND tt.movement_cost >= 0
+        `, [state.candidateSet]);
+        const landCandidateSet = new Set(landCandidates.rows.map(r => r.h3_index));
+
+        const candidatesWithDist = state.candidateSet
+            .filter(hex => landCandidateSet.has(hex))
+            .map(hex => {
+                let dist = Infinity;
+                try { dist = h3.gridDistance(hex, targetH3); } catch { /* ignora */ }
+                return { hex, dist };
+            }).filter(c => c.dist < Infinity);
 
         if (candidatesWithDist.length === 0) return false;
 
