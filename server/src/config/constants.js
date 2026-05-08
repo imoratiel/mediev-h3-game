@@ -26,7 +26,7 @@ const GAME_CONFIG = {
         FORCE_REST_THRESHOLD: 25,       // % de stamina necesario para salir de 'force_rest'
         STAMINA_MIN_FOR_MOVE: 0.1,      // Stamina mínima para intentar el "Último Esfuerzo"
         STAMINA_COST_PER_HEX: 2,        // Coste de stamina por hexágono recorrido (× movement_cost del terreno)
-        FIEF_DETECTION_RANGE: 2,        // Hexágonos visibles desde cada feudo propio (niebla de guerra)
+        FIEF_DETECTION_RANGE: 3,        // Hexágonos visibles desde cada feudo propio (niebla de guerra)
         // ⚔️ Sistema de resolución de combate
         COMBAT_K_NORM:        3,        // Constante de mitigación (escala unidad: def 3–9 vs K=3)
         COMBAT_DAMAGE_SCALE:  0.10,     // Factor global de bajas (0.10 → 4–8% en combate igualado)
