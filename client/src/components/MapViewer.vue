@@ -2232,6 +2232,7 @@ let workersMarkersLayer = null;       // Layer for worker icons
 let fleetMarkersLayer   = null;       // Layer for own naval fleet icons
 let constructionMarkersLayer = null;  // Layer for in-progress bridge constructions
 let bridgeDestructionLayer = null;    // Layer for active bridge destruction counters
+let bridgeFillLayer = null;           // Persistent bridge hex fill (visible at all zoom levels)
 let buildingDemolitionLayer = null;   // Layer for active building demolition counters
 let hexStackerLayer = null;           // Layer for combined HexStacker markers (owner+building+troops)
 let highlightLayer = null; // Temporary highlight polygon for navigation
@@ -2380,6 +2381,10 @@ const initMap = async () => {
   map.getPane('territoryPane').style.zIndex = 400;
 
   // Border Pane (Lines) - Middle
+  map.createPane('bridgePane');
+  map.getPane('bridgePane').style.zIndex = 420;
+  map.getPane('bridgePane').style.pointerEvents = 'none';
+
   map.createPane('borderPane');
   map.getPane('borderPane').style.zIndex = 450;
 
@@ -2456,6 +2461,7 @@ const initMap = async () => {
   fleetMarkersLayer   = L.layerGroup().addTo(map);
   constructionMarkersLayer = L.layerGroup().addTo(map);
   bridgeDestructionLayer = L.layerGroup().addTo(map);
+  bridgeFillLayer = L.layerGroup().addTo(map);
   buildingDemolitionLayer = L.layerGroup().addTo(map);
   hexStackerLayer = L.layerGroup().addTo(map);
   divisionHighlightLayer = L.layerGroup().addTo(map);
@@ -4280,6 +4286,7 @@ const showHarvestBanner = (season) => {
 const renderHexagons = (hexagons) => {
   // Clear existing hexagons
   hexagonLayer.clearLayers();
+  if (bridgeFillLayer) bridgeFillLayer.clearLayers();
 
   // Update player's owned hexagons for adjacency checks
   const newPlayerHexes = new Set();
@@ -4431,6 +4438,21 @@ const renderHexagons = (hexagons) => {
       }
 
       } // end if (hex.player_id)
+
+      // --- BRIDGE FILL (bridgePane, over territory, under borders) ---
+      if (hex.is_bridge) {
+        L.polygon(boundary, {
+          pane:        'bridgePane',
+          stroke:      true,
+          color:       '#5C3317',
+          weight:      1.5,
+          opacity:     0.85,
+          fill:        true,
+          fillColor:   '#8B5A2B',
+          fillOpacity: 0.52,
+          interactive: false,
+        }).addTo(bridgeFillLayer);
+      }
 
     } catch (err) {
       console.error(`Error rendering hexagon ${hex.h3_index}:`, err);
