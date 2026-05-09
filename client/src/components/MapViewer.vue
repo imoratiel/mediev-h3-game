@@ -3089,7 +3089,7 @@ const renderFleetMarkers = (fleets, hexesWithOwnTroops = new Set()) => {
           font-size:14px;line-height:1;
           box-shadow:0 1px 5px rgba(0,0,0,0.55);
           cursor:pointer;"
-          title="${fleet.name} · ${fleet.total_ships} barcos">⛵</div>`,
+          title="${fleet.name} · ${fleet.total_ships} barcos"><img src="/icons/ship.png" style="width:17px;height:17px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false"></div>`,
         iconSize: [26, 26],
         iconAnchor: [13, 13],
         pane: 'fleetPane',

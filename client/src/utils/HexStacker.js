@@ -200,7 +200,7 @@ function _workerBadge(entity) {
 function _fleetBadge(entity, isEnemy) {
   const bg     = isEnemy ? '#b71c1c' : '#1a4a8a';
   const border = isEnemy ? '#ef5350' : '#4a9eff';
-  return `<div class="hs-entity hs-fleet" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;">⛵</div>`;
+  return `<div class="hs-entity hs-fleet" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;"><img src="/icons/ship.png" style="width:15px;height:15px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false"></div>`;
 }
 
 function _entityBadge(entity, isEnemy, isConflict) {
