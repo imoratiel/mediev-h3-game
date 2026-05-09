@@ -526,7 +526,7 @@
                     v-if="['Río','Agua'].includes(worker.terrain_type)"
                     class="mkt-wc-btn mkt-wc-btn-build"
                     @click="buildBridgeFromPanel(worker.h3_index)"
-                  >🌉</button>
+                  ><img src="/icons/bridge.png" style="width:16px;height:16px;display:block;" draggable="false"></button>
                   <button
                     v-else
                     class="mkt-wc-btn mkt-wc-btn-build"
@@ -1364,7 +1364,7 @@
   <div v-if="pendingBridgeConfirm" class="bridge-confirm-backdrop" @click.self="pendingBridgeConfirm = null">
     <div class="bridge-confirm-box">
       <p class="bridge-confirm-title">¿Iniciar construcción?</p>
-      <p class="bridge-confirm-name">🌉 Puente</p>
+      <p class="bridge-confirm-name"><img src="/icons/bridge.png" style="width:28px;height:28px;vertical-align:middle;margin-right:6px;" draggable="false"> Puente</p>
       <div class="bridge-confirm-stats">
         <span>💰 50.000 oro</span>
         <span>⚒️ Consume trabajadores en la casilla</span>

@@ -166,25 +166,25 @@ function _troopsBadge(entity, isEnemy, isConflict) {
 }
 
 function _charBadge(entity, isEnemy) {
-  let glyph, bg, border;
+  let bg, border, inner;
   if (entity.is_imprisoned) {
-    glyph  = '🔒';
+    inner  = `<span style="font-size:11px;">🔒</span>`;
     bg     = '#1c1917';
     border = '#78716c';
   } else if (entity.is_captive) {
-    glyph  = '⛓️';
+    inner  = `<span style="font-size:11px;">⛓️</span>`;
     bg     = '#7f1d1d';
     border = '#f97316';
   } else if (isEnemy) {
-    glyph  = '🧑';
+    inner  = `<img src="/icons/character.png" style="width:15px;height:15px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false">`;
     bg     = '#7f1d1d';
     border = '#ef4444';
   } else {
-    glyph  = entity.is_main_character ? '👑' : entity.is_heir ? '🤴' : '⭐';
+    inner  = `<img src="/icons/character.png" style="width:15px;height:15px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false">`;
     bg     = '#14532d';
     border = '#4ade80';
   }
-  return `<div class="hs-entity hs-char" data-char-id="${entity.id}" data-is-enemy="${isEnemy ? '1' : '0'}" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;">${glyph}</div>`;
+  return `<div class="hs-entity hs-char" data-char-id="${entity.id}" data-is-enemy="${isEnemy ? '1' : '0'}" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;">${inner}</div>`;
 }
 
 function _workerBadge(entity) {
