@@ -1166,7 +1166,7 @@
               'build-card-prereq': building.required_building_id
             }"
           >
-            <div class="build-card-icon">{{ getBuildingIcon(building.name, building.type_name) }}</div>
+            <div class="build-card-icon" v-html="getBuildingIconHTML(building.name, building.type_name)"></div>
             <div class="build-card-info">
               <h3 class="build-card-name">{{ building.name }}</h3>
               <p v-if="building.type_name" class="build-card-type">{{ { military: 'Militar', religious: 'Religioso', economic: 'Económico', maritime: 'Marítimo', other: 'Otro' }[building.type_name] || building.type_name }}</p>
@@ -1195,7 +1195,7 @@
         <div v-if="pendingBuildConfirm" class="build-confirm-overlay">
           <div class="build-confirm-box">
             <p class="build-confirm-title">¿Iniciar construcción?</p>
-            <p class="build-confirm-name">{{ getBuildingIcon(pendingBuildConfirm.name, pendingBuildConfirm.type_name) }} {{ pendingBuildConfirm.name }}</p>
+            <p class="build-confirm-name"><span v-html="getBuildingIconHTML(pendingBuildConfirm.name, pendingBuildConfirm.type_name, 22)"></span> {{ pendingBuildConfirm.name }}</p>
             <div class="build-confirm-stats">
               <span>💰 {{ pendingBuildConfirm.gold_cost.toLocaleString('es-ES') }} oro</span>
               <span>⏱️ {{ pendingBuildConfirm.construction_time_turns }} días</span>
@@ -1215,10 +1215,10 @@
     <div v-if="showUpgradeModal" class="build-modal-overlay" @click.self="closeUpgradeModal">
       <div class="build-modal">
         <div class="build-modal-header">
-          <h2 class="build-modal-title">🏰 Ampliar Edificio</h2>
+          <h2 class="build-modal-title"><img src="/icons/barracks.png" style="width:28px;height:28px;vertical-align:middle;margin-right:8px;"> Ampliar Edificio</h2>
           <button class="build-modal-close" @click="closeUpgradeModal" title="Cerrar">✕</button>
         </div>
-        <p class="build-modal-subtitle">Celda: <span class="build-modal-h3">{{ upgradeModalH3 }}</span></p>
+        <p class="build-modal-subtitle">Celda: <span class="build-modal-h3">{{ upgradeModalH3 }}</span> &nbsp;·&nbsp; {{ upgradeModalCoords }}</p>
 
         <div v-if="!upgradeModalHasWorker" class="build-worker-warning">
           ⛏️ Necesitas un constructor en este territorio para ampliar el edificio
@@ -1226,7 +1226,7 @@
 
         <div v-if="upgradeModalBuilding" class="upgrade-preview">
           <div class="build-card upgrade-card">
-            <div class="build-card-icon">{{ getBuildingIcon(upgradeModalBuilding.name) }}</div>
+            <div class="build-card-icon"><img src="/icons/castle.png" style="width:36px;height:36px;object-fit:contain;"></div>
             <div class="build-card-info">
               <h3 class="build-card-name">{{ upgradeModalBuilding.name }}</h3>
               <p class="build-card-type">Mejora del edificio actual</p>
@@ -1927,6 +1927,13 @@ const upgradeModalH3 = ref(null);
 const upgradeModalBuilding = ref(null);
 const isUpgrading = ref(false);
 const upgradeModalHasWorker = computed(() => myWorkers.value.some(w => w.h3_index === upgradeModalH3.value));
+const upgradeModalCoords = computed(() => {
+  if (!upgradeModalH3.value) return '';
+  try {
+    const [lat, lng] = cellToLatLng(upgradeModalH3.value);
+    return `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`;
+  } catch { return ''; }
+});
 
 // Troops panel state
 const armies = ref([]);
@@ -6288,6 +6295,28 @@ const getBuildingIcon = (name = '', typeName = '') => {
   if (t === 'religious') return '🏛️';
   if (t === 'economic') return '⚖️';
   return '🗼';
+};
+
+const BUILDING_PNG = [
+  [['iglesia', 'church', 'catedral', 'templo', 'santuario'], '/icons/temple.png'],
+  [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'], '/icons/forum.png'],
+  [['castellum', 'fortaleza', 'fortress', 'castillo'], '/icons/castle.png'],
+  [['cuartel', 'barrack', 'escuela militar', 'escuela de'], '/icons/barracks.png'],
+  [['astillero', 'shipyard', 'portus', 'cothon', 'emporio', 'embarcadero', 'puerto'], '/icons/port.png'],
+];
+
+const getBuildingIconHTML = (name = '', typeName = '', size = 36) => {
+  const n = name.toLowerCase();
+  const t = (typeName || '').toLowerCase();
+  for (const [keywords, src] of BUILDING_PNG) {
+    if (keywords.some(k => n.includes(k)))
+      return `<img src="${src}" style="width:${size}px;height:${size}px;object-fit:contain;" draggable="false">`;
+  }
+  if (t === 'religious')
+    return `<img src="/icons/temple.png" style="width:${size}px;height:${size}px;object-fit:contain;" draggable="false">`;
+  if (t === 'economic')
+    return `<img src="/icons/forum.png" style="width:${size}px;height:${size}px;object-fit:contain;" draggable="false">`;
+  return getBuildingIcon(name, typeName);
 };
 
 /**
