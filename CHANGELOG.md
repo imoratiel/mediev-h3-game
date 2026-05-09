@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.19.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.18.0...v0.19.0) (2026-05-09)
+
+
+### Nuevas funcionalidades
+
+* cambio de iconos ([3274c9c](https://github.com/imoratiel/hipania210ac-game/commit/3274c9ce4b8673e279c11f1be6be2017d85f4cfb))
+* icono de flotas ([bd98244](https://github.com/imoratiel/hipania210ac-game/commit/bd9824443678a309f5b12a8faa1dfd6b14ca9fff))
+* icono personaje ([8b1243c](https://github.com/imoratiel/hipania210ac-game/commit/8b1243c3a5c264d9e7d73a7053f89252132b4113))
+* las rebeliones con tropas presentes lucharán por rebelarse ([69e8638](https://github.com/imoratiel/hipania210ac-game/commit/69e8638b60c242137e158b5d4317d9337aa07d3d))
+
+
+### Correcciones
+
+* arreglo de flotas que aparecían dentro de tierra y no podían moverse ([574ae65](https://github.com/imoratiel/hipania210ac-game/commit/574ae65c578b377ce0ca71dc4a7f5d83f3118ac1))
+* el principal y los territorios anexos no pueden rebelarse ([a5b40dd](https://github.com/imoratiel/hipania210ac-game/commit/a5b40ddf5caa27a96f5f154822ac4a3382737a06))
+* los ejercitos enemigos son visibles al estar cerca de las fronteras ([bb783dd](https://github.com/imoratiel/hipania210ac-game/commit/bb783dd0d676e7098f5a51c7b2c3ed4c4624a239))
+* mejorar la representación de los puentes en el mapa ([4f61bc4](https://github.com/imoratiel/hipania210ac-game/commit/4f61bc4cdbebe74963b59e472720247bef342387))
+* tropa de bot moviendose por el agua sin barcos ([74ac1d3](https://github.com/imoratiel/hipania210ac-game/commit/74ac1d3dba7e0b6d435973f6112be96918f3024f))
+* vista para comprar flotas arreglada para version movil ([f77d04a](https://github.com/imoratiel/hipania210ac-game/commit/f77d04ad0f9d8ab64c6f9d53b8b0bb3eb082647f))
+
 ## [0.18.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.17.0...v0.18.0) (2026-05-07)
 
 
