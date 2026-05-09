@@ -526,7 +526,7 @@
                     v-if="['Río','Agua'].includes(worker.terrain_type)"
                     class="mkt-wc-btn mkt-wc-btn-build"
                     @click="buildBridgeFromPanel(worker.h3_index)"
-                  >🌉</button>
+                  ><img src="/icons/bridge.png" style="width:16px;height:16px;display:block;" draggable="false"></button>
                   <button
                     v-else
                     class="mkt-wc-btn mkt-wc-btn-build"
@@ -1134,6 +1134,15 @@
       </div>
     </div>
 
+    <!-- Create Fleet Modal -->
+    <CreateFleetModal
+      v-if="showCreateFleetModal"
+      :h3Index="createFleetHex"
+      :playerGold="playerGold"
+      @confirm="onFleetCreated"
+      @cancel="showCreateFleetModal = false"
+    />
+
     <!-- Building Construction Modal -->
     <div v-if="showBuildModal" class="build-modal-overlay" @click.self="closeBuildModal">
       <div class="build-modal">
@@ -1157,7 +1166,7 @@
               'build-card-prereq': building.required_building_id
             }"
           >
-            <div class="build-card-icon">{{ getBuildingIcon(building.name, building.type_name) }}</div>
+            <div class="build-card-icon" v-html="getBuildingIconHTML(building.name, building.type_name)"></div>
             <div class="build-card-info">
               <h3 class="build-card-name">{{ building.name }}</h3>
               <p v-if="building.type_name" class="build-card-type">{{ { military: 'Militar', religious: 'Religioso', economic: 'Económico', maritime: 'Marítimo', other: 'Otro' }[building.type_name] || building.type_name }}</p>
@@ -1186,7 +1195,7 @@
         <div v-if="pendingBuildConfirm" class="build-confirm-overlay">
           <div class="build-confirm-box">
             <p class="build-confirm-title">¿Iniciar construcción?</p>
-            <p class="build-confirm-name">{{ getBuildingIcon(pendingBuildConfirm.name, pendingBuildConfirm.type_name) }} {{ pendingBuildConfirm.name }}</p>
+            <p class="build-confirm-name"><span v-html="getBuildingIconHTML(pendingBuildConfirm.name, pendingBuildConfirm.type_name, 22)"></span> {{ pendingBuildConfirm.name }}</p>
             <div class="build-confirm-stats">
               <span>💰 {{ pendingBuildConfirm.gold_cost.toLocaleString('es-ES') }} oro</span>
               <span>⏱️ {{ pendingBuildConfirm.construction_time_turns }} días</span>
@@ -1206,10 +1215,10 @@
     <div v-if="showUpgradeModal" class="build-modal-overlay" @click.self="closeUpgradeModal">
       <div class="build-modal">
         <div class="build-modal-header">
-          <h2 class="build-modal-title">🏰 Ampliar Edificio</h2>
+          <h2 class="build-modal-title"><img src="/icons/barracks.png" style="width:28px;height:28px;vertical-align:middle;margin-right:8px;"> Ampliar Edificio</h2>
           <button class="build-modal-close" @click="closeUpgradeModal" title="Cerrar">✕</button>
         </div>
-        <p class="build-modal-subtitle">Celda: <span class="build-modal-h3">{{ upgradeModalH3 }}</span></p>
+        <p class="build-modal-subtitle">Celda: <span class="build-modal-h3">{{ upgradeModalH3 }}</span> &nbsp;·&nbsp; {{ upgradeModalCoords }}</p>
 
         <div v-if="!upgradeModalHasWorker" class="build-worker-warning">
           ⛏️ Necesitas un constructor en este territorio para ampliar el edificio
@@ -1217,7 +1226,7 @@
 
         <div v-if="upgradeModalBuilding" class="upgrade-preview">
           <div class="build-card upgrade-card">
-            <div class="build-card-icon">{{ getBuildingIcon(upgradeModalBuilding.name) }}</div>
+            <div class="build-card-icon"><img src="/icons/castle.png" style="width:36px;height:36px;object-fit:contain;"></div>
             <div class="build-card-info">
               <h3 class="build-card-name">{{ upgradeModalBuilding.name }}</h3>
               <p class="build-card-type">Mejora del edificio actual</p>
@@ -1355,7 +1364,7 @@
   <div v-if="pendingBridgeConfirm" class="bridge-confirm-backdrop" @click.self="pendingBridgeConfirm = null">
     <div class="bridge-confirm-box">
       <p class="bridge-confirm-title">¿Iniciar construcción?</p>
-      <p class="bridge-confirm-name">🌉 Puente</p>
+      <p class="bridge-confirm-name"><img src="/icons/bridge.png" style="width:28px;height:28px;vertical-align:middle;margin-right:6px;" draggable="false"> Puente</p>
       <div class="bridge-confirm-stats">
         <span>💰 50.000 oro</span>
         <span>⚒️ Consume trabajadores en la casilla</span>
@@ -1521,6 +1530,7 @@ import FueroPanel from './FueroPanel.vue';
 import CharacterPanel from './CharacterPanel.vue';
 import DiplomacyPanel from './DiplomacyPanel.vue';
 import NavalPanel from './NavalPanel.vue';
+import CreateFleetModal from './CreateFleetModal.vue';
 import ChangelogPanel from './ChangelogPanel.vue';
 
 const mapContainer = ref(null);
@@ -1917,6 +1927,13 @@ const upgradeModalH3 = ref(null);
 const upgradeModalBuilding = ref(null);
 const isUpgrading = ref(false);
 const upgradeModalHasWorker = computed(() => myWorkers.value.some(w => w.h3_index === upgradeModalH3.value));
+const upgradeModalCoords = computed(() => {
+  if (!upgradeModalH3.value) return '';
+  try {
+    const [lat, lng] = cellToLatLng(upgradeModalH3.value);
+    return `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`;
+  } catch { return ''; }
+});
 
 // Troops panel state
 const armies = ref([]);
@@ -2055,6 +2072,8 @@ const panelTitle = computed(() => {
 // Overlay system state (full-screen overlays like Messages)
 const activeOverlay = ref(null); // 'messages', 'fiefs', etc.
 const newFleetId    = ref(null); // fleet_id to auto-expand when naval panel opens
+const showCreateFleetModal = ref(false);
+const createFleetHex       = ref(null);
 const showStagingNotice = ref(false);
 
 // Infinite scroll for fiefs (Kingdom panel)
@@ -2213,6 +2232,7 @@ let workersMarkersLayer = null;       // Layer for worker icons
 let fleetMarkersLayer   = null;       // Layer for own naval fleet icons
 let constructionMarkersLayer = null;  // Layer for in-progress bridge constructions
 let bridgeDestructionLayer = null;    // Layer for active bridge destruction counters
+let bridgeFillLayer = null;           // Persistent bridge hex fill (visible at all zoom levels)
 let buildingDemolitionLayer = null;   // Layer for active building demolition counters
 let hexStackerLayer = null;           // Layer for combined HexStacker markers (owner+building+troops)
 let highlightLayer = null; // Temporary highlight polygon for navigation
@@ -2361,6 +2381,10 @@ const initMap = async () => {
   map.getPane('territoryPane').style.zIndex = 400;
 
   // Border Pane (Lines) - Middle
+  map.createPane('bridgePane');
+  map.getPane('bridgePane').style.zIndex = 420;
+  map.getPane('bridgePane').style.pointerEvents = 'none';
+
   map.createPane('borderPane');
   map.getPane('borderPane').style.zIndex = 450;
 
@@ -2437,6 +2461,7 @@ const initMap = async () => {
   fleetMarkersLayer   = L.layerGroup().addTo(map);
   constructionMarkersLayer = L.layerGroup().addTo(map);
   bridgeDestructionLayer = L.layerGroup().addTo(map);
+  bridgeFillLayer = L.layerGroup().addTo(map);
   buildingDemolitionLayer = L.layerGroup().addTo(map);
   hexStackerLayer = L.layerGroup().addTo(map);
   divisionHighlightLayer = L.layerGroup().addTo(map);
@@ -3070,7 +3095,7 @@ const renderFleetMarkers = (fleets, hexesWithOwnTroops = new Set()) => {
           font-size:14px;line-height:1;
           box-shadow:0 1px 5px rgba(0,0,0,0.55);
           cursor:pointer;"
-          title="${fleet.name} · ${fleet.total_ships} barcos">⛵</div>`,
+          title="${fleet.name} · ${fleet.total_ships} barcos"><img src="/icons/ship.png" style="width:17px;height:17px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false"></div>`,
         iconSize: [26, 26],
         iconAnchor: [13, 13],
         pane: 'fleetPane',
@@ -4261,6 +4286,7 @@ const showHarvestBanner = (season) => {
 const renderHexagons = (hexagons) => {
   // Clear existing hexagons
   hexagonLayer.clearLayers();
+  if (bridgeFillLayer) bridgeFillLayer.clearLayers();
 
   // Update player's owned hexagons for adjacency checks
   const newPlayerHexes = new Set();
@@ -4412,6 +4438,21 @@ const renderHexagons = (hexagons) => {
       }
 
       } // end if (hex.player_id)
+
+      // --- BRIDGE FILL (bridgePane, over territory, under borders) ---
+      if (hex.is_bridge) {
+        L.polygon(boundary, {
+          pane:        'bridgePane',
+          stroke:      true,
+          color:       '#5C3317',
+          weight:      1.5,
+          opacity:     0.85,
+          fill:        true,
+          fillColor:   '#8B5A2B',
+          fillOpacity: 0.52,
+          interactive: false,
+        }).addTo(bridgeFillLayer);
+      }
 
     } catch (err) {
       console.error(`Error rendering hexagon ${hex.h3_index}:`, err);
@@ -6278,6 +6319,28 @@ const getBuildingIcon = (name = '', typeName = '') => {
   return '🗼';
 };
 
+const BUILDING_PNG = [
+  [['iglesia', 'church', 'catedral', 'templo', 'santuario'], '/icons/temple.png'],
+  [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'], '/icons/forum.png'],
+  [['castellum', 'fortaleza', 'fortress', 'castillo'], '/icons/castle.png'],
+  [['cuartel', 'barrack', 'escuela militar', 'escuela de'], '/icons/barracks.png'],
+  [['astillero', 'shipyard', 'portus', 'cothon', 'emporio', 'embarcadero', 'puerto'], '/icons/port.png'],
+];
+
+const getBuildingIconHTML = (name = '', typeName = '', size = 36) => {
+  const n = name.toLowerCase();
+  const t = (typeName || '').toLowerCase();
+  for (const [keywords, src] of BUILDING_PNG) {
+    if (keywords.some(k => n.includes(k)))
+      return `<img src="${src}" style="width:${size}px;height:${size}px;object-fit:contain;" draggable="false">`;
+  }
+  if (t === 'religious')
+    return `<img src="/icons/temple.png" style="width:${size}px;height:${size}px;object-fit:contain;" draggable="false">`;
+  if (t === 'economic')
+    return `<img src="/icons/forum.png" style="width:${size}px;height:${size}px;object-fit:contain;" draggable="false">`;
+  return getBuildingIcon(name, typeName);
+};
+
 /**
  * Open the building construction modal for a fief (shows only base buildings)
  */
@@ -7080,19 +7143,21 @@ const buyWorkerFromPopup = async (h3_index, worker_type_id) => {
 };
 
 /**
- * Creates a new fleet at a port hex and opens the Naval panel.
+ * Opens the fleet creation modal for the given port hex.
  */
-const createFleetAtHex = async (h3_index) => {
-  try {
-    const result = await mapApi.createFleet(h3_index);
-    if (result.success) {
-      showToast(`⛵ Flota "${result.name}" creada en el puerto.`, 'success');
-      newFleetId.value = result.fleet_id;
-      openOverlay('naval');
-    }
-  } catch (err) {
-    const msg = err?.response?.data?.message || 'Error al crear la flota.';
-    showToast(`❌ ${msg}`, 'error');
+const createFleetAtHex = (h3_index) => {
+  createFleetHex.value = h3_index;
+  showCreateFleetModal.value = true;
+};
+
+const onFleetCreated = (result) => {
+  showCreateFleetModal.value = false;
+  if (result?.success) {
+    showToast(`⛵ Flota "${result.name}" creada en el puerto.`, 'success');
+    newFleetId.value = result.fleet_id;
+    openOverlay('naval');
+  } else {
+    showToast(`❌ ${result?.message || 'Error al crear la flota.'}`, 'error');
   }
 };
 

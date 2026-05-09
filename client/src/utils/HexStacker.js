@@ -88,6 +88,15 @@ const BUILDING_ICON_MAP = [
   [['torre', 'tower'],                                              '🏯'],
 ];
 
+// Buildings with dedicated PNG icons (checked before emoji fallback)
+const BUILDING_PNG_MAP = [
+  [['iglesia', 'church', 'catedral', 'templo', 'santuario'], '/icons/temple.png'],
+  [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'], '/icons/forum.png'],
+  [['castellum', 'fortaleza', 'fortress', 'castillo'], '/icons/castle.png'],
+  [['cuartel', 'barrack', 'escuela militar', 'escuela de'], '/icons/barracks.png'],
+  [['astillero', 'shipyard', 'portus', 'cothon', 'emporio', 'embarcadero', 'puerto'], '/icons/port.png'],
+];
+
 /**
  * Returns an emoji icon for a building by name.
  */
@@ -101,6 +110,28 @@ export function getBuildingIconEmoji(name = '', typeName = '') {
   if (t === 'religious') return '🏛️';
   if (t === 'economic')  return '⚖️';
   return '🏯';
+}
+
+/**
+ * Returns HTML (img tag or emoji span) for a building icon.
+ * Uses PNG when available, falls back to emoji.
+ */
+function getBuildingIconHTML(name = '', typeName = '') {
+  const n = name.toLowerCase();
+  for (const [keywords, src] of BUILDING_PNG_MAP) {
+    if (keywords.some(k => n.includes(k))) {
+      return `<img src="${src}" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+    }
+  }
+  // Also check typeName for religious/economic fallback
+  const t = (typeName || '').toLowerCase();
+  if (t === 'religious') {
+    return `<img src="/icons/temple.png" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  }
+  if (t === 'economic') {
+    return `<img src="/icons/forum.png" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  }
+  return getBuildingIconEmoji(name, typeName);
 }
 
 function isFoodBonusBuilding(name = '') {
@@ -122,36 +153,38 @@ function _troopsBadge(entity, isEnemy, isConflict) {
   const isGarrison = isGarrisonOnly && !isEnemy;
   const bg     = isGarrison ? '#2a3f5f'  : (isEnemy ? '#b71c1c' : '#1565C0');
   const border = isGarrison ? '#607d9e'  : (isEnemy ? '#ef5350' : '#42a5f5');
-  const glyph  = isGarrison ? '🏰' : (count > 1 ? '⚔️' : '🗡️');
   const radius = isGarrison ? '4px' : '50%';
   const shadow = isConflict
     ? '0 0 8px 2px rgba(255,23,68,0.8)'
     : '0 2px 5px rgba(0,0,0,0.5)';
-  const badge  = formatCount(count);
 
-  return `<div class="hs-entity hs-troops" style="background:${bg};border:2px solid ${border};border-radius:${radius};width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:${shadow};cursor:pointer;user-select:none;">${glyph}</div>`;
+  const inner = isGarrison
+    ? `<span style="font-size:11px;">🏰</span>`
+    : `<img src="${isEnemy ? '/icons/enemy.png' : '/icons/troops.png'}" style="width:15px;height:15px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false">`;
+
+  return `<div class="hs-entity hs-troops" style="background:${bg};border:2px solid ${border};border-radius:${radius};width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:${shadow};cursor:pointer;user-select:none;">${inner}</div>`;
 }
 
 function _charBadge(entity, isEnemy) {
-  let glyph, bg, border;
+  let bg, border, inner;
   if (entity.is_imprisoned) {
-    glyph  = '🔒';
+    inner  = `<span style="font-size:11px;">🔒</span>`;
     bg     = '#1c1917';
     border = '#78716c';
   } else if (entity.is_captive) {
-    glyph  = '⛓️';
+    inner  = `<span style="font-size:11px;">⛓️</span>`;
     bg     = '#7f1d1d';
     border = '#f97316';
   } else if (isEnemy) {
-    glyph  = '🧑';
+    inner  = `<img src="/icons/character.png" style="width:15px;height:15px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false">`;
     bg     = '#7f1d1d';
     border = '#ef4444';
   } else {
-    glyph  = entity.is_main_character ? '👑' : entity.is_heir ? '🤴' : '⭐';
+    inner  = `<img src="/icons/character.png" style="width:15px;height:15px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false">`;
     bg     = '#14532d';
     border = '#4ade80';
   }
-  return `<div class="hs-entity hs-char" data-char-id="${entity.id}" data-is-enemy="${isEnemy ? '1' : '0'}" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;">${glyph}</div>`;
+  return `<div class="hs-entity hs-char" data-char-id="${entity.id}" data-is-enemy="${isEnemy ? '1' : '0'}" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;">${inner}</div>`;
 }
 
 function _workerBadge(entity) {
@@ -167,7 +200,7 @@ function _workerBadge(entity) {
 function _fleetBadge(entity, isEnemy) {
   const bg     = isEnemy ? '#b71c1c' : '#1a4a8a';
   const border = isEnemy ? '#ef5350' : '#4a9eff';
-  return `<div class="hs-entity hs-fleet" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;">⛵</div>`;
+  return `<div class="hs-entity hs-fleet" style="background:${bg};border:2px solid ${border};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.5);cursor:pointer;user-select:none;"><img src="/icons/ship.png" style="width:15px;height:15px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.7));" draggable="false"></div>`;
 }
 
 function _entityBadge(entity, isEnemy, isConflict) {
@@ -238,7 +271,7 @@ export function createStackerHTML({
   if (hasBuilding) {
     const bldName  = building.name || building.building_name || '';
     const bldType  = building.type_name || '';
-    const icon     = building.is_under_construction ? '🏗️' : getBuildingIconEmoji(bldName, bldType);
+    const icon     = building.is_under_construction ? '🏗️' : getBuildingIconHTML(bldName, bldType);
     const opacity  = building.is_under_construction ? '0.65' : '1';
     const bBorder  = building.is_under_construction ? '#c5a059' : '#9e9e9e';
     const bBg      = building.is_under_construction ? 'rgba(30,20,10,0.82)' : 'rgba(20,30,20,0.82)';
@@ -256,7 +289,7 @@ export function createStackerHTML({
   // ── Bridge icon (TOP) — only when no building occupies the slot ───────────
   if (isBridge && !hasBuilding) {
     const pos = hasEntities ? POS.building : POS.buildingCenter;
-    parts.push(`<div class="hs-bridge" style="position:absolute;left:${pos.left.toFixed(1)}%;top:${pos.top.toFixed(1)}%;transform:translate(-50%,-50%);z-index:2;pointer-events:none;"><div style="background:#1a3a5c;border:1.5px solid #64b5f6;border-radius:4px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 0 6px 1px rgba(100,181,246,0.4),0 1px 4px rgba(0,0,0,0.5);user-select:none;">🌉</div></div>`);
+    parts.push(`<div class="hs-bridge" style="position:absolute;left:${pos.left.toFixed(1)}%;top:${pos.top.toFixed(1)}%;transform:translate(-50%,-50%);z-index:2;pointer-events:none;"><div style="background:#1a3a5c;border:1.5px solid #64b5f6;border-radius:4px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 6px 1px rgba(100,181,246,0.4),0 1px 4px rgba(0,0,0,0.5);user-select:none;"><img src="/icons/bridge.png" style="width:14px;height:14px;display:block;" draggable="false"></div></div>`);
   }
 
   // ── Fleet badge (TOP-RIGHT corner) ────────────────────────────────────────

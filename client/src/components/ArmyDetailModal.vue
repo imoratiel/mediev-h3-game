@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="adm-fade">
       <div v-if="show" class="adm-backdrop" @click.self="$emit('close')">
-        <div class="adm-box" role="dialog" aria-modal="true">
+        <div class="adm-box" role="dialog" aria-modal="true" ref="admBoxRef">
 
           <!-- Header -->
           <div class="adm-header">
@@ -159,7 +159,7 @@
             </div>
           <!-- Refuerzo (solo cuando el ejército está en territorio propio) -->
           <template v-if="armyDetail?.is_own_fief">
-            <div class="adm-section-label" style="display:flex; align-items:center; justify-content:space-between; padding-right:20px;">
+            <div ref="reinforceRef" class="adm-section-label" style="display:flex; align-items:center; justify-content:space-between; padding-right:20px;">
               <span>🗡️ REFORZAR EJÉRCITO</span>
               <button class="adm-toggle-btn" @click="toggleReinforce">
                 {{ showReinforce ? '▲ Ocultar' : '▼ Mostrar' }}
@@ -264,7 +264,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import axios from 'axios';
 import { dismissTroops, reinforceArmy, getRecruitablePool } from '../services/mapApi.js';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -293,6 +293,8 @@ const dismissing  = ref(new Set());
 
 // ── Reinforcement state ──────────────────────────────────────────────────────
 const showReinforce   = ref(false);
+const reinforceRef    = ref(null); // ref al bloque de refuerzo para scroll automático
+const admBoxRef       = ref(null); // ref al contenedor scrollable del modal
 const unitTypes       = ref([]);
 const reinforceQty    = ref({});   // { [unit_type_id]: quantity }
 const reinforcing     = ref(false);
@@ -402,6 +404,15 @@ const fetchUnitTypes = async () => {
   } catch (_) { /* silent */ }
 };
 
+const scrollToReinforce = () => {
+  setTimeout(() => {
+    if (!reinforceRef.value || !admBoxRef.value) return;
+    const boxTop     = admBoxRef.value.getBoundingClientRect().top;
+    const sectionTop = reinforceRef.value.getBoundingClientRect().top;
+    admBoxRef.value.scrollBy({ top: sectionTop - boxTop - 8, behavior: 'smooth' });
+  }, 80);
+};
+
 const toggleReinforce = () => {
   showReinforce.value = !showReinforce.value;
   reinforceError.value = '';
@@ -409,6 +420,7 @@ const toggleReinforce = () => {
   if (showReinforce.value) {
     fetchUnitTypes();
     fetchReinforcePool();
+    scrollToReinforce();
   }
 };
 
@@ -457,6 +469,7 @@ const fetchDetail = async (armyId) => {
         showReinforce.value = true;
         fetchUnitTypes();
         fetchReinforcePool();
+        scrollToReinforce();
       }
     } else {
       error.value = data.message || 'Error al cargar datos';
@@ -942,13 +955,10 @@ onUnmounted(() => document.removeEventListener('keydown', handleEsc));
   }
 
   .adm-table-wrap {
-    max-height: none;
-    overflow: visible;
-  }
-
-  .adm-table-wrap {
+    max-height: min(38vh, 240px);
+    overflow-y: auto;
+    overflow-x: auto;
     padding: 0 10px 8px;
-    max-height: none;
   }
 
   .adm-table {
@@ -1022,7 +1032,9 @@ onUnmounted(() => document.removeEventListener('keydown', handleEsc));
   }
   .adm-prov-item { min-width: 0; padding: 8px 12px; flex: 1; }
 
-  .adm-reinforce-wrap { padding: 0 12px 12px; }
+  .adm-reinforce-wrap {
+    padding: 0 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
 
   .adm-reinforce-blocked { margin: 0 12px 10px; }
 

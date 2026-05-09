@@ -261,6 +261,13 @@ async function processComarcaResistance(client, turn) {
 async function triggerRebellion(client, divisionId, playerId, comarcaName, capitalH3, dominantCultureId, turn) {
     Logger.engine(`[TURN ${turn}] REBELLION in comarca ${divisionId} (${comarcaName}), owner: ${playerId}`);
 
+    // Capital principal del jugador y feudos contiguos: nunca se rebelan
+    const { rows: playerRows } = await client.query(
+        `SELECT capital_h3 FROM players WHERE player_id = $1`, [playerId]
+    );
+    const playerCapital = playerRows[0]?.capital_h3;
+    const protectedHexes = new Set(playerCapital ? h3.gridDisk(playerCapital, 1) : []);
+
     // Solo los feudos que pertenecen al jugador conquistador dentro de esta comarca
     const fiefsRes = await client.query(`
         SELECT td.h3_index
@@ -268,15 +275,17 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
         JOIN h3_map m ON m.h3_index = td.h3_index
         WHERE td.division_id = $1 AND m.player_id = $2
     `, [divisionId, playerId]);
-    if (fiefsRes.rows.length === 0) return;
+
+    const rebellableHexes = fiefsRes.rows.filter(r => !protectedHexes.has(r.h3_index));
+    if (rebellableHexes.length === 0) return;
 
     // 50 % de los feudos se liberan; al menos uno siempre escapa
-    const liberatedFiefs = fiefsRes.rows
+    const liberatedFiefs = rebellableHexes
         .filter(() => Math.random() < 0.5)
         .map(r => r.h3_index);
 
     if (liberatedFiefs.length === 0) {
-        liberatedFiefs.push(fiefsRes.rows[0].h3_index);
+        liberatedFiefs.push(rebellableHexes[0].h3_index);
     }
 
     // Liberar feudos: sin dueño, fuera de la comarca
@@ -314,7 +323,7 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
             `⚔️ **¡REBELIÓN EN ${comarcaName.toUpperCase()}!**`,
             ``,
             `La población de la comarca **${comarcaName}** se ha levantado en armas.`,
-            `**${liberatedFiefs.length} de ${fiefsRes.rows.length} territorios** se han declarado libres.`,
+            `**${liberatedFiefs.length} de ${rebellableHexes.length} territorios** se han declarado libres.`,
             ``,
             `Campesinos en armas han sido vistos en ${loc}.`,
             ``,
@@ -323,7 +332,7 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
         turn
     );
 
-    Logger.engine(`[TURN ${turn}] Rebellion: ${liberatedFiefs.length}/${fiefsRes.rows.length} fiefs liberated in comarca ${divisionId}, rebel army ${armyId} at ${spawnHex}`);
+    Logger.engine(`[TURN ${turn}] Rebellion: ${liberatedFiefs.length}/${rebellableHexes.length} fiefs liberated in comarca ${divisionId}, rebel army ${armyId} at ${spawnHex}`);
 }
 
 // ── IA de ejércitos rebeldes ──────────────────────────────────────────────────
@@ -497,6 +506,7 @@ async function processHappinessRebellion(client, currentTurn) {
             td.division_id,
             pd.name    AS division_name,
             pd.capital_h3,
+            p.capital_h3 AS player_capital,
             CASE
                 WHEN GREATEST(
                     COALESCE(SUM(fc.culture_romanos),      0),
@@ -520,21 +530,143 @@ async function processHappinessRebellion(client, currentTurn) {
         FROM territory_details td
         JOIN h3_map m               ON m.h3_index  = td.h3_index
         JOIN political_divisions pd ON pd.id        = td.division_id
+        JOIN players p              ON p.player_id  = m.player_id
         LEFT JOIN fief_culture fc   ON fc.h3_index  = td.h3_index
         WHERE td.happiness < $1
           AND m.player_id IS NOT NULL
           AND td.division_id IS NOT NULL
           AND ($2 - pd.founded_turn) >= $3
-        GROUP BY m.h3_index, m.player_id, td.division_id, pd.name, pd.capital_h3
+        GROUP BY m.h3_index, m.player_id, td.division_id, pd.name, pd.capital_h3, p.capital_h3
     `, [HAPPINESS_REBEL_THRESHOLD, currentTurn, HAPPINESS_MIN_AGE_TURNS]);
 
-    // rebelsByPlayer: Map<player_id, Array<{h3_index, division_name}>>
-    const rebelsByPlayer = new Map();
+    // rebelsByPlayer:     Map<player_id, Array<{h3_index, division_name, afterCombat?}>>
+    // suppressedByPlayer: Map<player_id, Array<{h3_index, division_name, armyName, deadPeasants, deadTroops}>>
+    const rebelsByPlayer    = new Map();
+    const suppressedByPlayer = new Map();
 
     for (const fief of fiefs) {
         if (Math.random() >= HAPPINESS_REBEL_CHANCE) continue;
 
-        // Liberar el feudo
+        // La capital principal y sus feudos contiguos nunca se rebelan
+        if (fief.player_capital && h3.gridDisk(fief.player_capital, 1).includes(fief.h3_index)) continue;
+
+        const unitTypeId = REBEL_UNIT_BY_CULTURE[fief.dominant_culture_id] ?? 17;
+
+        // ── Comprobar si hay tropas del señor estacionadas en el feudo ─────────
+        const defenderRes = await client.query(`
+            SELECT army_id, name FROM armies
+            WHERE h3_index = $1 AND player_id = $2
+              AND is_naval = FALSE AND is_rebel = FALSE
+            LIMIT 1
+        `, [fief.h3_index, fief.player_id]);
+
+        if (defenderRes.rows.length > 0) {
+            const defArmy = defenderRes.rows[0];
+
+            // Crear ejército campesino temporal para el combate
+            const { rows: peasantRows } = await client.query(`
+                INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
+                VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+                RETURNING army_id
+            `, [fief.h3_index, fief.division_id, fief.player_id]);
+            const peasantArmyId = peasantRows[0].army_id;
+
+            await client.query(`
+                INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale)
+                VALUES ($1, $2, $3, 5, 70)
+            `, [peasantArmyId, unitTypeId, HAPPINESS_REBEL_TROOPS]);
+
+            // Campesinos atacan al defensor (los campesinos son el atacante)
+            const battleResult = await CombatService.resolveCombat(
+                client, peasantArmyId, defArmy.army_id, fief.h3_index, currentTurn, peasantArmyId
+            );
+
+            const peasantsWon = battleResult && !battleResult.isDraw &&
+                                 battleResult.winner?.id === peasantArmyId;
+
+            if (!peasantsWon) {
+                // Las tropas sofocaron la insurrección ────────────────────────
+                // Limpiar ejército campesino si sobrevivió al combate
+                const peasantAlive = await client.query(
+                    'SELECT army_id FROM armies WHERE army_id = $1', [peasantArmyId]
+                );
+                if (peasantAlive.rows.length > 0) {
+                    await client.query('DELETE FROM troops WHERE army_id = $1', [peasantArmyId]);
+                    await client.query('DELETE FROM armies WHERE army_id = $1', [peasantArmyId]);
+                }
+
+                // Felicidad +40 puntos (sofocada la revuelta, orden restaurado)
+                await client.query(`
+                    UPDATE territory_details
+                    SET happiness = LEAST(100, happiness + 40)
+                    WHERE h3_index = $1
+                `, [fief.h3_index]);
+
+                const deadPeasants = battleResult?.armyA?.dead ?? 0;
+                const deadTroops   = battleResult?.armyB?.dead ?? 0;
+
+                if (!suppressedByPlayer.has(fief.player_id))
+                    suppressedByPlayer.set(fief.player_id, []);
+                suppressedByPlayer.get(fief.player_id).push({
+                    h3_index:      fief.h3_index,
+                    division_name: fief.division_name,
+                    armyName:      defArmy.name,
+                    deadPeasants,
+                    deadTroops,
+                });
+
+                Logger.engine(
+                    `[HAPPINESS REBELLION SUPPRESSED] Feudo ${fief.h3_index} ` +
+                    `(comarca ${fief.division_id}) → insurrección sofocada por "${defArmy.name}" ` +
+                    `(peasants dead: ${deadPeasants}, troops dead: ${deadTroops})`
+                );
+                continue;
+            }
+
+            // Campesinos ganaron — el ejército ya existe, liberamos el feudo ──
+            await client.query(
+                `UPDATE h3_map SET player_id = NULL, previous_player_id = $1 WHERE h3_index = $2`,
+                [fief.player_id, fief.h3_index]
+            );
+            await client.query(
+                `UPDATE territory_details SET division_id = NULL WHERE h3_index = $1`,
+                [fief.h3_index]
+            );
+
+            // Verificar que el ejército campesino sobrevivió; si fue destruido recrear
+            const peasantAlive = await client.query(
+                'SELECT army_id FROM armies WHERE army_id = $1', [peasantArmyId]
+            );
+            const armyId = peasantAlive.rows.length > 0 ? peasantArmyId : await (async () => {
+                const { rows } = await client.query(`
+                    INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
+                    VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+                    RETURNING army_id
+                `, [fief.h3_index, fief.division_id, fief.player_id]);
+                await client.query(`
+                    INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale)
+                    VALUES ($1, $2, $3, 5, 70)
+                `, [rows[0].army_id, unitTypeId, HAPPINESS_REBEL_TROOPS]);
+                return rows[0].army_id;
+            })();
+
+            const deadTroops = battleResult?.armyB?.dead ?? 0;
+
+            if (!rebelsByPlayer.has(fief.player_id)) rebelsByPlayer.set(fief.player_id, []);
+            rebelsByPlayer.get(fief.player_id).push({
+                h3_index:      fief.h3_index,
+                division_name: fief.division_name,
+                afterCombat:   { defenderArmyName: defArmy.name, deadTroops },
+            });
+
+            Logger.engine(
+                `[HAPPINESS REBELLION] Feudo ${fief.h3_index} (comarca ${fief.division_id}) ` +
+                `→ rebelde tras vencer a "${defArmy.name}" (bajas tropas: ${deadTroops})`
+            );
+            continue;
+        }
+
+        // ── Sin tropas estacionadas: rebelión directa ─────────────────────────
         await client.query(
             `UPDATE h3_map SET player_id = NULL, previous_player_id = $1 WHERE h3_index = $2`,
             [fief.player_id, fief.h3_index]
@@ -544,8 +676,6 @@ async function processHappinessRebellion(client, currentTurn) {
             [fief.h3_index]
         );
 
-        // Crear ejército rebelde en el feudo sublevado
-        const unitTypeId = REBEL_UNIT_BY_CULTURE[fief.dominant_culture_id] ?? 17;
         const { rows: armyRows } = await client.query(`
             INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
             VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
@@ -566,10 +696,9 @@ async function processHappinessRebellion(client, currentTurn) {
         );
     }
 
-    // Una notificación por jugador con el resumen completo
+    // ── Notificaciones de rebelión ────────────────────────────────────────────
     for (const [playerId, rebels] of rebelsByPlayer) {
         const count = rebels.length;
-        // Agrupar por comarca para el resumen
         const byDivision = new Map();
         for (const r of rebels) {
             byDivision.set(r.division_name, (byDivision.get(r.division_name) || 0) + 1);
@@ -578,17 +707,52 @@ async function processHappinessRebellion(client, currentTurn) {
             .map(([name, n]) => `  • ${name}: ${n} feudo${n > 1 ? 's' : ''}`)
             .join('\n');
 
+        // Líneas de combate para los feudos donde hubo batalla
+        const combatLines = rebels
+            .filter(r => r.afterCombat)
+            .map(r =>
+                `  ⚔️ En ${r.division_name}: campesinos derrotaron a "${r.afterCombat.defenderArmyName}"` +
+                (r.afterCombat.deadTroops > 0 ? ` (${r.afterCombat.deadTroops} bajas en tus tropas)` : '')
+            ).join('\n');
+
         const intro = count === 1
             ? `Un feudo se ha alzado en armas contra tu señoría.`
             : `**${count} feudos** se han alzado en armas contra tu señoría.`;
 
         await NotificationService.createSystemNotification(
             playerId,
-            'General',
+            'Militar',
             `⚡ REBELIÓN POR MISERIA (Turno ${currentTurn})\n` +
             `${intro}\n` +
             `La desdicha del pueblo ha llegado a su límite.\n\n` +
-            `${divisionLines}`,
+            `${divisionLines}` +
+            (combatLines ? `\n\n${combatLines}` : ''),
+            currentTurn
+        );
+    }
+
+    // ── Notificaciones de insurrección sofocada ───────────────────────────────
+    for (const [playerId, suppressed] of suppressedByPlayer) {
+        const count = suppressed.length;
+        const lines = suppressed.map(s => {
+            const troopLine = s.deadTroops > 0
+                ? ` (${s.deadTroops} bajas en ${s.armyName})`
+                : ` (sin bajas en ${s.armyName})`;
+            return `  🛡️ ${s.division_name}: sublevación aplastada${troopLine}, +40 felicidad`;
+        }).join('\n');
+
+        const intro = count === 1
+            ? `Una sublevación campesina ha sido sofocada por tus tropas.`
+            : `**${count} sublevaciones campesinas** han sido sofocadas por tus tropas.`;
+
+        await NotificationService.createSystemNotification(
+            playerId,
+            'Militar',
+            `🛡️ INSURRECCIÓN SOFOCADA (Turno ${currentTurn})\n` +
+            `${intro}\n` +
+            `Tus ejércitos han respondido con contundencia.\n\n` +
+            `${lines}\n\n` +
+            `La felicidad ha aumentado pero la miseria persiste. Atiende a tu pueblo.`,
             currentTurn
         );
     }
