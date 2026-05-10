@@ -140,7 +140,8 @@ export function generateCellPopupContent(cell, config) {
   if (cell.player_id === playerId && cell.fief_building) {
     if (cell.fief_building.is_under_construction) {
       const turnsLeft = cell.fief_building.turns_left ?? '?';
-      popupContent += `<p class="popup-compact-row">🏗️ ${turnsLeft}⏳</p>`;
+      const bldName   = cell.fief_building.name || '';
+      popupContent += `<p class="popup-compact-row">🏗️ ${bldName ? `${bldName} · ` : ''}${turnsLeft}⏳</p>`;
     } else {
       const cons = cell.fief_building.conservation ?? 100;
       const bIcon = cons === 0 ? '🏚️' : getBuildingIcon(cell.fief_building.name, cell.fief_building.type_name);

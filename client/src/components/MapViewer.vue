@@ -6300,22 +6300,24 @@ const colonizeFromPopup = async (h3_index) => {
 };
 
 /**
- * Get building icon emoji by building name
+ * Returns HTML (img or emoji span) for a building icon.
+ * Used by renderFiefIcons — checks PNG_MAP first, then emoji fallback.
  */
 const getBuildingIcon = (name = '', typeName = '') => {
   const n = name.toLowerCase();
+  for (const [keywords, src] of BUILDING_PNG) {
+    if (keywords.some(k => n.includes(k))) {
+      return `<img src="${src}" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+    }
+  }
   const t = (typeName || '').toLowerCase();
+  if (t === 'military')  return `<img src="/icons/barracks.png" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'religious') return `<img src="/icons/temple.png"   style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'economic')  return `<img src="/icons/forum.png"    style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'maritime')  return `<img src="/icons/port.png"     style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
   if (n.includes('granja') || n.includes('farm')) return '🌾';
-  if (n.includes('astillero') || n.includes('shipyard') ||
-      n.includes('portus') || n.includes('cothon') ||
-      n.includes('emporio') || n.includes('embarcadero') || t === 'maritime') return '⛵';
-  if (n.includes('castellum') || n.includes('fortaleza') || n.includes('castillo')) return '🏰';
-  if (n.includes('mina') || n.includes('mine')) return '⛏️';
+  if (n.includes('mina')   || n.includes('mine')) return '⛏️';
   if (n.includes('aserradero') || n.includes('lumber')) return '🌲';
-  if (n.includes('mercado') || n.includes('market') || n.includes('foro') || n.includes('factor') || n.includes('lonja') || n.includes('feria')) return '⚖️';
-  if (t === 'military') return '🏰';
-  if (t === 'religious') return '🏛️';
-  if (t === 'economic') return '⚖️';
   return '🗼';
 };
 
@@ -6323,7 +6325,7 @@ const BUILDING_PNG = [
   [['iglesia', 'church', 'catedral', 'templo', 'santuario'], '/icons/temple.png'],
   [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'], '/icons/forum.png'],
   [['castellum', 'fortaleza', 'fortress', 'castillo'], '/icons/castle.png'],
-  [['cuartel', 'barrack', 'escuela militar', 'escuela de'], '/icons/barracks.png'],
+  [['cuartel', 'barrack', 'escuela', 'militar', 'military'], '/icons/barracks.png'],
   [['astillero', 'shipyard', 'portus', 'cothon', 'emporio', 'embarcadero', 'puerto'], '/icons/port.png'],
 ];
 
