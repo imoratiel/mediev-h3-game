@@ -347,7 +347,7 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
  */
 async function processRebelArmies(client, turn) {
     const rebels = await client.query(`
-        SELECT army_id, h3_index, rebel_division_id, rebel_target_player_id
+        SELECT army_id, h3_index, rebel_division_id, rebel_target_player_id, recovering
         FROM armies
         WHERE is_rebel = TRUE
           AND h3_index IS NOT NULL
@@ -371,6 +371,16 @@ async function _processOneRebelArmy(client, rebel, turn) {
          WHERE h3_index = $2 AND player_id = $1`,
         [rebel.rebel_target_player_id, rebel.h3_index]
     );
+
+    // Cooldown tras conquista: esperar 1-2 turnos antes de volver a atacar
+    if (rebel.recovering > 0) {
+        await client.query(
+            'UPDATE armies SET recovering = recovering - 1 WHERE army_id = $1',
+            [rebel.army_id]
+        );
+        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} resting (${rebel.recovering} turns left)`);
+        return;
+    }
 
     const neighbors = h3.gridDisk(rebel.h3_index, 1).filter(n => n !== rebel.h3_index);
 
@@ -411,7 +421,14 @@ async function _processOneRebelArmy(client, rebel, turn) {
              WHERE h3_index = $2 AND player_id = $1`,
             [rebel.rebel_target_player_id, targetHex]
         );
-        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} liberated ${targetHex}`);
+
+        // Descanso de 1-2 turnos tras conquistar un feudo
+        const restTurns = 1 + Math.floor(Math.random() * 2);
+        await client.query(
+            'UPDATE armies SET recovering = $1 WHERE army_id = $2',
+            [restTurns, rebel.army_id]
+        );
+        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} liberated ${targetHex}, resting ${restTurns} turn(s)`);
         return;
     }
 
