@@ -501,6 +501,116 @@ class TerrainService {
             res.status(500).json({ success: false, message: 'Error al iniciar la demolición del edificio' });
         }
     }
+
+    // Returns all pending orders for the authenticated player.
+    async GetPendingOrders(req, res) {
+        try {
+            const playerId = req.user.player_id;
+
+            const [constructions, demolitions, bridgeDestructions] = await Promise.all([
+                pool.query(`
+                    SELECT fb.h3_index, b.name AS building_name,
+                           fb.remaining_construction_turns AS turns_remaining
+                    FROM fief_buildings fb
+                    JOIN buildings b ON b.id = fb.building_id
+                    JOIN h3_map m ON m.h3_index = fb.h3_index
+                    WHERE fb.is_under_construction = TRUE AND m.player_id = $1
+                    ORDER BY fb.remaining_construction_turns ASC
+                `, [playerId]),
+                pool.query(`
+                    SELECT h3_index, building_name, turns_remaining
+                    FROM building_demolitions
+                    WHERE player_id = $1
+                    ORDER BY turns_remaining ASC
+                `, [playerId]),
+                pool.query(`
+                    SELECT h3_index, turns_remaining
+                    FROM bridge_destructions
+                    WHERE player_id = $1
+                    ORDER BY turns_remaining ASC
+                `, [playerId]),
+            ]);
+
+            res.json({
+                success: true,
+                constructions:      constructions.rows,
+                demolitions:        demolitions.rows,
+                bridge_destructions: bridgeDestructions.rows,
+            });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/pending-orders', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al obtener las órdenes pendientes' });
+        }
+    }
+
+    async CancelBuildingConstruction(req, res) {
+        try {
+            const playerId   = req.user.player_id;
+            const { h3_index } = req.body;
+            if (!h3_index) return res.status(400).json({ success: false, message: 'h3_index requerido' });
+
+            const result = await pool.query(`
+                DELETE FROM fief_buildings
+                USING h3_map
+                WHERE fief_buildings.h3_index = $1
+                  AND fief_buildings.is_under_construction = TRUE
+                  AND h3_map.h3_index = fief_buildings.h3_index
+                  AND h3_map.player_id = $2
+                RETURNING fief_buildings.h3_index
+            `, [h3_index, playerId]);
+
+            if (result.rowCount === 0) {
+                return res.status(404).json({ success: false, message: 'No se encontró una construcción activa en ese feudo' });
+            }
+            Logger.action(`Jugador ${playerId} canceló construcción en ${h3_index}`);
+            res.json({ success: true, message: 'Construcción cancelada' });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/cancel-construction', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al cancelar la construcción' });
+        }
+    }
+
+    async CancelBuildingDemolition(req, res) {
+        try {
+            const playerId   = req.user.player_id;
+            const { h3_index } = req.body;
+            if (!h3_index) return res.status(400).json({ success: false, message: 'h3_index requerido' });
+
+            const result = await pool.query(
+                'DELETE FROM building_demolitions WHERE h3_index = $1 AND player_id = $2 RETURNING h3_index',
+                [h3_index, playerId]
+            );
+            if (result.rowCount === 0) {
+                return res.status(404).json({ success: false, message: 'No se encontró una demolición activa en ese feudo' });
+            }
+            Logger.action(`Jugador ${playerId} canceló demolición de edificio en ${h3_index}`);
+            res.json({ success: true, message: 'Demolición cancelada' });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/cancel-demolition', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al cancelar la demolición' });
+        }
+    }
+
+    async CancelBridgeDestruction(req, res) {
+        try {
+            const playerId   = req.user.player_id;
+            const { h3_index } = req.body;
+            if (!h3_index) return res.status(400).json({ success: false, message: 'h3_index requerido' });
+
+            const result = await pool.query(
+                'DELETE FROM bridge_destructions WHERE h3_index = $1 AND player_id = $2 RETURNING h3_index',
+                [h3_index, playerId]
+            );
+            if (result.rowCount === 0) {
+                return res.status(404).json({ success: false, message: 'No se encontró una orden de destrucción activa para ese puente' });
+            }
+            Logger.action(`Jugador ${playerId} canceló destrucción de puente en ${h3_index}`);
+            res.json({ success: true, message: 'Destrucción de puente cancelada' });
+        } catch (error) {
+            Logger.error(error, { endpoint: '/map/cancel-bridge-destruction', userId: req.user?.player_id });
+            res.status(500).json({ success: false, message: 'Error al cancelar la destrucción del puente' });
+        }
+    }
 }
 
 module.exports = new TerrainService();

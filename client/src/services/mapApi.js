@@ -1132,3 +1132,23 @@ export async function startBuildingDemolition(h3_index) {
   return response.data;
 }
 
+export async function getPendingOrders() {
+  const response = await axios.get(`${API_URL}/api/map/pending-orders`);
+  return response.data;
+}
+
+export async function cancelBuildingConstruction(h3_index) {
+  const response = await axios.post(`${API_URL}/api/map/cancel-construction`, { h3_index });
+  return response.data;
+}
+
+export async function cancelBuildingDemolition(h3_index) {
+  const response = await axios.post(`${API_URL}/api/map/cancel-demolition`, { h3_index });
+  return response.data;
+}
+
+export async function cancelBridgeDestruction(h3_index) {
+  const response = await axios.post(`${API_URL}/api/map/cancel-bridge-destruction`, { h3_index });
+  return response.data;
+}
+

@@ -194,6 +194,15 @@
         </button>
         <button
           class="nav-button"
+          :class="{ active: activePanel === 'orders' }"
+          @click="togglePanel('orders')"
+          title="Órdenes pendientes"
+        >
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">Órdenes</span>
+        </button>
+        <button
+          class="nav-button"
           :class="{ active: activeOverlay === 'layers' }"
           @click="openOverlay('layers')"
           title="Mapa"
@@ -651,6 +660,16 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Pending Orders Panel -->
+        <div v-if="activePanel === 'orders'" class="panel-section orders-panel-wrap">
+          <PendingOrdersPanel
+            ref="pendingOrdersPanelRef"
+            @focusHex="focusAndHighlightHex"
+            @cancelled="loadHexagonsIfZoomValid"
+            @toast="showToast"
+          />
         </div>
 
         <!-- Notifications Panel -->
@@ -1500,7 +1519,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import L from 'leaflet';
 import { cellToBoundary, cellToLatLng, gridDistance, gridPathCells, latLngToCell } from 'h3-js';
 import 'leaflet/dist/leaflet.css';
@@ -1520,6 +1539,7 @@ import KingdomPanel from './KingdomPanel.vue';
 import MilitaryPanel from './MilitaryPanel.vue';
 import TroopsPanel from './TroopsPanel.vue';
 import NotificationsPanel from './NotificationsPanel.vue';
+import PendingOrdersPanel from './PendingOrdersPanel.vue';
 import BattleSummaryModal from './BattleSummaryModal.vue';
 import EconomyPanel from './EconomyPanel.vue';
 import AdminPanel from './AdminPanel.vue';
@@ -2054,7 +2074,8 @@ const fueroPanelFiefName = ref('');
 const legendCollapsed = ref(true); // Collapsed by default
 
 // Panel system state
-const activePanel = ref(null); // Currently open panel: 'layers', 'market', 'notifications', 'profile'
+const activePanel = ref(null); // Currently open panel: 'layers', 'market', 'notifications', 'profile', 'orders'
+const pendingOrdersPanelRef = ref(null);
 const panelTitle = computed(() => {
   const titles = {
     economy: '💰 Economía',
@@ -2064,7 +2085,8 @@ const panelTitle = computed(() => {
     kingdom: '🏰 Imperium',
     messages: '📜 Mensajes',
     notifications: '🔔 Notificaciones',
-    profile: '👤 Perfil'
+    profile: '👤 Perfil',
+    orders: '📋 Órdenes Pendientes',
   };
   return titles[activePanel.value] || '';
 });
@@ -4957,6 +4979,9 @@ const togglePanel = (panelName) => {
     }
     if (panelName === 'notifications') {
       fetchNotifications(); // refresh con spinner al abrir el panel
+    }
+    if (panelName === 'orders') {
+      nextTick(() => pendingOrdersPanelRef.value?.load());
     }
     if (panelName === 'market') {
       marketTab.value = 'trade';

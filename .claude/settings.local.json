@@ -116,7 +116,11 @@
       "mcp__notion__API-delete-a-block",
       "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\mediev-h3-game\" -Recurse -Directory)",
       "Bash(Select-Object -First 20)",
-      "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\mediev-h3-game\\\\server\" -Directory)"
+      "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\mediev-h3-game\\\\server\" -Directory)",
+      "Bash(ls -la \"d:\\\\claude\\\\mediev-h3-game\\\\\")",
+      "Read(//d/claude/**)",
+      "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\mediev-h3-game\" -Recurse -Filter \"*.sql\")",
+      "Bash(Select-Object -ExpandProperty FullName)"
     ]
   }
 }
