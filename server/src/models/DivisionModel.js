@@ -272,17 +272,15 @@ class DivisionModel {
 
     /**
      * Asigna masivamente un division_id a una lista de feudos.
-     * Solo actualiza feudos que siguen con division_id IS NULL (seguridad extra).
+     * Siempre sobreescribe — la validación de propiedad se hace en la capa de servicio.
      */
     async AssignFiefsToDivision(client, division_id, h3_indices) {
         if (h3_indices.length === 0) return;
-        // UPSERT: insert row if missing, update if exists (only when division_id is still NULL)
         await client.query(`
             INSERT INTO territory_details (h3_index, division_id)
             SELECT unnest($2::text[]), $1
             ON CONFLICT (h3_index) DO UPDATE
               SET division_id = EXCLUDED.division_id
-              WHERE territory_details.division_id IS NULL
         `, [division_id, h3_indices]);
     }
 }
