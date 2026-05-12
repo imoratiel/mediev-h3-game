@@ -67,11 +67,17 @@ const GAME_CONFIG = {
         RECRUITMENT_RECOVERY_TURNS: 30, // Turnos necesarios para recuperar el 100% de la capacidad de reclutamiento
         STARTING_GOLD:       1_000_000, // Oro inicial al inicializar un jugador (humano o bot)
         STARTING_GOLD_RANDOM: 2_000_000, // Oro inicial si el jugador eligió personaje aleatorio
-        // Rangos base para repoblado (populate_economy.py y resetGame.js)
+        // Rangos base para repoblado — SOLO usados por resetGame.js
         GOLD_STORED_BASE_MIN:  2000,    // gold_stored  = randInt(MIN * MULTIPLIER, MAX * MULTIPLIER)
         GOLD_STORED_BASE_MAX:  6000,
         FOOD_STORED_BASE_MIN:  1000,    // food_stored  = randInt(MIN * MULTIPLIER, MAX * MULTIPLIER) * food_output / 100
         FOOD_STORED_BASE_MAX:  2500,
+        WOOD_STORED_BASE_MIN:     0,    // wood_stored  = randInt(MIN, MAX)
+        WOOD_STORED_BASE_MAX:  2000,
+        STONE_STORED_BASE_MIN:    0,    // stone_stored = randInt(MIN, MAX)
+        STONE_STORED_BASE_MAX: 2000,
+        HAPPINESS_BASE_MIN:      50,    // happiness    = randInt(MIN, MAX)
+        HAPPINESS_BASE_MAX:      70,
         POPULATION_BASE_MIN:    200,    // population   = randInt(MIN * MULTIPLIER, MAX * MULTIPLIER)
         POPULATION_BASE_MAX:    400,
         RESOURCE_MULTIPLIER:     10,    // Multiplicador aplicado a gold_stored y food_stored

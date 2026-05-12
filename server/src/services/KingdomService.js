@@ -6,7 +6,7 @@ const ArmyModel = require('../models/ArmyModel.js');
 const CombatModel = require('../models/CombatModel.js');
 const { CONFIG } = require('../config.js');
 const GAME_CONFIG = require('../config/constants.js');
-const { getPopulationCap, generateFiefEconomy } = require('../config/gameFunctions.js');
+const { getPopulationCap } = require('../config/gameFunctions.js');
 const infrastructure = require('../logic/infrastructure.js');
 const conquest = require('../logic/conquest.js');
 const { calcMilitiaPower, processCapitalCollapse, GRACE_TURNS_DEFAULT } = require('../logic/conquest_system.js');
@@ -455,7 +455,7 @@ class KingdomService {
                 await KingdomModel.SetCapital(client, h3_index, player_id);
                 if (isExiled) await KingdomModel.ClearExileStatus(client, player_id);
             }
-            await KingdomModel.InsertTerritoryDetails(client, h3_index, generateFiefEconomy(isFirstTerritory || isExiled ? 'capital' : 'fief'));
+            await KingdomModel.InsertTerritoryDetails(client, h3_index);
             await KingdomModel.DeductGold(client, player_id, CLAIM_COST);
 
             // On first claim (capital/exile), also claim all colonizable ring-2 neighbors for free
@@ -465,7 +465,7 @@ class KingdomService {
                 const neighbors = await KingdomModel.GetColonizableNeighbors(client, ring1);
                 for (const neighbor of neighbors) {
                     await KingdomModel.ClaimHex(client, neighbor.h3_index, player_id);
-                    await KingdomModel.InsertTerritoryDetails(client, neighbor.h3_index, generateFiefEconomy('fief'));
+                    await KingdomModel.InsertTerritoryDetails(client, neighbor.h3_index);
                     bonusHexes.push(neighbor.h3_index);
                 }
             }

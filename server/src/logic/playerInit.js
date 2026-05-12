@@ -17,7 +17,6 @@ const pool  = require('../../db.js');
 const h3    = require('h3-js');
 const { Logger } = require('../utils/logger');
 const GAME_CONFIG = require('../config/constants');
-const { generateFiefEconomy } = require('../config/gameFunctions.js');
 const ArmyModel      = require('../models/ArmyModel.js');
 const KingdomModel   = require('../models/KingdomModel.js');
 const CharacterModel = require('../models/CharacterModel.js');
@@ -37,13 +36,11 @@ const ISOLATION_RADIUS_FALLBACK = [7, 5]; // fallbacks if map is dense
  * Inserts territory_details for a hex during player init.
  * Uses ON CONFLICT DO NOTHING to preserve values already set by resetGame/populate_economy.
  */
-async function upsertTerritoryDetails(client, h3_index, eco) {
-    await client.query(`
-        INSERT INTO territory_details
-            (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored, gold_stored)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (h3_index) DO NOTHING
-    `, [h3_index, eco.population, eco.happiness, eco.food, eco.wood, eco.stone, 0, eco.gold ?? 0]);
+async function upsertTerritoryDetails(client, h3_index) {
+    await client.query(
+        `INSERT INTO territory_details (h3_index) VALUES ($1) ON CONFLICT (h3_index) DO NOTHING`,
+        [h3_index]
+    );
 }
 // TARGET_HEX_COUNT is read from noble_ranks.max_fiefs_limit (level_order = 2) at runtime
 const BFS_MAX_RADIUS    = 7;  // max search radius for BFS expansion
@@ -223,7 +220,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
             'UPDATE h3_map SET player_id = $1, last_update = CURRENT_TIMESTAMP WHERE h3_index = $2',
             [player_id, capitalHex]
         );
-        await upsertTerritoryDetails(client, capitalHex, generateFiefEconomy('capital'));
+        await upsertTerritoryDetails(client, capitalHex);
 
         // ── 3. BFS expansion: claim up to 29 bonus hexes (total 30) ──────────
         //    Rivers and sea act as barriers; territory stays on one side of them.
@@ -242,7 +239,7 @@ async function initializePlayer(player_id, { forceCultureId = null, randomBonus 
                 'UPDATE h3_map SET player_id = $1, last_update = CURRENT_TIMESTAMP WHERE h3_index = $2',
                 [player_id, hex]
             );
-            await upsertTerritoryDetails(client, hex, generateFiefEconomy('fief'));
+            await upsertTerritoryDetails(client, hex);
         }
 
         const allHexes = [capitalHex, ...bonusHexes];

@@ -1,4 +1,5 @@
 const pool = require('../../db.js');
+const GAME_CONFIG = require('../config/constants');
 
 class KingdomModel {
     async CheckTerritoryOwnership(client, h3_index) {
@@ -74,12 +75,10 @@ class KingdomModel {
             [player_id, h3_index]
         );
     }
-    async InsertTerritoryDetails(client, h3_index, eco) {
+    async InsertTerritoryDetails(client, h3_index) {
         await client.query(
-            `INSERT INTO territory_details (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored, gold_stored)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             ON CONFLICT (h3_index) DO NOTHING`,
-            [h3_index, eco.population, eco.happiness, eco.food, eco.wood, eco.stone, 0, eco.gold ?? 0]
+            `INSERT INTO territory_details (h3_index) VALUES ($1) ON CONFLICT (h3_index) DO NOTHING`,
+            [h3_index]
         );
     }
     async DeductGold(client, player_id, amount) {

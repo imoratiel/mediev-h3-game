@@ -163,28 +163,10 @@ class AdminService {
                     'UPDATE h3_map SET player_id = $1, last_update = CURRENT_TIMESTAMP WHERE h3_index = $2',
                     [player_id, hex]
                 );
-                await client.query(`
-                    INSERT INTO territory_details
-                        (h3_index, population, happiness, food_stored, wood_stored, stone_stored, iron_stored, gold_stored)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    ON CONFLICT (h3_index) DO UPDATE SET
-                        population   = EXCLUDED.population,
-                        happiness    = EXCLUDED.happiness,
-                        food_stored  = EXCLUDED.food_stored,
-                        wood_stored  = EXCLUDED.wood_stored,
-                        stone_stored = EXCLUDED.stone_stored,
-                        iron_stored  = EXCLUDED.iron_stored,
-                        gold_stored  = EXCLUDED.gold_stored
-                `, [
-                    hex,
-                    Math.floor(Math.random() * 201) + 200,
-                    Math.floor(Math.random() * 21)  + 50,
-                    Math.floor(Math.random() * 2001),
-                    Math.floor(Math.random() * 2001),
-                    Math.floor(Math.random() * 2001),
-                    0,
-                    Math.floor(Math.random() * 201) + 50,
-                ]);
+                await client.query(
+                    `INSERT INTO territory_details (h3_index) VALUES ($1) ON CONFLICT (h3_index) DO NOTHING`,
+                    [hex]
+                );
             }
 
             // 8. Colocar fortaleza completada en la capital del pagus
