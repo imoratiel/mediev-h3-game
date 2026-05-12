@@ -93,7 +93,7 @@ const BUILDING_PNG_MAP = [
   [['iglesia', 'church', 'catedral', 'templo', 'santuario'], '/icons/temple.png'],
   [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'], '/icons/forum.png'],
   [['castellum', 'fortaleza', 'fortress', 'castillo'], '/icons/castle.png'],
-  [['cuartel', 'barrack', 'escuela militar', 'escuela de'], '/icons/barracks.png'],
+  [['cuartel', 'barrack', 'escuela', 'militar', 'military'], '/icons/barracks.png'],
   [['astillero', 'shipyard', 'portus', 'cothon', 'emporio', 'embarcadero', 'puerto'], '/icons/port.png'],
 ];
 
@@ -123,14 +123,12 @@ function getBuildingIconHTML(name = '', typeName = '') {
       return `<img src="${src}" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
     }
   }
-  // Also check typeName for religious/economic fallback
+  // typeName fallbacks — all PNG
   const t = (typeName || '').toLowerCase();
-  if (t === 'religious') {
-    return `<img src="/icons/temple.png" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
-  }
-  if (t === 'economic') {
-    return `<img src="/icons/forum.png" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
-  }
+  if (t === 'military')  return `<img src="/icons/barracks.png" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'religious') return `<img src="/icons/temple.png"   style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'economic')  return `<img src="/icons/forum.png"    style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'maritime')  return `<img src="/icons/port.png"     style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
   return getBuildingIconEmoji(name, typeName);
 }
 

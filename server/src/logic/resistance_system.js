@@ -288,16 +288,12 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
         liberatedFiefs.push(rebellableHexes[0].h3_index);
     }
 
-    // Liberar feudos: sin dueño, fuera de la comarca
+    // Liberar feudos: sin dueño, mantienen division_id para que los rebeldes puedan reconquistar la comarca
     await client.query(
         `UPDATE h3_map
          SET player_id = NULL, previous_player_id = $1
          WHERE h3_index = ANY($2::text[])`,
         [playerId, liberatedFiefs]
-    );
-    await client.query(
-        `UPDATE territory_details SET division_id = NULL WHERE h3_index = ANY($1::text[])`,
-        [liberatedFiefs]
     );
 
     // Punto de aparición: capital de la comarca si se liberó, si no el primer feudo libre
@@ -347,7 +343,7 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
  */
 async function processRebelArmies(client, turn) {
     const rebels = await client.query(`
-        SELECT army_id, h3_index, rebel_division_id, rebel_target_player_id
+        SELECT army_id, h3_index, rebel_division_id, rebel_target_player_id, recovering
         FROM armies
         WHERE is_rebel = TRUE
           AND h3_index IS NOT NULL
@@ -372,14 +368,27 @@ async function _processOneRebelArmy(client, rebel, turn) {
         [rebel.rebel_target_player_id, rebel.h3_index]
     );
 
+    // Cooldown tras conquista: esperar 1-2 turnos antes de volver a atacar
+    if (rebel.recovering > 0) {
+        await client.query(
+            'UPDATE armies SET recovering = recovering - 1 WHERE army_id = $1',
+            [rebel.army_id]
+        );
+        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} resting (${rebel.recovering} turns left)`);
+        return;
+    }
+
     const neighbors = h3.gridDisk(rebel.h3_index, 1).filter(n => n !== rebel.h3_index);
 
-    // 1. Feudos adyacentes del agresor → liberar
+    // 1. Feudos adyacentes del agresor dentro de la comarca → liberar
     const aggressorFiefs = await client.query(`
-        SELECT h3_index FROM h3_map
-        WHERE h3_index = ANY($1::text[]) AND player_id = $2
+        SELECT m.h3_index FROM h3_map m
+        JOIN territory_details td ON td.h3_index = m.h3_index
+        WHERE m.h3_index = ANY($1::text[])
+          AND m.player_id = $2
+          AND td.division_id = $3
         LIMIT 1
-    `, [neighbors, rebel.rebel_target_player_id]);
+    `, [neighbors, rebel.rebel_target_player_id, rebel.rebel_division_id]);
 
     if (aggressorFiefs.rows.length > 0) {
         const targetHex = aggressorFiefs.rows[0].h3_index;
@@ -411,7 +420,14 @@ async function _processOneRebelArmy(client, rebel, turn) {
              WHERE h3_index = $2 AND player_id = $1`,
             [rebel.rebel_target_player_id, targetHex]
         );
-        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} liberated ${targetHex}`);
+
+        // Descanso de 1-2 turnos tras conquistar un feudo
+        const restTurns = 1 + Math.floor(Math.random() * 2);
+        await client.query(
+            'UPDATE armies SET recovering = $1 WHERE army_id = $2',
+            [restTurns, rebel.army_id]
+        );
+        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} liberated ${targetHex}, resting ${restTurns} turn(s)`);
         return;
     }
 
@@ -459,7 +475,14 @@ async function _processOneRebelArmy(client, rebel, turn) {
                 client, rebel.army_id, target.army_id, target.h3_index, turn, rebel.army_id
             );
         } else {
-            const nextHex = neighbors.reduce((best, n) => {
+            // Avanzar hacia el objetivo — solo a hexes dentro de la comarca
+            const comarcaNeighbors = await client.query(`
+                SELECT m.h3_index FROM h3_map m
+                JOIN territory_details td ON td.h3_index = m.h3_index
+                WHERE m.h3_index = ANY($1::text[]) AND td.division_id = $2
+            `, [neighbors, rebel.rebel_division_id]);
+            const validNeighbors = comarcaNeighbors.rows.map(r => r.h3_index);
+            const nextHex = validNeighbors.reduce((best, n) => {
                 try {
                     const d = h3.gridDistance(n, target.h3_index);
                     const dBest = best ? h3.gridDistance(best, target.h3_index) : Infinity;
@@ -476,11 +499,14 @@ async function _processOneRebelArmy(client, rebel, turn) {
         return;
     }
 
-    // 4. Patrullar: hex libre adyacente aleatorio
+    // 4. Patrullar: hex libre adyacente dentro de la comarca
     const freeNeighbors = await client.query(`
-        SELECT h3_index FROM h3_map
-        WHERE h3_index = ANY($1::text[]) AND player_id IS NULL
-    `, [neighbors]);
+        SELECT m.h3_index FROM h3_map m
+        JOIN territory_details td ON td.h3_index = m.h3_index
+        WHERE m.h3_index = ANY($1::text[])
+          AND m.player_id IS NULL
+          AND td.division_id = $2
+    `, [neighbors, rebel.rebel_division_id]);
 
     if (freeNeighbors.rows.length > 0) {
         const pick = freeNeighbors.rows[Math.floor(Math.random() * freeNeighbors.rows.length)];
@@ -623,14 +649,11 @@ async function processHappinessRebellion(client, currentTurn) {
                 continue;
             }
 
-            // Campesinos ganaron — el ejército ya existe, liberamos el feudo ──
+            // Campesinos ganaron — el ejército ya existe, liberamos el feudo
+            // Mantenemos division_id para que los rebeldes puedan reconquistar la comarca
             await client.query(
                 `UPDATE h3_map SET player_id = NULL, previous_player_id = $1 WHERE h3_index = $2`,
                 [fief.player_id, fief.h3_index]
-            );
-            await client.query(
-                `UPDATE territory_details SET division_id = NULL WHERE h3_index = $1`,
-                [fief.h3_index]
             );
 
             // Verificar que el ejército campesino sobrevivió; si fue destruido recrear
@@ -667,13 +690,10 @@ async function processHappinessRebellion(client, currentTurn) {
         }
 
         // ── Sin tropas estacionadas: rebelión directa ─────────────────────────
+        // Mantenemos division_id para que los rebeldes puedan reconquistar la comarca
         await client.query(
             `UPDATE h3_map SET player_id = NULL, previous_player_id = $1 WHERE h3_index = $2`,
             [fief.player_id, fief.h3_index]
-        );
-        await client.query(
-            `UPDATE territory_details SET division_id = NULL WHERE h3_index = $1`,
-            [fief.h3_index]
         );
 
         const { rows: armyRows } = await client.query(`

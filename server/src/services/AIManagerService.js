@@ -20,7 +20,6 @@ const h3                 = require('h3-js');
 const { Logger }         = require('../utils/logger');
 const { generateAIName } = require('../utils/npcGenerator');
 const KingdomModel       = require('../models/KingdomModel');
-const { generateInitialEconomy } = require('../logic/conquest');
 const recruitmentNetwork = require('../logic/recruitmentNetwork');
 const aiProxy            = require('./AIProxyService');
 const { executeRecruitment, executeConstruction, GameActionError } = require('./gameActions');
@@ -190,9 +189,8 @@ class AIManagerService {
             );
             const aiPlayerId = playerResult.rows[0].player_id;
 
-            const capitalEco = generateInitialEconomy();
             await KingdomModel.ClaimHex(client, spawnHex, aiPlayerId);
-            await KingdomModel.InsertTerritoryDetails(client, spawnHex, capitalEco);
+            await KingdomModel.InsertTerritoryDetails(client, spawnHex);
             await KingdomModel.SetCapital(client, spawnHex, aiPlayerId);
 
             // Assign random culture to bot + matching noble rank (level 1)
@@ -224,9 +222,8 @@ class AIManagerService {
             const targetFiefCount = senorioRank?.min_fiefs_required ?? 40;
             const { bonusHexes } = await bfsExpandTerritory(client, spawnHex, targetFiefCount);
             for (const hex of bonusHexes) {
-                const eco = generateInitialEconomy();
                 await KingdomModel.ClaimHex(client, hex, aiPlayerId);
-                await KingdomModel.InsertTerritoryDetails(client, hex, eco);
+                await KingdomModel.InsertTerritoryDetails(client, hex);
             }
 
             // Crear señorío con todos los feudos conquistados
@@ -1622,8 +1619,7 @@ class AIManagerService {
         // Ensure territory_details row exists, apply grace period
         const tdCheck = await client.query('SELECT 1 FROM territory_details WHERE h3_index = $1', [targetH3]);
         if (tdCheck.rows.length === 0) {
-            const eco = generateInitialEconomy();
-            await KingdomModel.InsertTerritoryDetails(client, targetH3, eco);
+            await KingdomModel.InsertTerritoryDetails(client, targetH3);
         } else {
             await client.query(
                 'UPDATE territory_details SET grace_turns = $1 WHERE h3_index = $2',

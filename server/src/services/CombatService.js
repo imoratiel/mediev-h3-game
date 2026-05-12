@@ -452,10 +452,17 @@ class CombatService {
         // 6. Calcular tasas de bajas con el nuevo sistema daño-por-unidad
         // tasaOnB = % de bajas que A inflige sobre B
         // tasaOnA = % de bajas que B inflige sobre A
+
+        // Penalización de aislamiento: ejército sin conexión a territorio propio o libre → ATK y DEF al 50%
+        const armyAIsolated = await this._isArmyIsolated(client, h3Index, armyA.player_id);
+        const armyBIsolated = await this._isArmyIsolated(client, h3Index, armyB.player_id);
+        if (armyAIsolated) Logger.engine(`[COMBAT] Army ${armyAId} (${armyA.name}) aislado en ${h3Index} → penalización 50%`);
+        if (armyBIsolated) Logger.engine(`[COMBAT] Army ${armyBId} (${armyB.name}) aislado en ${h3Index} → penalización 50%`);
+
         dbg('── Cálculo A→B ──────────────────────────────────────────────────');
-        const tasaOnB = await this._calculateDamageRate(client, troopsA, troopsB, terrain, bIsDefender, armyA.player_id, armyAId, dbg);
+        const tasaOnB = await this._calculateDamageRate(client, troopsA, troopsB, terrain, bIsDefender, armyA.player_id, armyAId, dbg, h3Index, armyAIsolated, armyBIsolated);
         dbg('── Cálculo B→A ──────────────────────────────────────────────────');
-        const tasaOnA = await this._calculateDamageRate(client, troopsB, troopsA, terrain, aIsDefender, armyB.player_id, armyBId, dbg);
+        const tasaOnA = await this._calculateDamageRate(client, troopsB, troopsA, terrain, aIsDefender, armyB.player_id, armyBId, dbg, h3Index, armyBIsolated, armyAIsolated);
 
         // 7. Resultado: gana quien inflige más presión al enemigo
         const DRAW_THRESHOLD = GAME_CONFIG.MILITARY.COMBAT_DRAW_THRESHOLD;
@@ -709,7 +716,7 @@ class CombatService {
      * @param {number}   attackerArmyId  - Para bonus de personaje
      * @returns {Promise<number>} Tasa de bajas sobre B en [0, 1]
      */
-    async _calculateDamageRate(client, troopsA, troopsB, terrain, bIsDefender = false, attackerPlayerId = null, attackerArmyId = null, dbg = null) {
+    async _calculateDamageRate(client, troopsA, troopsB, terrain, bIsDefender = false, attackerPlayerId = null, attackerArmyId = null, dbg = null, h3Index = null, attackerIsolated = false, defenderIsolated = false) {
         const K             = GAME_CONFIG.MILITARY.COMBAT_K_NORM;
         const SCALE         = GAME_CONFIG.MILITARY.COMBAT_DAMAGE_SCALE;
         const DEF_BONUS     = GAME_CONFIG.MILITARY.COMBAT_DEFENDER_BONUS;
@@ -788,7 +795,38 @@ class CombatService {
             }
         }
 
+        // Penalización de aislamiento del atacante (sin conexión a territorio propio o libre)
+        if (attackerIsolated) {
+            total_atk_A *= 0.5;
+            if (dbg) dbg(`  Penalización aislamiento atacante ×0.5 → total_atk_A=${total_atk_A.toFixed(2)}`);
+        }
+
         // ── Paso 2: Defensa media y HP medio de B ───────────────────────────
+
+        // Bono de edificio militar: solo aplica cuando B defiende, escalado por conservación
+        let buildingDefBonus = { infantry: 1.0, archer: 1.0 };
+        if (bIsDefender && h3Index) {
+            const bldRes = await client.query(`
+                SELECT b.name, fb.conservation FROM fief_buildings fb
+                JOIN buildings b ON b.id = fb.building_id
+                JOIN building_types bt ON bt.id = b.type_id
+                WHERE fb.h3_index = $1 AND fb.is_under_construction = FALSE AND bt.name = 'military'
+                LIMIT 1
+            `, [h3Index]);
+            if (bldRes.rows.length > 0) {
+                const bname = bldRes.rows[0].name.toLowerCase();
+                const conservation = (bldRes.rows[0].conservation ?? 100) / 100;
+                const isLevel2 = ['fortaleza', 'castillo', 'castellum', 'fortress', 'castle'].some(k => bname.includes(k));
+                const baseInf = isLevel2 ? 0.20 : 0.10;
+                const baseArc = isLevel2 ? 0.50 : 0.25;
+                buildingDefBonus = {
+                    infantry: 1 + baseInf * conservation,
+                    archer:   1 + baseArc * conservation,
+                };
+                if (dbg) dbg(`  Edificio militar "${bldRes.rows[0].name}" → nivel ${isLevel2 ? 2 : 1} conservación=${(conservation*100).toFixed(0)}% (inf×${buildingDefBonus.infantry.toFixed(3)} arc×${buildingDefBonus.archer.toFixed(3)})`);
+            }
+        }
+
         let total_def_B = 0;
         let total_hp_B  = 0;
         for (const tb of troopsB) {
@@ -803,17 +841,26 @@ class CombatService {
                 if (mod) { terrainDefMod = 1 + parseFloat(mod.defense_modificator); def *= terrainDefMod; }
             }
 
+            // Bono de edificio militar por clase de unidad
+            const uc = (tb.unit_class ?? '').toUpperCase();
+            let buildingMod = 1.0;
+            if (uc.startsWith('INFANTRY')) buildingMod = buildingDefBonus.infantry;
+            else if (uc.startsWith('ARCHER')) buildingMod = buildingDefBonus.archer;
+            if (buildingMod !== 1.0) def *= buildingMod;
+
             total_def_B += tb.quantity * def * morale * stamina;
             total_hp_B  += tb.quantity * parseFloat(tb.health_points ?? 5);
 
             if (dbg) dbg(`  DEF ${tb.unit_name ?? tb.unit_type_id} x${tb.quantity}` +
                 ` def=${parseFloat(tb.defense ?? 5).toFixed(2)} terrainMod=${terrainDefMod.toFixed(3)}` +
+                ` buildingMod=${buildingMod.toFixed(2)}` +
                 ` morale=${(morale*100).toFixed(1)}% stamina=${(stamina*100).toFixed(1)}%` +
                 ` hp=${tb.health_points}`);
         }
 
         let avg_def_B = total_def_B / totalQtyB;
         if (bIsDefender) { avg_def_B *= DEF_BONUS; if (dbg) dbg(`  Bonus defensor x${DEF_BONUS} → avg_def_B=${avg_def_B.toFixed(2)}`); }
+        if (defenderIsolated) { avg_def_B *= 0.5; if (dbg) dbg(`  Penalización aislamiento defensor ×0.5 → avg_def_B=${avg_def_B.toFixed(2)}`); }
         const avg_hp_B = total_hp_B / totalQtyB;
 
         // ── Paso 3: Daño por unidad enemiga y tasa de bajas ─────────────────
@@ -1199,6 +1246,22 @@ class CombatService {
         }
 
         return events.filter(Boolean);
+    }
+
+    /**
+     * Devuelve true si el ejército está aislado: ninguno de los hexágonos adyacentes
+     * (ni el propio) pertenece al jugador ni es territorio libre.
+     * Los ejércitos rebeldes (player_id NULL) nunca se consideran aislados.
+     */
+    async _isArmyIsolated(client, h3Index, playerId) {
+        if (!playerId) return false;
+        const vicinity = h3.gridDisk(h3Index, 1);
+        const res = await client.query(`
+            SELECT 1 FROM h3_map
+            WHERE h3_index = ANY($1) AND (player_id = $2 OR player_id IS NULL)
+            LIMIT 1
+        `, [vicinity, playerId]);
+        return res.rows.length === 0;
     }
 
     /** Elimina un ejército y su ruta de la base de datos. */

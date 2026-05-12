@@ -76,6 +76,10 @@ module.exports = function () {
     router.get('/map/bridge-destructions', authenticateToken, (req, res) => TerrainService.GetBridgeDestructions(req, res));
     router.post('/map/demolish-building', authenticateToken, (req, res) => TerrainService.StartBuildingDemolition(req, res));
     router.get('/map/building-demolitions', authenticateToken, (req, res) => TerrainService.GetBuildingDemolitions(req, res));
+    router.get('/map/pending-orders', authenticateToken, (req, res) => TerrainService.GetPendingOrders(req, res));
+    router.post('/map/cancel-construction', authenticateToken, (req, res) => TerrainService.CancelBuildingConstruction(req, res));
+    router.post('/map/cancel-demolition', authenticateToken, (req, res) => TerrainService.CancelBuildingDemolition(req, res));
+    router.post('/map/cancel-bridge-destruction', authenticateToken, (req, res) => TerrainService.CancelBridgeDestruction(req, res));
 
     // Get armies in visible extent (for map icons)
     router.get('/map/armies', authenticateToken, ArmyService.GetArmiesInRegion);

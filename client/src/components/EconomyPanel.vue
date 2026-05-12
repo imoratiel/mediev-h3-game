@@ -43,8 +43,14 @@
                 v-model.number="localTaxRate" class="eco-tax-slider" />
               <span class="eco-tax-value">{{ localTaxRate }}%</span>
             </div>
-            <div class="eco-tax-marks">
-              <span>1%</span><span>5%</span><span>10%</span><span>15%</span>
+            <div class="eco-tax-marks-row">
+              <div class="eco-tax-marks">
+                <span style="left:7px">1%</span>
+                <span style="left:calc(28.571% + 3px)">5%</span>
+                <span style="left:calc(64.286% - 2px)">10%</span>
+                <span style="left:calc(100% - 7px)">15%</span>
+              </div>
+              <div class="eco-tax-marks-spacer"></div>
             </div>
             <button class="eco-save-btn" style="margin-top:10px"
               :disabled="savingTax || !isDirtyTax" @click="saveTax">
@@ -943,12 +949,24 @@ onMounted(() => {
   min-width: 38px;
   text-align: right;
 }
-.eco-tax-marks {
+.eco-tax-marks-row {
   display: flex;
-  justify-content: space-between;
+  gap: 10px;
+  margin-top: 2px;
+}
+.eco-tax-marks {
+  flex: 1;
+  position: relative;
+  height: 14px;
   font-size: 0.7rem;
   color: rgba(197,160,89,0.5);
-  margin-top: 2px;
+}
+.eco-tax-marks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.eco-tax-marks-spacer {
+  min-width: 38px;
 }
 
 /* ── Mobile ─────────────────────────────────────────────── */

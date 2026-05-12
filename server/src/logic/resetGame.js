@@ -59,17 +59,42 @@ async function resetGame() {
         // 5. Buildings in fiefs
         await client.query('DELETE FROM fief_buildings');
 
-        // 6. Reset territory metadata and re-randomize economic resources
+        // 6. Reset territory metadata and re-randomize all economic resources.
+        // Uses UPSERT over ALL colonizable hexes so hexes without existing rows
+        // also get proper values, preventing food=0 on first colonization after reset.
         const eco = GAME_CONFIG.ECONOMY;
-        const goldMin  = eco.GOLD_STORED_BASE_MIN  * eco.RESOURCE_MULTIPLIER;
-        const goldMax  = eco.GOLD_STORED_BASE_MAX  * eco.RESOURCE_MULTIPLIER;
-        const foodMin  = eco.FOOD_STORED_BASE_MIN  * eco.RESOURCE_MULTIPLIER;
-        const foodMax  = eco.FOOD_STORED_BASE_MAX  * eco.RESOURCE_MULTIPLIER;
-        const popMin   = eco.POPULATION_BASE_MIN   * eco.POPULATION_MULTIPLIER;
-        const popMax   = eco.POPULATION_BASE_MAX   * eco.POPULATION_MULTIPLIER;
+        const goldMin   = eco.GOLD_STORED_BASE_MIN   * eco.RESOURCE_MULTIPLIER;
+        const goldMax   = eco.GOLD_STORED_BASE_MAX   * eco.RESOURCE_MULTIPLIER;
+        const foodMin   = eco.FOOD_STORED_BASE_MIN   * eco.RESOURCE_MULTIPLIER;
+        const foodMax   = eco.FOOD_STORED_BASE_MAX   * eco.RESOURCE_MULTIPLIER;
+        const woodMin   = eco.WOOD_STORED_BASE_MIN;
+        const woodMax   = eco.WOOD_STORED_BASE_MAX;
+        const stoneMin  = eco.STONE_STORED_BASE_MIN;
+        const stoneMax  = eco.STONE_STORED_BASE_MAX;
+        const happMin   = eco.HAPPINESS_BASE_MIN;
+        const happMax   = eco.HAPPINESS_BASE_MAX;
+        const popMin    = eco.POPULATION_BASE_MIN    * eco.POPULATION_MULTIPLIER;
+        const popMax    = eco.POPULATION_BASE_MAX    * eco.POPULATION_MULTIPLIER;
 
         await client.query(`
-            UPDATE territory_details td SET
+            INSERT INTO territory_details (
+                h3_index,
+                iron_stored, gold_stored, food_stored, wood_stored, stone_stored,
+                happiness, population
+            )
+            SELECT
+                m.h3_index,
+                0,
+                floor($1::int + random() * ($2::int - $1::int + 1)),
+                floor(($3::int + random() * ($4::int - $3::int + 1)) * COALESCE(tt.food_output, 100) / 100.0),
+                floor($5::int + random() * ($6::int - $5::int + 1)),
+                floor($7::int + random() * ($8::int - $7::int + 1)),
+                floor($9::int  + random() * ($10::int - $9::int  + 1)),
+                floor($11::int + random() * ($12::int - $11::int + 1))
+            FROM h3_map m
+            JOIN terrain_types tt ON tt.terrain_type_id = m.terrain_type_id
+            WHERE tt.is_colonizable = TRUE
+            ON CONFLICT (h3_index) DO UPDATE SET
                 custom_name          = NULL,
                 discovered_resource  = NULL,
                 exploration_end_turn = NULL,
@@ -80,15 +105,14 @@ async function resetGame() {
                 port_level           = 0,
                 defense_level        = 0,
                 division_id          = NULL,
-                gold_stored = floor($1::int + random() * ($2::int - $1::int + 1)),
-                food_stored = floor(($3::int + random() * ($4::int - $3::int + 1))
-                              * COALESCE((
-                                  SELECT t.food_output FROM h3_map m
-                                  JOIN terrain_types t ON t.terrain_type_id = m.terrain_type_id
-                                  WHERE m.h3_index = td.h3_index
-                              ), 100) / 100.0),
-                population  = floor($5::int + random() * ($6::int - $5::int + 1))
-        `, [goldMin, goldMax, foodMin, foodMax, popMin, popMax]);
+                iron_stored          = 0,
+                gold_stored          = EXCLUDED.gold_stored,
+                food_stored          = EXCLUDED.food_stored,
+                wood_stored          = EXCLUDED.wood_stored,
+                stone_stored         = EXCLUDED.stone_stored,
+                happiness            = EXCLUDED.happiness,
+                population           = EXCLUDED.population
+        `, [goldMin, goldMax, foodMin, foodMax, woodMin, woodMax, stoneMin, stoneMax, happMin, happMax, popMin, popMax]);
 
         // 6b. Delete political divisions (señoríos y otras divisiones)
         await client.query('DELETE FROM political_divisions');

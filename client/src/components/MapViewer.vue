@@ -194,6 +194,15 @@
         </button>
         <button
           class="nav-button"
+          :class="{ active: activePanel === 'orders' }"
+          @click="togglePanel('orders')"
+          title="Órdenes pendientes"
+        >
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">Órdenes</span>
+        </button>
+        <button
+          class="nav-button"
           :class="{ active: activeOverlay === 'layers' }"
           @click="openOverlay('layers')"
           title="Mapa"
@@ -651,6 +660,16 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Pending Orders Panel -->
+        <div v-if="activePanel === 'orders'" class="panel-section orders-panel-wrap">
+          <PendingOrdersPanel
+            ref="pendingOrdersPanelRef"
+            @focusHex="focusAndHighlightHex"
+            @cancelled="loadHexagonsIfZoomValid"
+            @toast="showToast"
+          />
         </div>
 
         <!-- Notifications Panel -->
@@ -1500,7 +1519,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import L from 'leaflet';
 import { cellToBoundary, cellToLatLng, gridDistance, gridPathCells, latLngToCell } from 'h3-js';
 import 'leaflet/dist/leaflet.css';
@@ -1520,6 +1539,7 @@ import KingdomPanel from './KingdomPanel.vue';
 import MilitaryPanel from './MilitaryPanel.vue';
 import TroopsPanel from './TroopsPanel.vue';
 import NotificationsPanel from './NotificationsPanel.vue';
+import PendingOrdersPanel from './PendingOrdersPanel.vue';
 import BattleSummaryModal from './BattleSummaryModal.vue';
 import EconomyPanel from './EconomyPanel.vue';
 import AdminPanel from './AdminPanel.vue';
@@ -2054,7 +2074,8 @@ const fueroPanelFiefName = ref('');
 const legendCollapsed = ref(true); // Collapsed by default
 
 // Panel system state
-const activePanel = ref(null); // Currently open panel: 'layers', 'market', 'notifications', 'profile'
+const activePanel = ref(null); // Currently open panel: 'layers', 'market', 'notifications', 'profile', 'orders'
+const pendingOrdersPanelRef = ref(null);
 const panelTitle = computed(() => {
   const titles = {
     economy: '💰 Economía',
@@ -2064,7 +2085,8 @@ const panelTitle = computed(() => {
     kingdom: '🏰 Imperium',
     messages: '📜 Mensajes',
     notifications: '🔔 Notificaciones',
-    profile: '👤 Perfil'
+    profile: '👤 Perfil',
+    orders: '📋 Órdenes Pendientes',
   };
   return titles[activePanel.value] || '';
 });
@@ -4958,6 +4980,9 @@ const togglePanel = (panelName) => {
     if (panelName === 'notifications') {
       fetchNotifications(); // refresh con spinner al abrir el panel
     }
+    if (panelName === 'orders') {
+      nextTick(() => pendingOrdersPanelRef.value?.load());
+    }
     if (panelName === 'market') {
       marketTab.value = 'trade';
       fetchMyWorkers();
@@ -6300,22 +6325,24 @@ const colonizeFromPopup = async (h3_index) => {
 };
 
 /**
- * Get building icon emoji by building name
+ * Returns HTML (img or emoji span) for a building icon.
+ * Used by renderFiefIcons — checks PNG_MAP first, then emoji fallback.
  */
 const getBuildingIcon = (name = '', typeName = '') => {
   const n = name.toLowerCase();
+  for (const [keywords, src] of BUILDING_PNG) {
+    if (keywords.some(k => n.includes(k))) {
+      return `<img src="${src}" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+    }
+  }
   const t = (typeName || '').toLowerCase();
+  if (t === 'military')  return `<img src="/icons/barracks.png" style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'religious') return `<img src="/icons/temple.png"   style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'economic')  return `<img src="/icons/forum.png"    style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
+  if (t === 'maritime')  return `<img src="/icons/port.png"     style="width:14px;height:14px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6));" draggable="false">`;
   if (n.includes('granja') || n.includes('farm')) return '🌾';
-  if (n.includes('astillero') || n.includes('shipyard') ||
-      n.includes('portus') || n.includes('cothon') ||
-      n.includes('emporio') || n.includes('embarcadero') || t === 'maritime') return '⛵';
-  if (n.includes('castellum') || n.includes('fortaleza') || n.includes('castillo')) return '🏰';
-  if (n.includes('mina') || n.includes('mine')) return '⛏️';
+  if (n.includes('mina')   || n.includes('mine')) return '⛏️';
   if (n.includes('aserradero') || n.includes('lumber')) return '🌲';
-  if (n.includes('mercado') || n.includes('market') || n.includes('foro') || n.includes('factor') || n.includes('lonja') || n.includes('feria')) return '⚖️';
-  if (t === 'military') return '🏰';
-  if (t === 'religious') return '🏛️';
-  if (t === 'economic') return '⚖️';
   return '🗼';
 };
 
@@ -6323,7 +6350,7 @@ const BUILDING_PNG = [
   [['iglesia', 'church', 'catedral', 'templo', 'santuario'], '/icons/temple.png'],
   [['mercado', 'market', 'foro', 'lonja', 'factor', 'feria'], '/icons/forum.png'],
   [['castellum', 'fortaleza', 'fortress', 'castillo'], '/icons/castle.png'],
-  [['cuartel', 'barrack', 'escuela militar', 'escuela de'], '/icons/barracks.png'],
+  [['cuartel', 'barrack', 'escuela', 'militar', 'military'], '/icons/barracks.png'],
   [['astillero', 'shipyard', 'portus', 'cothon', 'emporio', 'embarcadero', 'puerto'], '/icons/port.png'],
 ];
 
