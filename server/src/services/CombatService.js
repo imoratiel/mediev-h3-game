@@ -255,6 +255,9 @@ class CombatService {
                 if (enemyBattle.destroyed)            message = `¡"${enemyBattle.name}" ha sido aniquilado!` + lootLine;
                 else if (enemyBattle.retreat?.retreated) message = `"${enemyBattle.name}" huye hasta ${enemyBattle.retreat.newHex}.` + lootLine;
                 else                                  message = 'El enemigo ha sido derrotado.' + lootLine;
+                if (battle.rebelDesertion?.deserted > 0) {
+                    message += ` Tus exploradores reportan que muchos campesinos han abandonado la rebelión tras esa amarga derrota (${battle.rebelDesertion.deserted} desertores).`;
+                }
             } else {
                 if (playerBattle.destroyed)            message = `¡"${playerBattle.name}" ha sido aniquilado en el campo de batalla!`;
                 else if (playerBattle.retreat?.retreated) message = `Tus tropas se retiran hacia ${playerBattle.retreat.newHex}.`;
@@ -695,6 +698,18 @@ class CombatService {
             loot,
             characterEvents,
         };
+
+        // 16.5 Deserciones rebeldes — hasta 30% de las tropas restantes del rebelde huyen tras la derrota
+        let rebelDesertion = null;
+        if (!isDraw && loser && loser.player_id === null) {
+            const loserDestroyed = loser.army_id === armyAId ? armyADestroyed : armyBDestroyed;
+            if (!loserDestroyed) {
+                const rate = Math.random() * 0.30;
+                const deserted = await this._applyRebelDesertion(client, loser.army_id, rate);
+                if (deserted > 0) rebelDesertion = { deserted };
+            }
+        }
+        battleResult.rebelDesertion = rebelDesertion;
 
         // 17. Notificar
         await this._sendBattleNotifications(battleResult);
@@ -1296,10 +1311,36 @@ class CombatService {
     /**
      * Envía notificaciones de batalla a todos los jugadores involucrados.
      */
+    async _applyRebelDesertion(client, armyId, rate) {
+        const { rows } = await client.query(
+            'SELECT troop_id, quantity FROM troops WHERE army_id = $1',
+            [armyId]
+        );
+        const total = rows.reduce((s, t) => s + t.quantity, 0);
+        const toDesertion = Math.floor(total * rate);
+        if (toDesertion <= 0) return 0;
+        let remaining = toDesertion;
+        for (const t of rows) {
+            const deduct = Math.min(t.quantity, remaining);
+            if (deduct > 0) {
+                await client.query(
+                    'UPDATE troops SET quantity = quantity - $1 WHERE troop_id = $2',
+                    [deduct, t.troop_id]
+                );
+                remaining -= deduct;
+            }
+            if (remaining <= 0) break;
+        }
+        await client.query('DELETE FROM troops WHERE army_id = $1 AND quantity <= 0', [armyId]);
+        await CombatModel.deleteArmyIfEmpty(client, armyId);
+        return toDesertion;
+    }
+
     async _sendBattleNotifications(battle) {
         const { armyA, armyB, isDraw, winner, loot, h3Index, turn, attackerArmyId,
                 characterEvents = [], coalitionA = [], coalitionB = [],
-                totalDeadA = armyA.dead, totalDeadB = armyB.dead } = battle;
+                totalDeadA = armyA.dead, totalDeadB = armyB.dead,
+                rebelDesertion = null } = battle;
 
         // Quién atacó y quién defendió
         const attacker = attackerArmyId === armyA.id ? armyA : attackerArmyId === armyB.id ? armyB : null;
@@ -1352,6 +1393,9 @@ class CombatService {
             const iLost      = !isDraw && winner?.id !== myArmy.id;
             const myRetreat  = myArmy.retreat;
             const lootLine   = loot ? (iWon ? `\n💰 Botín capturado: ${formatLoot(loot)}` : `\n💸 Provisiones saqueadas: ${formatLoot(loot)}`) : '';
+            const desertionLine = iWon && rebelDesertion?.deserted > 0 && enemyArmy.playerId === null
+                ? `\n\n🏃 Tus exploradores reportan que muchos campesinos han abandonado la rebelión tras esa amarga derrota (${rebelDesertion.deserted} desertores).`
+                : '';
 
             if (isDraw) {
                 const context = iAttacked ? `atacaste a "${enemyArmy.name}"`
@@ -1373,6 +1417,7 @@ class CombatService {
                     lootLine +
                     enemyAnnihilatedLine(enemyArmy.destroyed) +
                     (!enemyArmy.destroyed ? retreatLine(enemyArmy.retreat) : '') +
+                    desertionLine +
                     charLines(myArmy.playerId)
                 );
             }
@@ -1396,6 +1441,7 @@ class CombatService {
                     lootLine +
                     enemyAnnihilatedLine(enemyArmy.destroyed) +
                     (!enemyArmy.destroyed ? retreatLine(enemyArmy.retreat) : '') +
+                    desertionLine +
                     charLines(myArmy.playerId)
                 );
             }
