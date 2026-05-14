@@ -622,10 +622,32 @@ class CombatService {
         }
 
         // 13. Huida del perdedor
+        // Regla: el atacante derrotado NO se puede retirar (queda en el hex de batalla);
+        //        el defensor derrotado SÍ puede retirarse.
         let retreatA = null, retreatB = null;
         if (!isDraw && loser) {
-            if (loser === armyA && !armyADestroyed) retreatA = await this._retreatArmy(client, armyAId, h3Index);
-            else if (loser === armyB && !armyBDestroyed) retreatB = await this._retreatArmy(client, armyBId, h3Index);
+            const loserIsAttacker = attackerArmyId !== null && loser.army_id === attackerArmyId;
+
+            if (loser === armyA && !armyADestroyed) {
+                if (loserIsAttacker) {
+                    // Atacante derrotado: se queda en el hex, orden cancelada
+                    await client.query('UPDATE armies SET destination = NULL WHERE army_id = $1', [armyAId]);
+                    await client.query('DELETE FROM army_routes WHERE army_id = $1', [armyAId]);
+                    retreatA = { retreated: false, destroyed: false };
+                    Logger.engine(`[TURN ${turn}] Army ${armyAId} (${armyA.name}) derrotado como atacante — sin retirada`);
+                } else {
+                    retreatA = await this._retreatArmy(client, armyAId, h3Index);
+                }
+            } else if (loser === armyB && !armyBDestroyed) {
+                if (loserIsAttacker) {
+                    await client.query('UPDATE armies SET destination = NULL WHERE army_id = $1', [armyBId]);
+                    await client.query('DELETE FROM army_routes WHERE army_id = $1', [armyBId]);
+                    retreatB = { retreated: false, destroyed: false };
+                    Logger.engine(`[TURN ${turn}] Army ${armyBId} (${armyB.name}) derrotado como atacante — sin retirada`);
+                } else {
+                    retreatB = await this._retreatArmy(client, armyBId, h3Index);
+                }
+            }
         }
 
         // 14. Cansancio post-batalla — ambos ejércitos supervivientes
