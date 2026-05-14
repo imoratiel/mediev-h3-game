@@ -708,12 +708,13 @@ class KingdomService {
                     desgloseLines || null,
                     `🛡️ **Milicia local:** ${defender_losses} de ${militiaCount} milicianos abatidos`,
                 ].filter(Boolean).join('\n');
+                const [ctLat, ctLng] = h3.cellToLatLng(h3_index);
                 await NotificationService.createSystemNotification(
                     currentOwner, 'Militar',
                     `🏴 **Feudo perdido — ${hex.fief_name}**\n\n` +
                     `Los ejércitos de **${attackerName}** (${armyName}) han tomado **${hex.fief_name}** por la fuerza.\n\n` +
                     combatBody + '\n\n' +
-                    `El territorio ha caído. ¡Reagrupad vuestras huestes y recuperad lo que es vuestro!`,
+                    `El territorio ha caído. ¡Reagrupad vuestras huestes y recuperad lo que es vuestro!\n📍 ${ctLat.toFixed(3)}, ${ctLng.toFixed(3)} (${h3_index})`,
                     turn
                 );
             }
@@ -998,12 +999,13 @@ class KingdomService {
                         desgloseLines || null,
                         `🛡️ **Milicia local:** ${defender_losses} de ${militiaCount} milicianos abatidos`,
                     ].filter(Boolean).join('\n');
+                    const [cfLat, cfLng] = h3.cellToLatLng(h3_index);
                     await NotificationService.createSystemNotification(
                         previousOwner, 'Militar',
                         `🏴 **Feudo perdido — ${hex.fief_name}**\n\n` +
                         `Los ejércitos de **${attackerName}** (${armyName}) han asaltado y tomado **${hex.fief_name}**.\n\n` +
                         combatBody + '\n\n' +
-                        `El territorio ha caído. ¡Reagrupad vuestras huestes y recuperad lo que es vuestro!`,
+                        `El territorio ha caído. ¡Reagrupad vuestras huestes y recuperad lo que es vuestro!\n📍 ${cfLat.toFixed(3)}, ${cfLng.toFixed(3)} (${h3_index})`,
                         turn
                     );
                 }

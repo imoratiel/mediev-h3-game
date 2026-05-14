@@ -1356,6 +1356,10 @@ class CombatService {
             return '';
         }).filter(Boolean).join('');
 
+        const [bLat, bLng] = h3.cellToLatLng(h3Index);
+        const locationLine = `\n📍 ${bLat.toFixed(3)}, ${bLng.toFixed(3)} (${h3Index})`;
+        const suffix = (playerId) => charLines(playerId) + locationLine;
+
         const formatLoot = (l) =>
             `💰${l.gold} oro, 🍖${l.food} comida, 🌲${l.wood} madera`;
 
@@ -1405,7 +1409,7 @@ class CombatService {
                     `⚔️ EMPATE — Turno ${turn}\n\n` +
                     `Mientras ${context}, ningún bando logró imponerse.\n\n` +
                     `Bajas propias: ${myArmy.dead} | Bajas enemigas: ${enemyArmy.dead}` +
-                    charLines(myArmy.playerId)
+                    suffix(myArmy.playerId)
                 );
             }
 
@@ -1418,7 +1422,7 @@ class CombatService {
                     enemyAnnihilatedLine(enemyArmy.destroyed) +
                     (!enemyArmy.destroyed ? retreatLine(enemyArmy.retreat) : '') +
                     desertionLine +
-                    charLines(myArmy.playerId)
+                    suffix(myArmy.playerId)
                 );
             }
 
@@ -1429,7 +1433,7 @@ class CombatService {
                     casualtiesLine(myArmy.dead, myArmy.desglose, enemyTotalDead, enemyArmy.desglose, enemyCoal) +
                     (loot ? lootLine : '') +
                     retreatLine(myRetreat) +
-                    charLines(myArmy.playerId)
+                    suffix(myArmy.playerId)
                 );
             }
 
@@ -1442,7 +1446,7 @@ class CombatService {
                     enemyAnnihilatedLine(enemyArmy.destroyed) +
                     (!enemyArmy.destroyed ? retreatLine(enemyArmy.retreat) : '') +
                     desertionLine +
-                    charLines(myArmy.playerId)
+                    suffix(myArmy.playerId)
                 );
             }
 
@@ -1453,7 +1457,7 @@ class CombatService {
                     casualtiesLine(myArmy.dead, myArmy.desglose, enemyTotalDead, enemyArmy.desglose, enemyCoal) +
                     (loot ? lootLine : '') +
                     retreatLine(myRetreat) +
-                    charLines(myArmy.playerId)
+                    suffix(myArmy.playerId)
                 );
             }
 
@@ -1465,7 +1469,7 @@ class CombatService {
                 casualtiesLine(myArmy.dead, myArmy.desglose, enemyTotalDead, enemyArmy.desglose, enemyCoal) +
                 lootLine +
                 retreatLine(myRetreat) +
-                charLines(myArmy.playerId)
+                suffix(myArmy.playerId)
             );
         };
 

@@ -56,7 +56,7 @@
                 class="notif-goto-btn"
                 @click.stop="emit('focusHex', extractH3(notif.content))"
                 title="Ir a la celda"
-              >📍 Ir</button>
+              >🗺 Ver en el mapa</button>
               <span v-if="!notif.is_read" class="notif-unread-dot"></span>
             </div>
           </div>
