@@ -438,12 +438,19 @@ async function processRebelArmies(client, turn) {
 }
 
 async function _processOneRebelArmy(client, rebel, turn) {
-    // Si el hex actual sigue siendo del agresor (quedó de un turno anterior), liberarlo
-    await client.query(
-        `UPDATE h3_map SET player_id = NULL, previous_player_id = $1
-         WHERE h3_index = $2 AND player_id = $1`,
-        [rebel.rebel_target_player_id, rebel.h3_index]
+    // Liberar el hex actual solo si el agresor no tiene tropas estacionadas en él
+    const guardRes = await client.query(
+        `SELECT COUNT(*)::int AS cnt FROM armies
+         WHERE h3_index = $1 AND player_id = $2`,
+        [rebel.h3_index, rebel.rebel_target_player_id]
     );
+    if (guardRes.rows[0].cnt === 0) {
+        await client.query(
+            `UPDATE h3_map SET player_id = NULL, previous_player_id = $1
+             WHERE h3_index = $2 AND player_id = $1`,
+            [rebel.rebel_target_player_id, rebel.h3_index]
+        );
+    }
 
     // Cooldown tras conquista: esperar 1-2 turnos antes de volver a atacar
     if (rebel.recovering > 0) {
@@ -482,14 +489,20 @@ async function _processOneRebelArmy(client, rebel, turn) {
         `, [targetHex, rebel.rebel_target_player_id]);
 
         if (defArmy.rows.length > 0) {
+            const defArmyId = defArmy.rows[0].army_id;
             await CombatService.resolveCombat(
-                client, rebel.army_id, defArmy.rows[0].army_id, targetHex, turn, rebel.army_id
+                client, rebel.army_id, defArmyId, targetHex, turn, rebel.army_id
             );
-            // Comprobar si el ejército rebelde sobrevivió
+            // El rebelde murió → parar
             const alive = await client.query(
                 'SELECT army_id FROM armies WHERE army_id = $1', [rebel.army_id]
             );
             if (alive.rows.length === 0) return;
+            // El defensor sobrevivió (empate) → el rebelde no puede liberar el hex
+            const defenderAlive = await client.query(
+                'SELECT army_id FROM armies WHERE army_id = $1', [defArmyId]
+            );
+            if (defenderAlive.rows.length > 0) return;
         }
 
         await client.query(

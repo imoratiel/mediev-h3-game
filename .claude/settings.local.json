@@ -120,7 +120,8 @@
       "Bash(ls -la \"d:\\\\claude\\\\mediev-h3-game\\\\\")",
       "Read(//d/claude/**)",
       "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\mediev-h3-game\" -Recurse -Filter \"*.sql\")",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\mediev-h3-game\\\\server\\\\src\" -Filter \"*.js\" -Recurse)"
     ]
   }
 }

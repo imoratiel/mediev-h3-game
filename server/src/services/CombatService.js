@@ -1051,7 +1051,7 @@ class CombatService {
         // Para cada hex pasable: verificar enemigos y calcular distancia a la capital
         const candidates = await Promise.all(passableResult.rows.map(async (row) => {
             const enemyCheck = await client.query(
-                'SELECT 1 FROM armies WHERE h3_index = $1 AND player_id != $2 LIMIT 1',
+                'SELECT 1 FROM armies WHERE h3_index = $1 AND (player_id != $2 OR player_id IS NULL) LIMIT 1',
                 [row.h3_index, playerId]
             );
             const hasEnemy = enemyCheck.rows.length > 0;

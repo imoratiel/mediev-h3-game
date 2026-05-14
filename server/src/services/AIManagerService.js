@@ -1531,7 +1531,7 @@ class AIManagerService {
 
         // 2. No enemy armies allowed at target
         const enemyCheck = await client.query(
-            'SELECT COUNT(*)::int AS cnt FROM armies WHERE h3_index = $1 AND player_id != $2',
+            'SELECT COUNT(*)::int AS cnt FROM armies WHERE h3_index = $1 AND (player_id != $2 OR player_id IS NULL)',
             [targetH3, playerId]
         );
         if (enemyCheck.rows[0].cnt > 0) return { conquered: false, reason: 'enemy_armies_present' };
