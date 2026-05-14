@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.20.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.19.0...v0.20.0) (2026-05-12)
+
+
+### Nuevas funcionalidades
+
+* bono de defensa para edificios militares ([7e1fd49](https://github.com/imoratiel/hipania210ac-game/commit/7e1fd49bff98a086b1356038cf84d014838a871a))
+* el combate en tierras extranjeras penaliza al 50% ([94bbdfd](https://github.com/imoratiel/hipania210ac-game/commit/94bbdfd6e44dbcad8a915f16494b2a4891150f17))
+* los campesinos en armas esperan 1 o 2 turnos antes de continuar el ataque ([b78aa4d](https://github.com/imoratiel/hipania210ac-game/commit/b78aa4d801550e6e53ac5f69a4285524b11af8e6))
+* panel órdenes para ver las órdenes pendientes ([4fae7a3](https://github.com/imoratiel/hipania210ac-game/commit/4fae7a3194499ac76b444ab49dddd66ad2d86202))
+* rediseño panel administracion ([456e119](https://github.com/imoratiel/hipania210ac-game/commit/456e1196e8460274100587e7f4f7394a4142033d))
+
+
+### Correcciones
+
+* añadir qué edificio se está construyendo al popup de territorios ([eee73f8](https://github.com/imoratiel/hipania210ac-game/commit/eee73f89ec9caa2a5a76deb419a6972474ad8834))
+* error en la alineacion del % de impuestos ([334ce34](https://github.com/imoratiel/hipania210ac-game/commit/334ce344c854a2b1368978e49f0f0ec658aeef77))
+* estaba reseteando las reservas del territorio al crear las comarcas ([a0dac90](https://github.com/imoratiel/hipania210ac-game/commit/a0dac90717368738e02afc922441e69fa48e648b))
+* los ejercitos rebeldes no atacan otras comarcas ([e7a2607](https://github.com/imoratiel/hipania210ac-game/commit/e7a2607ea4cecbdb6bb6bd45e13d13765aeb9717))
+
 ## [0.19.0](https://github.com/imoratiel/hipania210ac-game/compare/v0.18.0...v0.19.0) (2026-05-09)
 
 
