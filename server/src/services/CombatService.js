@@ -675,7 +675,7 @@ class CombatService {
 
         // 16. Construir resumen
         const battleResult = {
-            h3Index, turn, isDraw,
+            h3Index, turn, isDraw, attackerArmyId,
             armyA: {
                 id: armyAId, name: armyA.name, playerId: armyA.player_id,
                 pressure: tasaOnB, dead: deadA, lossRate: lossRateA, xp: xpA,
@@ -1297,8 +1297,13 @@ class CombatService {
      * Envía notificaciones de batalla a todos los jugadores involucrados.
      */
     async _sendBattleNotifications(battle) {
-        const { armyA, armyB, isDraw, winner, loot, h3Index, turn, characterEvents = [],
-                coalitionA = [], coalitionB = [], totalDeadA = armyA.dead, totalDeadB = armyB.dead } = battle;
+        const { armyA, armyB, isDraw, winner, loot, h3Index, turn, attackerArmyId,
+                characterEvents = [], coalitionA = [], coalitionB = [],
+                totalDeadA = armyA.dead, totalDeadB = armyB.dead } = battle;
+
+        // Quién atacó y quién defendió
+        const attacker = attackerArmyId === armyA.id ? armyA : attackerArmyId === armyB.id ? armyB : null;
+        const defender = attacker === armyA ? armyB : attacker === armyB ? armyA : null;
 
         const charLines = (forPlayerId) => characterEvents.map(ev => {
             if (ev.type === 'captured' && ev.originalPlayerId === forPlayerId)
@@ -1313,10 +1318,6 @@ class CombatService {
         const formatLoot = (l) =>
             `💰${l.gold} oro, 🍖${l.food} comida, 🌲${l.wood} madera`;
 
-        const formatDesglose = (desglose) =>
-            desglose?.length ? ' (' + desglose.map(d => `${d.nombre}: ${d.perdidos}`).join(', ') + ')' : '';
-
-        // Combina desgloses de armada principal + coalición y agrupa por tipo de unidad
         const sideDesgloseStr = (mainDesglose, coalLosses) => {
             const all = [...(mainDesglose ?? []), ...coalLosses.flatMap(c => c.desglose ?? [])];
             if (!all.length) return '';
@@ -1331,56 +1332,99 @@ class CombatService {
         const retreatLine = (r) => {
             if (!r) return '';
             if (r.destroyed)  return '\n💀 Sin retirada posible — ejército destruido.';
-            if (!r.retreated) return '\n🏰 El ejército mantiene posición en la capital.';
-            return `\n🏃 Se retira a ${r.newHex}.`;
+            if (!r.retreated && r.destroyed === false) return '\n🏰 Las tropas mantienen posición, sin poder retirarse.';
+            if (!r.retreated) return '\n🏰 El ejército se aferra a la capital.';
+            return `\n🏃 Las tropas se retiran hacia ${r.newHex}.`;
         };
 
-        let contentA, contentB;
+        const enemyAnnihilatedLine = (destroyed) =>
+            destroyed ? '\n🏳️ El ejército enemigo ha sido completamente aniquilado.' : '';
 
-        if (isDraw) {
-            contentA =
-                `⚔️ EMPATE en ${h3Index} (Turno ${turn})\n` +
-                `${armyA.name} vs ${armyB.name}\n` +
-                `Bajas propias: ${armyA.dead} unidades` +
-                charLines(armyA.playerId);
-            contentB =
-                `⚔️ EMPATE en ${h3Index} (Turno ${turn})\n` +
-                `${armyB.name} vs ${armyA.name}\n` +
-                `Bajas propias: ${armyB.dead} unidades` +
-                charLines(armyB.playerId);
-        } else if (winner.id === armyA.id) {
-            const lootLine = loot ? `\n💰 Botín: ${formatLoot(loot)}` : '';
-            contentA =
-                `⚔️ VICTORIA en ${h3Index} (Turno ${turn})\n` +
-                `${armyA.name} derrotó a ${armyB.name}\n` +
-                `Bajas propias: ${armyA.dead}${formatDesglose(armyA.desglose)} | Bajas enemigas: ${totalDeadB}${sideDesgloseStr(armyB.desglose, coalitionB)}` +
+        // Construye el bloque de bajas
+        const casualtiesLine = (ownDead, ownDesglose, enemyDead, enemyDesglose, enemyCoal) =>
+            `Bajas propias: ${ownDead}${sideDesgloseStr(ownDesglose, [])} | Bajas enemigas: ${enemyDead}${sideDesgloseStr(enemyDesglose, enemyCoal)}`;
+
+        // ── Función principal: genera contenido para UN jugador ───────────────
+        const buildContent = (myArmy, myCoal, enemyArmy, enemyCoal, myTotalDead, enemyTotalDead) => {
+            const iAttacked  = attacker && myArmy.id === attacker.id;
+            const iDefended  = defender && myArmy.id === defender.id;
+            const iWon       = !isDraw && winner?.id === myArmy.id;
+            const iLost      = !isDraw && winner?.id !== myArmy.id;
+            const myRetreat  = myArmy.retreat;
+            const lootLine   = loot ? (iWon ? `\n💰 Botín capturado: ${formatLoot(loot)}` : `\n💸 Provisiones saqueadas: ${formatLoot(loot)}`) : '';
+
+            if (isDraw) {
+                const context = iAttacked ? `atacaste a "${enemyArmy.name}"`
+                              : iDefended ? `recibiste el ataque de "${enemyArmy.name}"`
+                              : `"${myArmy.name}" combatió contra "${enemyArmy.name}"`;
+                return (
+                    `⚔️ EMPATE — Turno ${turn}\n\n` +
+                    `Mientras ${context}, ningún bando logró imponerse.\n\n` +
+                    `Bajas propias: ${myArmy.dead} | Bajas enemigas: ${enemyArmy.dead}` +
+                    charLines(myArmy.playerId)
+                );
+            }
+
+            if (iAttacked && iWon) {
+                return (
+                    `⚔️ ¡VICTORIA! — Turno ${turn}\n\n` +
+                    `"${myArmy.name}" atacó a "${enemyArmy.name}" y ¡por fortuna **hemos vencido**!\n\n` +
+                    casualtiesLine(myArmy.dead, myArmy.desglose, enemyTotalDead, enemyArmy.desglose, enemyCoal) +
+                    lootLine +
+                    enemyAnnihilatedLine(enemyArmy.destroyed) +
+                    (!enemyArmy.destroyed ? retreatLine(enemyArmy.retreat) : '') +
+                    charLines(myArmy.playerId)
+                );
+            }
+
+            if (iAttacked && iLost) {
+                return (
+                    `⚔️ DERROTA — Turno ${turn}\n\n` +
+                    `"${myArmy.name}" atacó a "${enemyArmy.name}" pero por desgracia **hemos sufrido una amarga derrota**.\n\n` +
+                    casualtiesLine(myArmy.dead, myArmy.desglose, enemyTotalDead, enemyArmy.desglose, enemyCoal) +
+                    (loot ? lootLine : '') +
+                    retreatLine(myRetreat) +
+                    charLines(myArmy.playerId)
+                );
+            }
+
+            if (iDefended && iWon) {
+                return (
+                    `⚔️ ¡VICTORIA! — Turno ${turn}\n\n` +
+                    `Hemos recibido el ataque de "${enemyArmy.name}" pero por fortuna **¡hemos vencido!**\n\n` +
+                    casualtiesLine(myArmy.dead, myArmy.desglose, enemyTotalDead, enemyArmy.desglose, enemyCoal) +
+                    lootLine +
+                    enemyAnnihilatedLine(enemyArmy.destroyed) +
+                    (!enemyArmy.destroyed ? retreatLine(enemyArmy.retreat) : '') +
+                    charLines(myArmy.playerId)
+                );
+            }
+
+            if (iDefended && iLost) {
+                return (
+                    `⚔️ DERROTA — Turno ${turn}\n\n` +
+                    `Hemos recibido el ataque de "${enemyArmy.name}" y por desgracia **hemos sufrido una amarga derrota**.\n\n` +
+                    casualtiesLine(myArmy.dead, myArmy.desglose, enemyTotalDead, enemyArmy.desglose, enemyCoal) +
+                    (loot ? lootLine : '') +
+                    retreatLine(myRetreat) +
+                    charLines(myArmy.playerId)
+                );
+            }
+
+            // Fallback (sin attackerArmyId conocido)
+            const outcome = iWon ? '¡VICTORIA!' : 'DERROTA';
+            return (
+                `⚔️ ${outcome} — Turno ${turn}\n\n` +
+                `"${myArmy.name}" combatió contra "${enemyArmy.name}".\n\n` +
+                casualtiesLine(myArmy.dead, myArmy.desglose, enemyTotalDead, enemyArmy.desglose, enemyCoal) +
                 lootLine +
-                (armyB.destroyed ? '\n🏳️ Ejército enemigo aniquilado.' : retreatLine(armyB.retreat)) +
-                charLines(armyA.playerId);
-            contentB =
-                `⚔️ DERROTA en ${h3Index} (Turno ${turn})\n` +
-                `${armyA.name} derrotó a ${armyB.name}\n` +
-                `Bajas propias: ${armyB.dead}${formatDesglose(armyB.desglose)} | Bajas enemigas: ${totalDeadA}` +
-                (loot ? `\n💸 Provisiones saqueadas: ${formatLoot(loot)}` : '') +
-                retreatLine(armyB.retreat) +
-                charLines(armyB.playerId);
-        } else {
-            const lootLine = loot ? `\n💰 Botín: ${formatLoot(loot)}` : '';
-            contentA =
-                `⚔️ DERROTA en ${h3Index} (Turno ${turn})\n` +
-                `${armyB.name} derrotó a ${armyA.name}\n` +
-                `Bajas propias: ${armyA.dead}${formatDesglose(armyA.desglose)} | Bajas enemigas: ${totalDeadB}` +
-                (loot ? `\n💸 Provisiones saqueadas: ${formatLoot(loot)}` : '') +
-                retreatLine(armyA.retreat) +
-                charLines(armyA.playerId);
-            contentB =
-                `⚔️ VICTORIA en ${h3Index} (Turno ${turn})\n` +
-                `${armyB.name} derrotó a ${armyA.name}\n` +
-                `Bajas propias: ${armyB.dead}${formatDesglose(armyB.desglose)} | Bajas enemigas: ${totalDeadA}${sideDesgloseStr(armyA.desglose, coalitionA)}` +
-                lootLine +
-                (armyA.destroyed ? '\n🏳️ Ejército enemigo aniquilado.' : retreatLine(armyA.retreat)) +
-                charLines(armyB.playerId);
-        }
+                retreatLine(myRetreat) +
+                charLines(myArmy.playerId)
+            );
+        };
+
+        const contentA = buildContent(armyA, coalitionA, armyB, coalitionB, totalDeadA, totalDeadB);
+        const contentB = buildContent(armyB, coalitionB, armyA, coalitionA, totalDeadB, totalDeadA);
 
         if (armyA.playerId) await NotificationService.createSystemNotification(armyA.playerId, 'Militar', contentA, turn);
         if (armyB.playerId) await NotificationService.createSystemNotification(armyB.playerId, 'Militar', contentB, turn);
@@ -1392,17 +1436,16 @@ class CombatService {
         for (const ally of coalitionA) {
             let content;
             if (isDraw) {
-                content = `⚔️ EMPATE en ${h3Index} (Turno ${turn})\nBando: ${armyA.name}\nBajas propias: ${ally.dead} unidades`;
+                content = `⚔️ EMPATE — Turno ${turn}\nBando: "${armyA.name}"\nBajas propias: ${ally.dead} unidades`;
             } else if (isAWinner) {
-                const lootLine = loot ? `\n💰 Botín: ${formatLoot(loot)}` : '';
                 content =
-                    `⚔️ VICTORIA en ${h3Index} (Turno ${turn})\nBando: ${armyA.name}\n` +
-                    `Bajas propias: ${ally.dead}${formatDesglose(ally.desglose)} | Bajas enemigas: ${totalDeadB}${sideDesgloseStr(armyB.desglose, coalitionB)}` +
-                    lootLine;
+                    `⚔️ ¡VICTORIA! — Turno ${turn}\nBando: "${armyA.name}"\n` +
+                    `Bajas propias: ${ally.dead}${sideDesgloseStr(ally.desglose, [])}` +
+                    (loot ? `\n💰 Botín: ${formatLoot(loot)}` : '');
             } else {
                 content =
-                    `⚔️ DERROTA en ${h3Index} (Turno ${turn})\nBando: ${armyA.name}\n` +
-                    `Bajas propias: ${ally.dead}${formatDesglose(ally.desglose)} | Bajas enemigas: ${totalDeadB}` +
+                    `⚔️ DERROTA — Turno ${turn}\nBando: "${armyA.name}"\n` +
+                    `Bajas propias: ${ally.dead}${sideDesgloseStr(ally.desglose, [])}` +
                     (loot ? `\n💸 Provisiones saqueadas: ${formatLoot(loot)}` : '');
             }
             await NotificationService.createSystemNotification(ally.player_id, 'Militar', content, turn);
@@ -1411,17 +1454,16 @@ class CombatService {
         for (const ally of coalitionB) {
             let content;
             if (isDraw) {
-                content = `⚔️ EMPATE en ${h3Index} (Turno ${turn})\nBando: ${armyB.name}\nBajas propias: ${ally.dead} unidades`;
+                content = `⚔️ EMPATE — Turno ${turn}\nBando: "${armyB.name}"\nBajas propias: ${ally.dead} unidades`;
             } else if (isBWinner) {
-                const lootLine = loot ? `\n💰 Botín: ${formatLoot(loot)}` : '';
                 content =
-                    `⚔️ VICTORIA en ${h3Index} (Turno ${turn})\nBando: ${armyB.name}\n` +
-                    `Bajas propias: ${ally.dead}${formatDesglose(ally.desglose)} | Bajas enemigas: ${totalDeadA}${sideDesgloseStr(armyA.desglose, coalitionA)}` +
-                    lootLine;
+                    `⚔️ ¡VICTORIA! — Turno ${turn}\nBando: "${armyB.name}"\n` +
+                    `Bajas propias: ${ally.dead}${sideDesgloseStr(ally.desglose, [])}` +
+                    (loot ? `\n💰 Botín: ${formatLoot(loot)}` : '');
             } else {
                 content =
-                    `⚔️ DERROTA en ${h3Index} (Turno ${turn})\nBando: ${armyB.name}\n` +
-                    `Bajas propias: ${ally.dead}${formatDesglose(ally.desglose)} | Bajas enemigas: ${totalDeadA}` +
+                    `⚔️ DERROTA — Turno ${turn}\nBando: "${armyB.name}"\n` +
+                    `Bajas propias: ${ally.dead}${sideDesgloseStr(ally.desglose, [])}` +
                     (loot ? `\n💸 Provisiones saqueadas: ${formatLoot(loot)}` : '');
             }
             await NotificationService.createSystemNotification(ally.player_id, 'Militar', content, turn);
