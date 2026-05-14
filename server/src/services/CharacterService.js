@@ -1328,7 +1328,7 @@ class CharacterService {
             const barracksResult = await client.query(
                 `SELECT fb.h3_index FROM fief_buildings fb
                  JOIN buildings b ON b.id = fb.building_id
-                 JOIN building_types bt ON bt.id = b.type_id
+                 JOIN building_types bt ON bt.building_type_id = b.type_id
                  WHERE fb.h3_index = $1
                    AND bt.name ILIKE '%militar%'
                    AND fb.remaining_construction_turns = 0`,

@@ -16,6 +16,11 @@ const REBELLION_THRESHOLD     = 100;  // Umbral que dispara la rebelión
 const REBEL_ARMY_SIZE         = 500;  // Campesinos en armas al rebelarse
 const RESISTANCE_AFTER_REBEL  = 30;   // Resistencia residual tras rebelión
 
+// Límites de spawn de ejércitos rebeldes
+const REBEL_MAX_COUNT       = 2;   // máx rebeldes por ciclo de comarca
+const REBEL_GAP_SECOND      = 60;  // turnos entre 1º y 2º rebelde
+const REBEL_COOLDOWN_DEFEAT = 30;  // cooldown (turnos) tras destruir un rebelde
+
 // Unidad de infantería ligera de cada cultura para los ejércitos rebeldes
 const REBEL_UNIT_BY_CULTURE = {
     1: 5,   // Romano    → Velites
@@ -25,6 +30,24 @@ const REBEL_UNIT_BY_CULTURE = {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function recordRebelSpawn(client, divisionId, playerId, currentTurn) {
+    const { rows } = await client.query(
+        `SELECT rebel_spawn_count FROM comarca_resistance WHERE division_id = $1 AND player_id = $2`,
+        [divisionId, playerId]
+    );
+    const newCount   = (rows[0]?.rebel_spawn_count ?? 0) + 1;
+    const nextCooldown = newCount < REBEL_MAX_COUNT ? currentTurn + REBEL_GAP_SECOND : 999999;
+    await client.query(`
+        INSERT INTO comarca_resistance
+            (division_id, player_id, rebel_spawn_count, rebel_cooldown_until_turn, rebel_is_alive, resistance, aftershock, updated_at)
+        VALUES ($1, $2, $3, $4, TRUE, 0, 0, NOW())
+        ON CONFLICT (division_id, player_id) DO UPDATE SET
+            rebel_spawn_count         = $3,
+            rebel_cooldown_until_turn = $4,
+            rebel_is_alive            = TRUE
+    `, [divisionId, playerId, newCount, nextCooldown]);
+}
 
 function fmtHex(h3_index) {
     const [lat, lng] = h3.cellToLatLng(h3_index);
@@ -300,9 +323,35 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
     const spawnHex = liberatedFiefs.includes(capitalH3) ? capitalH3 : liberatedFiefs[0];
     const unitTypeId = REBEL_UNIT_BY_CULTURE[dominantCultureId] ?? 17;
 
+    // Comprobar límites de spawn antes de crear el ejército rebelde
+    const { rows: limitRows } = await client.query(`
+        SELECT rebel_spawn_count, rebel_cooldown_until_turn
+        FROM comarca_resistance WHERE division_id = $1 AND player_id = $2
+    `, [divisionId, playerId]);
+    const spawnLimitTrigger = limitRows[0];
+    const canSpawnArmy = !spawnLimitTrigger
+        || (spawnLimitTrigger.rebel_spawn_count < REBEL_MAX_COUNT
+            && turn >= parseInt(spawnLimitTrigger.rebel_cooldown_until_turn));
+
+    if (!canSpawnArmy) {
+        Logger.engine(`[TURN ${turn}] Rebellion in comarca ${divisionId}: fiefs liberated but rebel army blocked by spawn limit`);
+        await NotificationService.createSystemNotification(
+            playerId, 'Militar',
+            [
+                `⚔️ **¡REBELIÓN EN ${comarcaName.toUpperCase()}!**`,
+                ``,
+                `La población de **${comarcaName}** se ha alzado y liberado ${liberatedFiefs.length} territorio${liberatedFiefs.length > 1 ? 's' : ''}.`,
+                ``,
+                `La resistencia pasiva continúa pero no hay nuevos levantamientos armados.`,
+            ].join('\n'),
+            turn
+        );
+        return;
+    }
+
     const armyRes = await client.query(`
         INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
-        VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+        VALUES (NULL, $1, 'Rebeldes', TRUE, $2, $3)
         RETURNING army_id
     `, [spawnHex, divisionId, playerId]);
     const armyId = armyRes.rows[0].army_id;
@@ -311,6 +360,8 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
         INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale)
         VALUES ($1, $2, $3, 5, 70)
     `, [armyId, unitTypeId, REBEL_ARMY_SIZE]);
+
+    await recordRebelSpawn(client, divisionId, playerId, turn);
 
     const loc = fmtHex(spawnHex);
     await NotificationService.createSystemNotification(
@@ -342,6 +393,32 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
  *   4. Patrullar: moverse a un hex libre adyacente aleatorio
  */
 async function processRebelArmies(client, turn) {
+    // Detectar ejércitos rebeldes destruidos desde el último turno y aplicar cooldowns
+    const { rows: deadComarcas } = await client.query(`
+        SELECT cr.division_id, cr.player_id, cr.rebel_spawn_count
+        FROM comarca_resistance cr
+        WHERE cr.rebel_is_alive = TRUE
+          AND NOT EXISTS (
+              SELECT 1 FROM armies a
+              WHERE a.rebel_division_id = cr.division_id AND a.is_rebel = TRUE
+          )
+    `);
+    for (const c of deadComarcas) {
+        const reset = c.rebel_spawn_count >= REBEL_MAX_COUNT;
+        await client.query(`
+            UPDATE comarca_resistance
+            SET rebel_is_alive            = FALSE,
+                rebel_cooldown_until_turn = $1,
+                rebel_spawn_count         = CASE WHEN $2 THEN 0 ELSE rebel_spawn_count END
+            WHERE division_id = $3 AND player_id = $4
+        `, [turn + REBEL_COOLDOWN_DEFEAT, reset, c.division_id, c.player_id]);
+        Logger.engine(
+            `[TURN ${turn}] Rebel destroyed in comarca ${c.division_id}: ` +
+            (reset ? `ciclo reseteado, cooldown hasta turno ${turn + REBEL_COOLDOWN_DEFEAT}`
+                   : `cooldown hasta turno ${turn + REBEL_COOLDOWN_DEFEAT}`)
+        );
+    }
+
     const rebels = await client.query(`
         SELECT army_id, h3_index, rebel_division_id, rebel_target_player_id, recovering
         FROM armies
@@ -361,12 +438,19 @@ async function processRebelArmies(client, turn) {
 }
 
 async function _processOneRebelArmy(client, rebel, turn) {
-    // Si el hex actual sigue siendo del agresor (quedó de un turno anterior), liberarlo
-    await client.query(
-        `UPDATE h3_map SET player_id = NULL, previous_player_id = $1
-         WHERE h3_index = $2 AND player_id = $1`,
-        [rebel.rebel_target_player_id, rebel.h3_index]
+    // Liberar el hex actual solo si el agresor no tiene tropas estacionadas en él
+    const guardRes = await client.query(
+        `SELECT COUNT(*)::int AS cnt FROM armies
+         WHERE h3_index = $1 AND player_id = $2`,
+        [rebel.h3_index, rebel.rebel_target_player_id]
     );
+    if (guardRes.rows[0].cnt === 0) {
+        await client.query(
+            `UPDATE h3_map SET player_id = NULL, previous_player_id = $1
+             WHERE h3_index = $2 AND player_id = $1`,
+            [rebel.rebel_target_player_id, rebel.h3_index]
+        );
+    }
 
     // Cooldown tras conquista: esperar 1-2 turnos antes de volver a atacar
     if (rebel.recovering > 0) {
@@ -405,14 +489,20 @@ async function _processOneRebelArmy(client, rebel, turn) {
         `, [targetHex, rebel.rebel_target_player_id]);
 
         if (defArmy.rows.length > 0) {
+            const defArmyId = defArmy.rows[0].army_id;
             await CombatService.resolveCombat(
-                client, rebel.army_id, defArmy.rows[0].army_id, targetHex, turn, rebel.army_id
+                client, rebel.army_id, defArmyId, targetHex, turn, rebel.army_id
             );
-            // Comprobar si el ejército rebelde sobrevivió
+            // El rebelde murió → parar
             const alive = await client.query(
                 'SELECT army_id FROM armies WHERE army_id = $1', [rebel.army_id]
             );
             if (alive.rows.length === 0) return;
+            // El defensor sobrevivió (empate) → el rebelde no puede liberar el hex
+            const defenderAlive = await client.query(
+                'SELECT army_id FROM armies WHERE army_id = $1', [defArmyId]
+            );
+            if (defenderAlive.rows.length > 0) return;
         }
 
         await client.query(
@@ -421,15 +511,21 @@ async function _processOneRebelArmy(client, rebel, turn) {
             [rebel.rebel_target_player_id, targetHex]
         );
 
-        // Descanso de 1-2 turnos tras conquistar un feudo
-        const restTurns = 1 + Math.floor(Math.random() * 2);
         await client.query(
-            'UPDATE armies SET recovering = $1 WHERE army_id = $2',
-            [restTurns, rebel.army_id]
+            'UPDATE armies SET recovering = 4 WHERE army_id = $1',
+            [rebel.army_id]
         );
-        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} liberated ${targetHex}, resting ${restTurns} turn(s)`);
+        Logger.engine(`[TURN ${turn}] Rebel army ${rebel.army_id} liberated ${targetHex}, resting 4 turn(s)`);
         return;
     }
+
+    // Helper: mover y marcar 1 turno de espera (no 2 turnos seguidos)
+    const moveAndRest = async (newHex) => {
+        await client.query(
+            'UPDATE armies SET h3_index = $1, recovering = 1 WHERE army_id = $2',
+            [newHex, rebel.army_id]
+        );
+    };
 
     // 2. Feudos libres de la comarca adyacentes → ocupar
     const freeComarca = await client.query(`
@@ -442,10 +538,7 @@ async function _processOneRebelArmy(client, rebel, turn) {
     `, [neighbors, rebel.rebel_division_id]);
 
     if (freeComarca.rows.length > 0) {
-        await client.query(
-            'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
-            [freeComarca.rows[0].h3_index, rebel.army_id]
-        );
+        await moveAndRest(freeComarca.rows[0].h3_index);
         return;
     }
 
@@ -468,7 +561,7 @@ async function _processOneRebelArmy(client, rebel, turn) {
 
         if (neighbors.includes(target.h3_index)) {
             await client.query(
-                'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
+                'UPDATE armies SET h3_index = $1, recovering = 1 WHERE army_id = $2',
                 [target.h3_index, rebel.army_id]
             );
             await CombatService.resolveCombat(
@@ -489,12 +582,7 @@ async function _processOneRebelArmy(client, rebel, turn) {
                     return d < dBest ? n : best;
                 } catch { return best; }
             }, null);
-            if (nextHex) {
-                await client.query(
-                    'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
-                    [nextHex, rebel.army_id]
-                );
-            }
+            if (nextHex) await moveAndRest(nextHex);
         }
         return;
     }
@@ -510,10 +598,7 @@ async function _processOneRebelArmy(client, rebel, turn) {
 
     if (freeNeighbors.rows.length > 0) {
         const pick = freeNeighbors.rows[Math.floor(Math.random() * freeNeighbors.rows.length)];
-        await client.query(
-            'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
-            [pick.h3_index, rebel.army_id]
-        );
+        await moveAndRest(pick.h3_index);
     }
 }
 
@@ -570,11 +655,40 @@ async function processHappinessRebellion(client, currentTurn) {
     const rebelsByPlayer    = new Map();
     const suppressedByPlayer = new Map();
 
+    // Comarcas que ya tienen un ejército rebelde activo — no se genera otro
+    const { rows: activeRebelRows } = await client.query(`
+        SELECT DISTINCT rebel_division_id AS division_id
+        FROM armies
+        WHERE is_rebel = TRUE AND rebel_division_id IS NOT NULL
+    `);
+    const divisionWithRebel = new Set(activeRebelRows.map(r => r.division_id));
+
+    // Límites de spawn por comarca: comarcas que han alcanzado el máximo o están en cooldown
+    const { rows: spawnLimitRows } = await client.query(`
+        SELECT division_id, player_id, rebel_spawn_count, rebel_cooldown_until_turn
+        FROM comarca_resistance
+        WHERE rebel_spawn_count >= $1 OR rebel_cooldown_until_turn > $2
+    `, [REBEL_MAX_COUNT, currentTurn]);
+    const divisionSpawnLimits = new Map(
+        spawnLimitRows.map(r => [`${r.division_id}_${r.player_id}`, r])
+    );
+
     for (const fief of fiefs) {
         if (Math.random() >= HAPPINESS_REBEL_CHANCE) continue;
 
         // La capital principal y sus feudos contiguos nunca se rebelan
         if (fief.player_capital && h3.gridDisk(fief.player_capital, 1).includes(fief.h3_index)) continue;
+
+        // Si la comarca ya tiene un ejército rebelde activo, no generar otro
+        if (divisionWithRebel.has(fief.division_id)) continue;
+
+        // Comprobar límites de spawn (máx 2 por ciclo, cooldowns entre apariciones)
+        const spawnKey   = `${fief.division_id}_${fief.player_id}`;
+        const spawnLimit = divisionSpawnLimits.get(spawnKey);
+        if (spawnLimit) {
+            if (spawnLimit.rebel_spawn_count >= REBEL_MAX_COUNT) continue;
+            if (currentTurn < parseInt(spawnLimit.rebel_cooldown_until_turn)) continue;
+        }
 
         const unitTypeId = REBEL_UNIT_BY_CULTURE[fief.dominant_culture_id] ?? 17;
 
@@ -592,7 +706,7 @@ async function processHappinessRebellion(client, currentTurn) {
             // Crear ejército campesino temporal para el combate
             const { rows: peasantRows } = await client.query(`
                 INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
-                VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+                VALUES (NULL, $1, 'Rebeldes', TRUE, $2, $3)
                 RETURNING army_id
             `, [fief.h3_index, fief.division_id, fief.player_id]);
             const peasantArmyId = peasantRows[0].army_id;
@@ -663,7 +777,7 @@ async function processHappinessRebellion(client, currentTurn) {
             const armyId = peasantAlive.rows.length > 0 ? peasantArmyId : await (async () => {
                 const { rows } = await client.query(`
                     INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
-                    VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+                    VALUES (NULL, $1, 'Rebeldes', TRUE, $2, $3)
                     RETURNING army_id
                 `, [fief.h3_index, fief.division_id, fief.player_id]);
                 await client.query(`
@@ -672,6 +786,15 @@ async function processHappinessRebellion(client, currentTurn) {
                 `, [rows[0].army_id, unitTypeId, HAPPINESS_REBEL_TROOPS]);
                 return rows[0].army_id;
             })();
+
+            await client.query('UPDATE armies SET recovering = 4 WHERE army_id = $1', [armyId]);
+            await recordRebelSpawn(client, fief.division_id, fief.player_id, currentTurn);
+            divisionWithRebel.add(fief.division_id);
+            const newSpawnCount = (spawnLimit?.rebel_spawn_count ?? 0) + 1;
+            divisionSpawnLimits.set(spawnKey, {
+                rebel_spawn_count: newSpawnCount,
+                rebel_cooldown_until_turn: newSpawnCount < REBEL_MAX_COUNT ? currentTurn + REBEL_GAP_SECOND : 999999,
+            });
 
             const deadTroops = battleResult?.armyB?.dead ?? 0;
 
@@ -698,7 +821,7 @@ async function processHappinessRebellion(client, currentTurn) {
 
         const { rows: armyRows } = await client.query(`
             INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
-            VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+            VALUES (NULL, $1, 'Rebeldes', TRUE, $2, $3)
             RETURNING army_id
         `, [fief.h3_index, fief.division_id, fief.player_id]);
         const armyId = armyRows[0].army_id;
@@ -707,6 +830,15 @@ async function processHappinessRebellion(client, currentTurn) {
             INSERT INTO troops (army_id, unit_type_id, quantity, experience, morale)
             VALUES ($1, $2, $3, 5, 70)
         `, [armyId, unitTypeId, HAPPINESS_REBEL_TROOPS]);
+
+        await client.query('UPDATE armies SET recovering = 4 WHERE army_id = $1', [armyId]);
+        await recordRebelSpawn(client, fief.division_id, fief.player_id, currentTurn);
+        divisionWithRebel.add(fief.division_id);
+        const newSpawnCountDirect = (spawnLimit?.rebel_spawn_count ?? 0) + 1;
+        divisionSpawnLimits.set(spawnKey, {
+            rebel_spawn_count: newSpawnCountDirect,
+            rebel_cooldown_until_turn: newSpawnCountDirect < REBEL_MAX_COUNT ? currentTurn + REBEL_GAP_SECOND : 999999,
+        });
 
         if (!rebelsByPlayer.has(fief.player_id)) rebelsByPlayer.set(fief.player_id, []);
         rebelsByPlayer.get(fief.player_id).push({ h3_index: fief.h3_index, division_name: fief.division_name });

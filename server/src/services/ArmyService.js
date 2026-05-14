@@ -660,7 +660,7 @@ class ArmyService {
 
             // Validate both armies belong to player and share same h3_index
             const armiesResult = await client.query(
-                `SELECT army_id, name, h3_index, destination,
+                `SELECT army_id, name, h3_index, destination, is_garrison,
                         gold_provisions, food_provisions, wood_provisions, stone_provisions, iron_provisions
                  FROM armies
                  WHERE army_id = ANY($1::int[]) AND player_id = $2`,
@@ -715,7 +715,9 @@ class ArmyService {
                 );
             }
 
-            // Check if either army is now empty — dissolve it and pass remaining provisions to the other
+            // Check if either army is now empty — dissolve it and pass remaining provisions to the other.
+            // Rule: never dissolve a field army that emptied into a garrison (user needs it to ungarrison later).
+            // Only dissolve if: the empty army is a garrison, OR both armies are field armies.
             const PROV_COLS = ['gold_provisions', 'food_provisions', 'wood_provisions', 'stone_provisions', 'iron_provisions'];
             let dissolved_army_id = null;
             let dissolved_name    = null;
@@ -727,6 +729,12 @@ class ArmyService {
                     [emptyId]
                 );
                 if (parseInt(troopCheck.rows[0].total) === 0) {
+                    const emptyArmy    = emptyId   === from_army_id ? fromArmy : toArmy;
+                    const survivorArmy = survivorId === from_army_id ? fromArmy : toArmy;
+
+                    // Skip dissolution: field army emptied into garrison → keep as shell for ungarrisoning
+                    if (!emptyArmy.is_garrison && survivorArmy.is_garrison) break;
+
                     // Transfer all remaining provisions to survivor
                     const emptyRow = await client.query(
                         `SELECT ${PROV_COLS.join(', ')} FROM armies WHERE army_id = $1`, [emptyId]
@@ -740,7 +748,7 @@ class ArmyService {
                     await client.query('DELETE FROM army_routes WHERE army_id = $1', [emptyId]);
                     await client.query('DELETE FROM armies WHERE army_id = $1', [emptyId]);
                     dissolved_army_id = emptyId;
-                    dissolved_name    = emptyId === from_army_id ? fromArmy.name : toArmy.name;
+                    dissolved_name    = emptyArmy.name;
                     survivor_army_id  = survivorId;
                     break;
                 }

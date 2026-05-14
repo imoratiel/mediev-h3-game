@@ -56,7 +56,7 @@
                 class="notif-goto-btn"
                 @click.stop="emit('focusHex', extractH3(notif.content))"
                 title="Ir a la celda"
-              >📍 Ir</button>
+              >🗺 Ver en el mapa</button>
               <span v-if="!notif.is_read" class="notif-unread-dot"></span>
             </div>
           </div>
@@ -81,7 +81,6 @@ const props = defineProps({
 // ── Categorías — orden: críticas primero ──────────────────────────────────────
 const CATEGORIES = [
   { key: 'Militar',   icon: '⚔️', label: 'Militar',   color: '#e57373', border: 'rgba(229,115,115,0.6)' },
-  { key: 'Hambre',    icon: '🚨', label: 'Hambre',    color: '#ff8a65', border: 'rgba(255,138,101,0.6)' },
   { key: 'Económico', icon: '💰', label: 'Económico', color: '#81c784', border: 'rgba(129,199,132,0.5)' },
   { key: 'Impuestos', icon: '📜', label: 'Impuestos', color: '#ffd700', border: 'rgba(255,215,0,  0.5)' },
   { key: 'General',   icon: '📢', label: 'General',   color: '#a89875', border: 'rgba(168,152,117,0.4)' },

@@ -39,6 +39,16 @@
       </div>
     </div>
 
+    <!-- Army limit warning banner -->
+    <div v-if="fief && atFieldArmyLimit" class="army-limit-banner">
+      <div class="limit-banner-icon">🚫</div>
+      <div class="limit-banner-body">
+        <strong>Límite de ejércitos alcanzado</strong>
+        <p>Comandas {{ armyCount }}/{{ armyLimit }} ejércitos. No puedes crear más ejércitos de campo hasta que conquistes nuevos territorios.</p>
+        <p class="limit-banner-hint">Puedes seguir acuartelando tropas en tus feudos.</p>
+      </div>
+    </div>
+
     <div class="recruitment-content" v-if="fief">
       <!-- Resources Recap -->
       <div class="recruitment-section current-fief-mini">
@@ -66,7 +76,8 @@
               {
                 'unit-selected': unitQuantities[unit.unit_type_id] > 0,
                 'unit-affordable': canAffordAtLeastOne(unit),
-                'unit-unaffordable': !canAffordAtLeastOne(unit)
+                'unit-unaffordable': !canAffordAtLeastOne(unit),
+                'unit-at-limit': atFieldArmyLimit
               }
             ]"
           >
@@ -94,7 +105,7 @@
 
             <!-- Quantity selector -->
             <div class="quantity-selector">
-              <button class="qty-btn" @click="decrementUnit(unit)" :disabled="!unitQuantities[unit.unit_type_id]">−</button>
+              <button class="qty-btn" @click="decrementUnit(unit)" :disabled="!unitQuantities[unit.unit_type_id] || atFieldArmyLimit">−</button>
               <input
                 type="number"
                 min="0"
@@ -102,8 +113,9 @@
                 :value="unitQuantities[unit.unit_type_id] || 0"
                 @change="setUnitQuantity(unit, $event.target.value)"
                 class="qty-input"
+                :disabled="atFieldArmyLimit"
               />
-              <button class="qty-btn" @click="incrementUnit(unit)" :disabled="!canAffordAtLeastOne(unit)">+</button>
+              <button class="qty-btn" @click="incrementUnit(unit)" :disabled="!canAffordAtLeastOne(unit) || atFieldArmyLimit">+</button>
             </div>
           </div>
         </div>
@@ -118,6 +130,7 @@
           placeholder="Dejar vacío para nombre automático"
           maxlength="100"
           class="recruitment-input"
+          :disabled="atFieldArmyLimit"
         />
       </div>
       <!-- Garrison info -->
@@ -137,7 +150,7 @@
     </div>
 
     <!-- Sticky summary footer -->
-    <div v-if="fief && totalSelectedTroops > 0" class="recruitment-footer">
+    <div v-if="fief && totalSelectedTroops > 0 && !atFieldArmyLimit" class="recruitment-footer">
       <div class="footer-summary">
         <div class="footer-troops">
           <span class="footer-label">Tropas:</span>
@@ -259,6 +272,10 @@ const totalUpkeep = computed(() => {
   }
   return result;
 });
+
+const atFieldArmyLimit = computed(() =>
+  recruitMode.value === 'field' && props.armyCount >= props.armyLimit
+);
 
 const canBulkRecruit = computed(() => {
   if (!props.fief || totalSelectedTroops.value === 0) return false;
@@ -392,6 +409,7 @@ const handleBulkRecruit = () => {
 
 .unit-card.unit-selected { border-color: #ffd700; background: rgba(255, 215, 0, 0.07); }
 .unit-card.unit-unaffordable { opacity: 0.6; filter: grayscale(0.5); }
+.unit-card.unit-at-limit { opacity: 0.35; pointer-events: none; filter: grayscale(0.7); }
 
 .unit-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .unit-card-header h5 { margin: 0; color: #ffd700; font-size: 1.1rem; }
@@ -518,4 +536,20 @@ const handleBulkRecruit = () => {
 
 .empty-state { text-align: center; padding: 60px 20px; color: #a89875; }
 .loading-text { text-align: center; padding: 40px; color: #a89875; }
+
+.army-limit-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 0 0 20px;
+  padding: 18px 20px;
+  background: rgba(220, 38, 38, 0.12);
+  border: 2px solid rgba(220, 38, 38, 0.6);
+  border-radius: 8px;
+  color: #fca5a5;
+}
+.limit-banner-icon { font-size: 2rem; flex-shrink: 0; line-height: 1; }
+.limit-banner-body strong { display: block; font-size: 1.05rem; color: #f87171; margin-bottom: 6px; font-family: 'Cinzel', serif; letter-spacing: 0.5px; }
+.limit-banner-body p { margin: 0 0 4px; font-size: 0.9rem; line-height: 1.5; color: #fca5a5; }
+.limit-banner-hint { color: #a89875 !important; font-style: italic; }
 </style>
