@@ -358,7 +358,7 @@ async function processSoldadas(client, turn) {
                     ? `\n• Ejércitos en campaña: ${awayTroops.toLocaleString('es-ES')} tropas (-${awayWages.toLocaleString('es-ES')} 💰 de provisiones)`
                     : '';
                 const body = `⚔️ **Pago de soldadas**\n\nLos recaudadores han distribuido el jornal entre vuestras huestes.\n• Tropas en territorio: ${inTroops.toLocaleString('es-ES')} (-${inWages.toLocaleString('es-ES')} 💰 del tesoro)${awayLine}`;
-                await NotificationService.createSystemNotification(player.player_id, 'Militar', body, turn);
+                await NotificationService.createSystemNotification(player.player_id, 'Económico', body, turn);
 
                 auditEvent('SALARY_PAYMENT', {
                     player_id: player.player_id, turn,
@@ -583,7 +583,7 @@ async function processMilitaryConsumption(client, turn, config) {
                     const goldMsg = goldDays <= 0
                         ? `💰 **Sin fondos — ${army.army_name}**\n\nLas reservas de oro se han agotado. Los soldados comenzarán a desertar por falta de paga.\n📍 Posición: ${fmtHex(army.h3_index)}`
                         : `💰 **Reservas bajas — ${army.army_name}**\n\nQuedan menos de **${thr} días** de oro para soldadas (${Math.floor(goldDays)} días restantes).\n📍 Posición: ${fmtHex(army.h3_index)}`;
-                    await NotificationService.createSystemNotification(army.player_id, 'Militar', goldMsg, turn);
+                    await NotificationService.createSystemNotification(army.player_id, 'Económico', goldMsg, turn);
                 }
             }
 
