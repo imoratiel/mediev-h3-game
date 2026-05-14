@@ -1799,17 +1799,6 @@ async function processGameTurn(pool, config) {
                             starvationCount++;
                             Logger.engine(`[TURN ${newTurn}] STARVATION at ${t.h3_index} (player ${t.player_id}): pop ${t.population} → ${Math.max(minPop, Math.floor(t.population * 0.95))}`);
 
-                            // Notify only if population actually dropped (it may already be at minimum)
-                            const deaths = t.population - Math.max(minPop, Math.floor(t.population * 0.95));
-                            if (deaths > 0) {
-                                const noun = deaths === 1 ? 'habitante' : 'habitantes';
-                                await NotificationService.createSystemNotification(
-                                    t.player_id,
-                                    'Hambre',
-                                    `🚨 **Hambruna en ${fmtHex(t.h3_index)}**\n\nLas arcas de grano están vacías y el pueblo pasa hambre. ${deaths} ${noun} han perecido por falta de alimento.\n\nAbasteced el territorio antes de que el silencio se extienda.`,
-                                    newTurn
-                                );
-                            }
                         } else {
                             // Normal census: 1% population growth, capped by terrain limit
                             const isCapital = t.h3_index === t.capital_h3;

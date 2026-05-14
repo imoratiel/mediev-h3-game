@@ -96,11 +96,6 @@ export function generateCellPopupContent(cell, config) {
 
   // TERRITORY DETAILS (only if owned and has territory data)
   if (cell.territory && cell.player_id === playerId) {
-    // FAMINE WARNING
-    if (cell.territory.food <= 0) {
-      popupContent += '<div class="popup-famine-warn">🚨 HAMBRUNA — Sin reservas de comida</div>';
-    }
-
     // Dominant culture abbreviation
     const _cultures = [
       { abbr: 'Rom', val: cell.culture?.romanos      ?? 0 },
