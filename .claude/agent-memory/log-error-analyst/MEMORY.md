@@ -89,6 +89,14 @@
 - Bug recurrente al crear nuevos middlewares: usar `require('../config/db')` → `MODULE_NOT_FOUND` → crash-loop Docker
 - El pool se exporta directamente: `const pool = require(...)` sin destructuring (`{ pool }`)
 
+## `building_types` — PK es `building_type_id`, NO `id`
+- La tabla `building_types` tiene PK `building_type_id` (integer), NOT `id`
+- La tabla `buildings` tiene columna `type_id` que referencia `building_types.building_type_id`
+- JOIN correcto: `JOIN building_types bt ON bt.building_type_id = b.type_id`
+- JOIN erróneo (bug): `JOIN building_types bt ON bt.id = b.type_id` → error SQL "column bt.id does not exist"
+- Afecta: `CombatService.js:812` (bono edificio militar en combate) y `CharacterService.js:1331` (encarcelamiento de personajes)
+- El error en CombatService bloquea TODO combate (manual y del motor) cuando hay un edificio en el hex
+
 ## Archivos Clave
 
 - Motor: `server/src/logic/turn_engine.js`

@@ -809,7 +809,7 @@ class CombatService {
             const bldRes = await client.query(`
                 SELECT b.name, fb.conservation FROM fief_buildings fb
                 JOIN buildings b ON b.id = fb.building_id
-                JOIN building_types bt ON bt.id = b.type_id
+                JOIN building_types bt ON bt.building_type_id = b.type_id
                 WHERE fb.h3_index = $1 AND fb.is_under_construction = FALSE AND bt.name = 'military'
                 LIMIT 1
             `, [h3Index]);
