@@ -256,7 +256,7 @@ class CombatService {
                 else if (enemyBattle.retreat?.retreated) message = `"${enemyBattle.name}" huye hasta ${enemyBattle.retreat.newHex}.` + lootLine;
                 else                                  message = 'El enemigo ha sido derrotado.' + lootLine;
                 if (battle.rebelDesertion?.deserted > 0) {
-                    message += ` Tus exploradores reportan que muchos campesinos han abandonado la rebelión tras esa amarga derrota (${battle.rebelDesertion.deserted} desertores).`;
+                    message += ` Tus exploradores reportan que muchos campesinos han abandonado la rebelión tras esa amarga derrota.`;
                 }
             } else {
                 if (playerBattle.destroyed)            message = `¡"${playerBattle.name}" ha sido aniquilado en el campo de batalla!`;
@@ -1394,7 +1394,7 @@ class CombatService {
             const myRetreat  = myArmy.retreat;
             const lootLine   = loot ? (iWon ? `\n💰 Botín capturado: ${formatLoot(loot)}` : `\n💸 Provisiones saqueadas: ${formatLoot(loot)}`) : '';
             const desertionLine = iWon && rebelDesertion?.deserted > 0 && enemyArmy.playerId === null
-                ? `\n\n🏃 Tus exploradores reportan que muchos campesinos han abandonado la rebelión tras esa amarga derrota (${rebelDesertion.deserted} desertores).`
+                ? `\n\n🏃 Tus exploradores reportan que muchos campesinos han abandonado la rebelión tras esa amarga derrota.`
                 : '';
 
             if (isDraw) {

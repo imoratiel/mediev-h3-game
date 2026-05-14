@@ -351,7 +351,7 @@ async function triggerRebellion(client, divisionId, playerId, comarcaName, capit
 
     const armyRes = await client.query(`
         INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
-        VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+        VALUES (NULL, $1, 'Rebeldes', TRUE, $2, $3)
         RETURNING army_id
     `, [spawnHex, divisionId, playerId]);
     const armyId = armyRes.rows[0].army_id;
@@ -706,7 +706,7 @@ async function processHappinessRebellion(client, currentTurn) {
             // Crear ejército campesino temporal para el combate
             const { rows: peasantRows } = await client.query(`
                 INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
-                VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+                VALUES (NULL, $1, 'Rebeldes', TRUE, $2, $3)
                 RETURNING army_id
             `, [fief.h3_index, fief.division_id, fief.player_id]);
             const peasantArmyId = peasantRows[0].army_id;
@@ -777,7 +777,7 @@ async function processHappinessRebellion(client, currentTurn) {
             const armyId = peasantAlive.rows.length > 0 ? peasantArmyId : await (async () => {
                 const { rows } = await client.query(`
                     INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
-                    VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+                    VALUES (NULL, $1, 'Rebeldes', TRUE, $2, $3)
                     RETURNING army_id
                 `, [fief.h3_index, fief.division_id, fief.player_id]);
                 await client.query(`
@@ -821,7 +821,7 @@ async function processHappinessRebellion(client, currentTurn) {
 
         const { rows: armyRows } = await client.query(`
             INSERT INTO armies (player_id, h3_index, name, is_rebel, rebel_division_id, rebel_target_player_id)
-            VALUES (NULL, $1, 'Campesinos en Armas', TRUE, $2, $3)
+            VALUES (NULL, $1, 'Rebeldes', TRUE, $2, $3)
             RETURNING army_id
         `, [fief.h3_index, fief.division_id, fief.player_id]);
         const armyId = armyRows[0].army_id;
