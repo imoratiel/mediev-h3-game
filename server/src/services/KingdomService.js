@@ -690,9 +690,30 @@ class KingdomService {
             // 9. Notificar al antiguo propietario
             if (currentOwner !== null) {
                 const NotificationService = require('./NotificationService.js');
+                const attackerNameRes = await client.query(
+                    'SELECT display_name FROM players WHERE player_id = $1',
+                    [player_id]
+                );
+                const attackerName = attackerNameRes.rows[0]?.display_name ?? 'Un enemigo';
+                const armyName = armyResult.rows[0].name;
+                const desgloseLines = troops
+                    .map(t => {
+                        const perdidos = Math.min(t.quantity, Math.floor(attacker_losses * (t.quantity / attackerTotal)));
+                        return perdidos > 0 ? `  • ${t.unit_name}: ${perdidos} bajas` : null;
+                    })
+                    .filter(Boolean)
+                    .join('\n');
+                const combatBody = [
+                    `⚔️ **Bajas del atacante:** ${attacker_losses} de ${attackerTotal} tropas`,
+                    desgloseLines || null,
+                    `🛡️ **Milicia local:** ${defender_losses} de ${militiaCount} milicianos abatidos`,
+                ].filter(Boolean).join('\n');
                 await NotificationService.createSystemNotification(
                     currentOwner, 'Militar',
-                    `🏴 **Feudo perdido — ${hex.fief_name}**\n\nLas fuerzas enemigas han arrebatado ${hex.fief_name} de vuestras manos. Reagrupad vuestras huestes y recuperad lo que es vuestro.`,
+                    `🏴 **Feudo perdido — ${hex.fief_name}**\n\n` +
+                    `Los ejércitos de **${attackerName}** (${armyName}) han tomado **${hex.fief_name}** por la fuerza.\n\n` +
+                    combatBody + '\n\n' +
+                    `El territorio ha caído. ¡Reagrupad vuestras huestes y recuperad lo que es vuestro!`,
                     turn
                 );
             }
@@ -962,9 +983,27 @@ class KingdomService {
 
                 if (previousOwner !== null) {
                     const NotificationService = require('./NotificationService.js');
+                    const attackerNameRes = await client.query(
+                        'SELECT display_name FROM players WHERE player_id = $1',
+                        [player_id]
+                    );
+                    const attackerName = attackerNameRes.rows[0]?.display_name ?? 'Un enemigo';
+                    const armyName = armyResult.rows[0].name;
+                    const desgloseLines = desgloseAtacante
+                        .filter(u => u.perdidos > 0)
+                        .map(u => `  • ${u.nombre}: ${u.perdidos} bajas`)
+                        .join('\n');
+                    const combatBody = [
+                        `⚔️ **Bajas del atacante:** ${attacker_losses} de ${attackerTotal} tropas`,
+                        desgloseLines || null,
+                        `🛡️ **Milicia local:** ${defender_losses} de ${militiaCount} milicianos abatidos`,
+                    ].filter(Boolean).join('\n');
                     await NotificationService.createSystemNotification(
                         previousOwner, 'Militar',
-                        `🏴 **Feudo perdido — ${hex.fief_name}**\n\nLas fuerzas enemigas han arrebatado ${hex.fief_name} de vuestras manos. Reagrupad vuestras huestes y recuperad lo que es vuestro.`,
+                        `🏴 **Feudo perdido — ${hex.fief_name}**\n\n` +
+                        `Los ejércitos de **${attackerName}** (${armyName}) han asaltado y tomado **${hex.fief_name}**.\n\n` +
+                        combatBody + '\n\n' +
+                        `El territorio ha caído. ¡Reagrupad vuestras huestes y recuperad lo que es vuestro!`,
                         turn
                     );
                 }
