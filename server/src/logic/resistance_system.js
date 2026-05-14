@@ -519,6 +519,14 @@ async function _processOneRebelArmy(client, rebel, turn) {
         return;
     }
 
+    // Helper: mover y marcar 1 turno de espera (no 2 turnos seguidos)
+    const moveAndRest = async (newHex) => {
+        await client.query(
+            'UPDATE armies SET h3_index = $1, recovering = 1 WHERE army_id = $2',
+            [newHex, rebel.army_id]
+        );
+    };
+
     // 2. Feudos libres de la comarca adyacentes → ocupar
     const freeComarca = await client.query(`
         SELECT m.h3_index FROM h3_map m
@@ -530,10 +538,7 @@ async function _processOneRebelArmy(client, rebel, turn) {
     `, [neighbors, rebel.rebel_division_id]);
 
     if (freeComarca.rows.length > 0) {
-        await client.query(
-            'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
-            [freeComarca.rows[0].h3_index, rebel.army_id]
-        );
+        await moveAndRest(freeComarca.rows[0].h3_index);
         return;
     }
 
@@ -556,7 +561,7 @@ async function _processOneRebelArmy(client, rebel, turn) {
 
         if (neighbors.includes(target.h3_index)) {
             await client.query(
-                'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
+                'UPDATE armies SET h3_index = $1, recovering = 1 WHERE army_id = $2',
                 [target.h3_index, rebel.army_id]
             );
             await CombatService.resolveCombat(
@@ -577,12 +582,7 @@ async function _processOneRebelArmy(client, rebel, turn) {
                     return d < dBest ? n : best;
                 } catch { return best; }
             }, null);
-            if (nextHex) {
-                await client.query(
-                    'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
-                    [nextHex, rebel.army_id]
-                );
-            }
+            if (nextHex) await moveAndRest(nextHex);
         }
         return;
     }
@@ -598,10 +598,7 @@ async function _processOneRebelArmy(client, rebel, turn) {
 
     if (freeNeighbors.rows.length > 0) {
         const pick = freeNeighbors.rows[Math.floor(Math.random() * freeNeighbors.rows.length)];
-        await client.query(
-            'UPDATE armies SET h3_index = $1 WHERE army_id = $2',
-            [pick.h3_index, rebel.army_id]
-        );
+        await moveAndRest(pick.h3_index);
     }
 }
 
